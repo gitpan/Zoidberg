@@ -246,7 +246,7 @@ Currently only the following operators are defined for redirections :
 
 Quoting does not entirely work like in "sh like" shells. Most importantly, you can't
 start a quoted block in the middle of a word, if you use quotes you need to quote
-an entire word.
+an entire word. (The exception to this rule is syntax like C<export var='val'>.)
 
 All words, are subject to parameter- and path-expansion unless
 they are quoted. For double quoted words only parameter expansion is performed, for single

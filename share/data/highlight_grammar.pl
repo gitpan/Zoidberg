@@ -67,3 +67,5 @@ $VAR1 = {
 };
 # for highlighting
 $VAR1->{syntax}{PERL}{colors}{underline} = $VAR1->{perl_functions};
+
+$VAR1;

@@ -1,4 +1,4 @@
- Zoidberg - a modular perl shell, version 0.53
+ Zoidberg - a modular perl shell, version 0.54
 ===============================================
 
   http://zoidberg.sourceforge.net
@@ -16,7 +16,7 @@ INSTALLATION
   you are welcome to also file bug reports for other versions of perl.
 
   Modules which are not in the Zoidberg package but are depended upon by 
-  Zoidberg are listed in the file "b/Requires.pd" -- these modules are
+  Zoidberg are listed in the file "b/Requires.pl" -- these modules are
   available from CPAN <http://cpan.org>.
 
   On most clean systems you will need to install:

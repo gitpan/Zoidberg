@@ -1,6 +1,6 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -40,7 +40,7 @@ sub shell { # FIXME FIXME should not return after ^Z
 	if (grep {ref $_} @_) { @re = $$self{fg_job}->shell_list( {capture => $c}, @_ ) }
 	elsif (@_ > 1)        { @re = $$self{fg_job}->shell_list( {capture => $c}, \@_) }
 	else                  { @re = $self->shell_string( {capture => $c}, @_ ) }
-	$@ = $$self{error} if $$self{error};
+	$@ = $$self{error};
 	return wantarray ? (map {chomp; $_} @re) :
 		Zoidberg::Shell::scalar->new( join('', @re), ($@ ? 0 : 1) ) ;
 }

@@ -6,7 +6,7 @@ use Zoidberg::StringParser;
 
 sub new {
 	my $self = {};
-	my $coll = read_file('./share/data/grammar.pd');
+	my $coll = read_file('./share/data/grammar.pl');
 	$$self{stringparser} = Zoidberg::StringParser->new($$coll{_base_gram}, $coll);
 	bless $self;
 }
@@ -42,7 +42,7 @@ my $eval = Zoidberg::Eval->_new($zoid);
 
 for (@test_data1) {
 	my $dezoid = $eval->_dezoidify($$_[0]);
-#	print "# $$_[0] => $dezoid\n";
+	print "# $$_[0] => $dezoid\n";
 	ok($dezoid eq $$_[1], $$_[2]);
 }
 
@@ -50,7 +50,7 @@ $$zoid{settings}{naked_zoid}++;
 
 for (@test_data2) {
 	my $dezoid = $eval->_dezoidify($$_[0]);
-#	print "# $$_[0] => $dezoid\n";
+	print "# $$_[0] => $dezoid\n";
 	ok($dezoid eq $$_[1], $$_[2]);
 }
 

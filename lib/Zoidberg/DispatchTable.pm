@@ -1,10 +1,10 @@
 package Zoidberg::DispatchTable;
 
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 use strict;
 use Zoidberg::Utils qw/debug bug error/;
-use Exporter::Tidy all => [qw/stack wipe tags/];
+use Exporter::Tidy all => [qw/stack wipe tag tags/];
 
 #our $ERROR_CALLER = 1; 
 
@@ -166,6 +166,13 @@ sub stack {
 	return @{$self->[0]{$key}};
 }
 
+sub tag {
+	my ($table, $key) = @_;
+	my $self = tied %$table;
+	return undef unless exists $$self[1]{$key};
+	return $$self[1]{$key}[-1];
+}
+
 sub tags {
 	my ($table, $key) = @_;
 	my $self = tied %$table;
@@ -277,6 +284,10 @@ table.
 Returns the whole stack for an given key, useful to loop trough stacks.
 C<$tags> is a boolean, when true all items are returned as a sub array of CODE ref
 with tag.
+
+=item C<tag(\%table, $key)>
+
+Returns the tag for the given key.
 
 =item C<tags(\%table, $key)>
 

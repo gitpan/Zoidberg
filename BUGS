@@ -22,4 +22,4 @@ In theory 'do filename' should create a clean namespace 'main' for each script, 
 
 * The Buffer tends to overwrite the last line if it didn't end with a "\n"
 
-* aliases can't contain pipelines etc. ... yet
+* When you use a built-in command as a perl-routine, the capturing of STDOUT doesn't work

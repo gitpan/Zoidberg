@@ -6,12 +6,12 @@ use lib './b';
 require MyBuilder;
 require File::Spec;
 
-my $requires = do File::Spec->catfile(qw/b Requires.pd/);
+my $requires = do File::Spec->catfile(qw/b Requires.pl/);
 $$requires{perl} = '5.6.1'; # I don't trust older versions will work
 
 my $build = MyBuilder->new(
 	module_name => 'Zoidberg',
-	dist_author => ['Jaap Karssenberg <pardus@cpan.org>'],
+	dist_author => 'Jaap Karssenberg <pardus@cpan.org>',
 	license => 'perl',
 	requires => $requires,
 	recommends => {
@@ -28,7 +28,7 @@ my $build = MyBuilder->new(
 #	create_makefile_pl => 'passthrough', # bug in M:B hacked Makefile.PL
 	dynamic_config => {}, # boolean but bug in M:B
 	PL_files => {}, # make it ignore my stuff
-#	autosplit => ['lib/Zoidberg/Fish/Commands.pm'],
+	autosplit => ['lib/Zoidberg/Fish/Commands.pm'],
 );
 
 $build->MyInit;

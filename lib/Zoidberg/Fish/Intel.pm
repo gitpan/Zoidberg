@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 use strict;
 use vars qw/$DEVNULL/;
@@ -44,7 +44,7 @@ sub complete {
 #	$$block[0]{i_feel_lucky} = $i_feel_lucky; TODO, also T:RL:Zoid support for this
 	$$block[0]{quoted} = $1 if $$block[-1] =~ s/^(['"])//;
 
-	debug "\ncompletion start block: ", $block;
+	debug "\ncompletion prefix: ", $pref, "\nand start block: ", $block;
 	$block = $self->do($block, $$block[0]{context});
 	$block = $self->join_blocks(@$block) if ref($$block[0]) eq 'ARRAY';
 	my %meta = (
@@ -53,10 +53,9 @@ sub complete {
 	);
 	$meta{prefix} = $meta{quoted} . $meta{prefix} if $meta{quoted};
 	debug scalar(@{$$block[0]{poss}}) . ' completions, meta: ', \%meta;
+	#debug [$$block[0]{poss}];
 	return (\%meta, @{$$block[0]{poss}});
 
-#	$string = _quote_file($string) if $block->[0]{_file_quote};
-#	$string .= $block->[0]{postf} || ' ' if $winner && $string =~ m#\w$#; # FIXME not transparent !!
 
 }
 
@@ -72,7 +71,7 @@ sub _get_last_block {
 			$self->{parent}{stringparser}->split('word_gram', $block);
 	}
 	else { $block = '' }
-	push @words, '' if $block =~ /\s$/;
+	push @words, '' if $block =~ /\s$/ and $words[-1] !~ /\s$/;
 
 	# parse block
 	$block = scalar(@words) # if @words == 1 the word could be for example env
@@ -92,7 +91,7 @@ sub _get_last_block {
 	# get pref right
 	unless ($string =~ s/\Q$$block[-1]\E$//) {
 		my @words = $self->{parent}{stringparser}->split(
-			['word_gram', {no_esc_rm => 1}], $$block[0]{string} );
+			['word_gram', {no_esc_rm => 1}], $string );
 		$string =~ s/\Q$words[-1]\E$//;
 	}
 
@@ -274,14 +273,12 @@ sub i_dirs_n_files { # types can be x, f, ans/or d # TODO globbing tab :)
 	if ($arg =~ m#^~# && $arg !~ m#/#) { # expand home dirs
 		return unless $type =~ /d/;
 		push @{$$block[0]{poss}}, grep /^\Q$arg\E/, map "~$_/", list_users();
-		$$block[0]{_file_quote}++;
 		return $block;
 	}
 	else {
 		if ($arg =~ s!^(.*/)!!) { 
 			$dir = abs_path($1);
-			$block->[0]{prefix} .= _quote_file($1)
-				unless $block->[0]{i_dirs_n_files}++;
+			$block->[0]{prefix} .= $1;
 		}
 		else { $dir = '.' }
 		return undef unless -d $dir;
@@ -300,16 +297,9 @@ sub i_dirs_n_files { # types can be x, f, ans/or d # TODO globbing tab :)
 	@poss = grep {$_ !~ /^\./} @poss
 		if $$self{parent}{settings}{hide_hidden_files} && $arg !~ /^\./;
 
-	$$block[0]{_file_quote}++;
 	push @{$$block[0]{poss}}, @poss;
 
 	return $block;
-}
-
-sub _quote_file { 
-	my $string = shift;
-	$string =~ s#([\[\]\(\)\s\?\!\#\&\|\;\:\"\'\{\}])#\\$1#g;
-	return $string;
 }
 
 sub i_users {

@@ -1,6 +1,7 @@
-$VAR1 = {
+{
 	module => 'Zoidberg::Fish::Commands',
 	config => { max_dir_hist => 10 },
+	load_on_init => 1, # allready using AutoLoader
 	commands => {
 			back      => 'cd(q/<-/)',
 			forw      => 'cd(q/->/)',
@@ -18,5 +19,7 @@ $VAR1 = {
 
 		dirs		popd		pushd
 		help
+
+		fg bg kill jobs
 	/],
 }

@@ -1,6 +1,32 @@
 Revision history for Zoidberg - a modular perl shell
 <http://zoidberg.sourceforge.net>
 
+0.54 Tue Jun 29
+	Enough new stuff for a release and some cute bug fixes.
+	Hope it will do better then the last two.
+	- Fixed some bugs with regard to tab-expansion and quoting
+
+     Mon Jun 28
+	- (re-)created Help.pm
+        - deprecated usage of '.pd' files
+
+     Sun Jun 27
+        - Added documentation for Commands.pm
+	- fixed a quoting problem with "export var='value'" syntax by making
+	it a special syntax
+
+     Tue Jun 22
+        - Added heuristic enqueuing of commands when you start the command with
+	an operator instead of a command
+
+     Thu Jun 17
+        - Moved commands related to job control from Contractor to Commands
+	- Z:Fish::Commands now uses AutoLoader
+
+     Wed Jun 16
+        - Made aliases work more like macros, they can now contain logic and
+	positional parameters
+
 0.53 Thu May 27 2004
      Oops, another "nuked" release :( Got a typo in the test script.
 

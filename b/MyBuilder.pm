@@ -99,6 +99,9 @@ sub ACTION_appdir {
 	}
 	else { $self->copy_if_modified(from => $$_[0], to => $$_[1]) for @links }
 	chdir '..' || die $!;
+
+	my $apprun = File::Spec->catfile($self->blib, qw/script AppRun/);
+	unlink $apprun; # clean up
 }
 
 # overloaded methods

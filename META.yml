@@ -1,8 +1,81 @@
 --- #YAML:1.0
 name: Zoidberg
-version: 0.53
-author:
-  - Jaap Karssenberg <pardus@cpan.org>
+version: 0.54
+author: Jaap Karssenberg <pardus@cpan.org>
 abstract: a modular perl shell
 license: perl
-generated_by: Module::Build version 0.25, without YAML.pm
+requires:
+  AutoLoader: 0
+  Carp: 0
+  Cwd: 0
+  Data::Dumper: 0
+  Env: 0
+  Exporter::Tidy: 0
+  File::Glob: 0
+  File::Spec: 0
+  IO::File: 0
+  POSIX: 0
+  perl: 5.6.1
+recommends:
+  Env::PS1: 0
+  Storable: 0
+  Term::ReadLine::Zoid: 0
+build_requires:
+  Data::Dumper: 0
+  Module::Build: 0.24
+  Pod::Text: 0
+  Test::More: 0
+dynamic_config: {}
+provides:
+  Bundle::Zoidberg:
+    file: lib/Bundle/Zoidberg.pm
+    version: 0.01
+  Zoidberg:
+    file: lib/Zoidberg.pm
+    version: 0.54
+  Zoidberg::Contractor:
+    file: lib/Zoidberg/Contractor.pm
+  Zoidberg::DispatchTable:
+    file: lib/Zoidberg/DispatchTable.pm
+  Zoidberg::Eval:
+    file: lib/Zoidberg/Eval.pm
+  Zoidberg::Fish:
+    file: lib/Zoidberg/Fish.pm
+  Zoidberg::Fish::Commands:
+    file: lib/Zoidberg/Fish/Commands.pm
+  Zoidberg::Fish::Help:
+    file: lib/Zoidberg/Fish/Help.pm
+  Zoidberg::Fish::Intel:
+    file: lib/Zoidberg/Fish/Intel.pm
+  Zoidberg::Fish::Log:
+    file: lib/Zoidberg/Fish/Log.pm
+  Zoidberg::Fish::ReadLine:
+    file: lib/Zoidberg/Fish/ReadLine.pm
+  Zoidberg::Job:
+    file: lib/Zoidberg/Contractor.pm
+  Zoidberg::Job::builtin:
+    file: lib/Zoidberg/Contractor.pm
+  Zoidberg::PluginHash:
+    file: lib/Zoidberg/PluginHash.pm
+  Zoidberg::Shell:
+    file: lib/Zoidberg/Shell.pm
+  Zoidberg::Shell::scalar:
+    file: lib/Zoidberg/Shell.pm
+  Zoidberg::StringParser:
+    file: lib/Zoidberg/StringParser.pm
+  Zoidberg::StringParser::array:
+    file: lib/Zoidberg/StringParser.pm
+  Zoidberg::StringParser::grammar:
+    file: lib/Zoidberg/StringParser.pm
+  Zoidberg::StringParser::hash:
+    file: lib/Zoidberg/StringParser.pm
+  Zoidberg::Utils:
+    file: lib/Zoidberg/Utils.pm
+  Zoidberg::Utils::Error:
+    file: lib/Zoidberg/Utils/Error.pm
+  Zoidberg::Utils::FileSystem:
+    file: lib/Zoidberg/Utils/FileSystem.pm
+    version: cvs
+  Zoidberg::Utils::Output:
+    file: lib/Zoidberg/Utils/Output.pm
+generated_by: Module::Build version 0.25

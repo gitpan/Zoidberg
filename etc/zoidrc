@@ -11,7 +11,7 @@ message(
 $shell->{events}{exit} = sub { message("--[ CU ]--[ Please report all bugs ]--") };
 
 ### set environment
-$ENV{PS1} = '\C{bold,blue}\u@\H \A \C{green}\W\$\C{reset} ';
+$ENV{PS1} = '\C{bold,blue}\u@\h \A \C{green}\W\$\C{reset} ';
 $ENV{PS2} = '\C{bold,blue}>\C{reset} ';
 # For those wannabe l337 people ;)
 #$ENV{PS1} = '\C{bold,black}/--( \u@\H )-( \t )-( \w )-( load \P{%l} ) * *\n\\-- * \$\C{reset} ';
@@ -48,6 +48,7 @@ alias( {
 	l   => 'ls',
 	ll  => 'ls -l',
 	la  => 'ls -la',
+	lh  => 'ls -lh',
 	j   => 'jobs',
 	'?' => 'help',
 	( ($> == 0) # root gets other aliases

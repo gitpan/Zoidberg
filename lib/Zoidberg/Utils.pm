@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils;
 
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 use strict;
 use vars '$AUTOLOAD';
@@ -100,7 +100,7 @@ sub read_data_file {
 	croak 'read_data_file() is not intended for fully specified files, try read_file()'
 		if $file =~ m!^/!;
 	for my $dir (setting('data_dirs')) {
-		for ("$dir/data/$file", map "$dir/data/$file.$_", qw/pd yaml/) {
+		for ("$dir/data/$file", map "$dir/data/$file.$_", qw/pl pd yaml/) {
 			next unless -f $_;
 			error "Can not read file: $_" unless -r $_;
 			return read_file($_);
@@ -127,6 +127,9 @@ sub read_file {
 
 sub pd_read {
 	my $FILE = shift;
+
+	print STDERR "Deprecated config file: $FILE - should be a .pl instead of .pd\n";
+
 	open FILE, '<', $FILE or return undef;
 	my $CONTENT = join '', (<FILE>);
 	close FILE;

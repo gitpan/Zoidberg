@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 our $LONG_VERSION =
 "Zoidberg $VERSION
 
@@ -193,8 +193,7 @@ sub shell_string {
 sub parse_block  { 
 	# call as late as possible before execution
 	# bit is "pretend bit" (also known as "Intel bit")
-	# $queue is unshift only, no shift - else you can fuck up logic list
-	my ($self, $block, $queue, $bit) = @_; # queu isn't no more - extra meta instead me thinks
+	my ($self, $block, undef, $bit) = @_; # queu isn't no more - extra meta instead me thinks
 	my ($meta, @words) = ({pretend => $bit});
 
 	# decipher block
@@ -208,11 +207,7 @@ sub parse_block  {
 
 	# check aliase and other meta stuff
 	my @blocks = $self->parse_macros($meta, @words);
-	if (@blocks > 1) { # alias contained pipe or logic operator
-		bug 'No queue argument given' unless ref $queue;
-		($meta, @words) = @{ shift(@blocks) };
-		unshift @$queue, @blocks;
-	}
+	if (@blocks > 1) { return @blocks } # probably an alias contained pipe or logic operator
 	elsif (@blocks) { ($meta, @words) = @{ shift(@blocks) } }
 	else { return undef }
 
@@ -221,6 +216,7 @@ sub parse_block  {
 		my $r = $sub->([$meta, @words]);
 		($meta, @words) = @$r if $r; # skip on undef
 	}
+	return undef unless $$meta{context} or @words;
 
 	# check builtin contexts
 	unless ($$meta{context} or $$self{settings}{_no_hardcoded_context}) {
@@ -273,7 +269,7 @@ sub parse_block  {
 		($meta, @words) = @{ $$self{contexts}{$$meta{context}}{parser}->([$meta, @words]) };
 	}
 	elsif (grep {$$meta{context} eq $_} @{$$self{no_words}}) { # no words
-		if ($$meta{pretend}) { @words = grep {length $_} $self->{stringparser}->split('word_gram', $$meta{string}) }
+		if ($$meta{pretend}) { @words = $self->{stringparser}->split('word_gram', $$meta{string}) }
 		else { @words = ($$meta{string}) }
 	}
 	elsif (@words and ! $$meta{pretend}) { # expand and set topic
@@ -290,7 +286,7 @@ sub parse_macros {
 	my ($self, $meta, @words) = @_;
 
 	unless (@words) {
-		@words = grep {length $_} $self->{stringparser}->split('word_gram', $$meta{string})
+		@words = $self->{stringparser}->split('word_gram', $$meta{string})
 	}
 	else { delete $$meta{string} } # just to make sure
 
@@ -326,35 +322,57 @@ sub parse_macros {
 		$$meta{fd}{$num} = [ $file, $2 ];
 	}
 
-	@words = $self->_do_aliases(@words) if @words && ! $$meta{pretend};
-
 	if ($$meta{string}) {
 		if (exists $$meta{end}) {
-			$$meta{string} =~ s/\s*\Q$_\E\s*$//
-				for reverse @{$$meta{end}};
+			$$meta{string} =~ s/\s*\Q$_\E\s*$// for reverse @{$$meta{end}};
 		}
 		if (exists $$meta{start}) {
-			$$meta{string} =~ s/^\s*\Q$_\E\s*//
-				for @{$$meta{start}};
+			$$meta{string} =~ s/^\s*\Q$_\E\s*// for @{$$meta{start}};
 		}
 	}
 	else { $$meta{string} = join ' ', @words }
 
 	$$meta{env}{ZOIDCMD} ||= $$meta{string}; # unix haters guide pdf page 60
-	return [$meta, @words];
+	return [$meta, @words] unless @words && ! $$meta{pretend};
+	return $self->_do_aliases($meta, @words);
 }
 
-sub _do_aliases { # only a sub to be able to recurs
-	my ($self, $key, @rest) = @_;
-	if (exists $self->{aliases}{$key}) {
-		my $string = $self->{aliases}{$key}; # TODO Should we support other data types ?
-		@rest = $self->_do_aliases(@rest)
-			if $string =~ /\s$/; # recurs for 2nd word - see posix spec
-		unshift @rest, grep {defined $_} $self->{stringparser}->split('word_gram', $string);
-		return $self->_do_aliases(@rest) unless $rest[0] eq $key; # recurs
-		return @rest;
+sub _do_aliases { # recursive sub (aliases are 3 way recursive, 2 ways are in this sub)
+	my ($self, $meta, @words) = @_;
+	return [$meta, @words] unless exists $$self{aliases}{$words[0]};
+	$$meta{alias_stack} ||= [];
+	return [$meta, @words] if grep {$_ eq $words[0]} @{$$meta{alias_stack}};
+	push @{$$meta{alias_stack}}, $words[0];
+
+	my $string = $$self{aliases}{$words[0]};
+	debug "$words[0] is aliased to: $string";
+	shift @words;
+
+	$string =~ s#(?<!\\)(?:\$_\[(\d+)\]|\@_)#
+		if ($1) { delete $words[$1] }
+		else {
+			my $s = join ' ', @words;
+			@words = ();
+			$s;
+		}
+	#ge; # variable substitution in the macro
+
+	my @as = @{$$meta{alias_stack}}; # force copy
+	my @l = map {
+		ref($_) ? [ 
+			{ alias_stack => [@as] },
+			$$self{stringparser}->split('word_gram', $$_)
+		] : $_
+	} $$self{stringparser}->split('script_gram', $string);
+	$l[0][0]  = $meta if ref $l[0]; # re-insert %meta
+	if ($string =~ /\s$/) { # recurs for 2nd word - see posix spec
+		my @l1 = $self->_do_aliases({}, @words); # recurs
+		$l[-1] = [ @{$l[-1]}, splice @{ shift(@l1) }, 1 ] if ref $l1[0];
+		push @l, @l1;
 	}
-	else { return ($key, @rest) }
+	elsif (@l == 1) { return $self->_do_aliases(@{$l[0]}, @words) } # recurs
+	else { $l[-1] = [ @{$l[-1]}, @words ] }
+	return @l;
 }
 
 sub parse_words { # expand words etc.
@@ -367,16 +385,16 @@ sub parse_words { # expand words etc.
 sub _expand_param { # FIXME @_ implementation
 	my ($self, $meta, @words) = @_;
 	for (@words) {
-		next if /^'.*'$/;
+		next if /^(\w+=)?'.*'$/; # skip quoted words
 		s{ (?<!\\) \$ (?: \{ (.*?) \} | (\w+) ) (?: \[(-?\d+)\] )? }{
 			my ($w, $i) = ($1 || $2, $3);
 			error "no advanced expansion for \$\{$w\}" if $w =~ /\W/;
 			$w = 	($w eq '_') ? $$self{topic} :
 				(exists $$meta{env}{$w}) ? $$meta{env}{$w}  : $ENV{$w};
 			$i ? (split /:/, $w)[$i] : $w;
-		}exg;
+		}exg; # substitute vars
 	}
-	@words = map {
+	@words = map { # substitute arrays
 		if (m/^ \@ (?: \{ (.*?) \} | (\w+) ) $/x) {
 			my $w = $1 || $2;
 			error "no advanced expansion for \@\{$w\}" if $w =~ /\W/;
@@ -391,7 +409,7 @@ sub _expand_param { # FIXME @_ implementation
 sub _command_subst {
 	my ($self, $meta, @words) = @_;
 	for (@words) {
-		next if /^'.*'$/;
+		next if /^(\w+=)?'.*'$/;
 		# FIXME FIXME FIXME this should be done by stringparser
 		# s{ (?<!\\) (?: \$\( (.*?) \) | \` (.*?) (?<!\\) \` }{
 		# if wantarray @parts else join ':', @parts
@@ -399,17 +417,19 @@ sub _command_subst {
 }
 
 # See File::Glob for explanation of behaviour
-our $_GLOB_OPTS = File::Glob::GLOB_TILDE() | File::Glob::GLOB_BRACE() | File::Glob::GLOB_QUOTE() ;
+our $_GLOB_OPTS = File::Glob::GLOB_TILDE() | File::Glob::GLOB_BRACE() ;
 our $_NC_GLOB_OPTS = $_GLOB_OPTS | File::Glob::GLOB_NOCHECK();
 
 sub _expand_path { # path expansion
 	my ($self, $meta, @files) = @_;
-	return $meta, map { /^['"](.*)['"]$/ ? $1 : $_ } @files if $$self{settings}{noglob};
+	return $meta, map { /^(\w+=)?(['"])(.*)\2$/ ? $1.$3 : $_ } @files
+		if $$self{settings}{noglob}; # remove escapes
 	my $opts = $$self{settings}{allow_null_glob_expansion} ? $_GLOB_OPTS : $_NC_GLOB_OPTS;
 	return $meta, map {
-		if (/^['"](.*)['"]$/) { $1 }
-		else {
+		if (/^(\w+=)?(['"])(.*)\2$/) { $1.$3 } # remove escapes
+		else { # substitute globs
 			my @r = File::Glob::bsd_glob($_, $opts);
+			debug "glob: $_ ==> ".join(', ', @r);
 			($_ !~ /^-/) ? (grep {$_ !~ /^-/} @r) : (@r);
 			# protect against implict switches as file names
 		}

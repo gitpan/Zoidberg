@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Log;
 
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 use strict;
 use Zoidberg::Utils qw/:default abs_path/;

@@ -1,6 +1,6 @@
 package Zoidberg::Contractor;
 
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 use strict;
 use POSIX ();
@@ -22,9 +22,6 @@ sub new { # stub, to be overloaded
 sub shell_init {
 	my $self = shift;
 	bug 'Contractor can\'t live without a shell' unless $$self{shell};
-
-	## add some commands - FIXME this doesn't belong here, breaks interface
-	$self->{shell}{commands}{$_}   = $_  for qw/fg bg kill jobs/;
 
 	## jobs stuff
 	$self->{jobs} = [];
@@ -63,8 +60,24 @@ sub shell_list {
 
 	my $meta = (ref($list[0]) eq 'HASH') ? shift(@list) : {} ;
 	return unless @list;
-	my $j = Zoidberg::Job->new(%$meta, boss => $self, tree => \@list) or return;
-	my @re = $j->exec();
+
+	my @re;
+	PARSE_LIST:
+	return unless @list;
+	if (ref $list[0]) {
+		my $j = Zoidberg::Job->new(%$meta, boss => $self, tree => \@list);
+		@list = @{$$j{tree}} and goto PARSE_LIST if $$j{empty};
+		@re = $j->exec();
+	}
+	elsif (@{$$self{jobs}}) {
+		debug 'enqueuing '.scalar(@list).' blocks';
+		push @{$$self{jobs}[-1]{tree}}, @list;
+	}
+	else {
+		debug 'no job to enqueu in, trying logic';
+		@list = $self->_logic(@list);
+		@re = $self->shell_list(@list);
+	}
 
 	$$self{shell}{fg_job} = $save_fg_job;
 
@@ -91,114 +104,32 @@ sub reap_jobs {
 		++$$_{completed} and message $_->status_string
 			for sort {$$a{id} <=> $$b{id}} grep {! $$_{no_notify}} @completed;
 	}
-
-	# reinc completed if tree
-	# FIXME FIXME heartbeat
 }
 
 sub reinc_job { # reincarnate
 	my ($self, $job) = @_;
-	my $op = ref( $$job{tree}[0] ) ? 'EOS' : shift @{ $$job{tree} } ;
-
-	debug "job \%$$job{id} reincarnates, op $op";
-	# mind that logic grouping for AND and OR isn't the same, OR is stronger
-	while ( $$self{shell}{error} ? ( $op eq 'AND' ) : ( $op eq 'OR' ) ) { # skip
-		my $i = 0;
-		while ( ref $$job{tree}[0] or $$job{tree}[0] eq 'AND' ) {
-			shift @{ $$job{tree} };
-			$i++;
-		}
-		debug "error => $i blocks skipped";
-		$op = shift @{ $$job{tree} };
-	}
-
-	return unless @{ $$job{tree} };
-
-	
-	my @b = @{ $$job{tree} };
+	debug "job \%$$job{id} reincarnates";
+	my @b = $self->_logic(@{ $$job{tree} });
+	return unless @b;
 	$$job{tree} = [];
 	debug @b. ' blocks left';
 	$self->shell_list({ bg => $$job{bg}, id => $$job{id} }, @b); # should capture be inherited ?
 }
 
-# ############ #
-# Job routines #
-# ############ #
-
-sub jobs {
-	my $self = shift;
-	my $j = @_ ? \@_ : $self->{jobs};
-	output $_->status_string for sort {$$a{id} <=> $$b{id}} @$j;
-}
-
-sub bg {
-	my ($self, $id) = @_;
-	my $j = $self->job_by_spec($id)
-		or error 'No such job'.($id ? ": $id" : '');
-	debug "putting bg: $$j{id} == $j";
-	$j->put_bg;
-}
-
-sub fg {
-	my ($self, $id) = @_;
-	my $j = $self->job_by_spec($id)
-		or error 'No such job'.($id ? ": $id" : '');
-	debug "putting fg: $$j{id} == $j";
-	$j->put_fg;
-}
-
-# from bash-2.05/builtins/kill.def:
-# kill [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspec]
-# Send the processes named by PID (or JOB) the signal SIGSPEC.  If
-# SIGSPEC is not present, then SIGTERM is assumed.  An argument of `-l'
-# lists the signal names; if arguments follow `-l' they are assumed to
-# be signal numbers for which names should be listed.  Kill is a shell
-# builtin for two reasons: it allows job IDs to be used instead of
-# process IDs, and, if you have reached the limit on processes that
-# you can create, you don't have to start a process to kill another one.
-
-# Notice that POSIX specifies another list format then the one bash uses
-
-sub kill {
-	my $self = shift;
-	error "usage:  kill [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspec]"
-		unless defined $_[0];
-	if ($_[0] eq '-l') { # list sigs
-		shift;
-		my @k = @_ ? (grep exists $$self{_sighash}{$_}, @_) : (keys %{$$self{_sighash}});
-		output [ map {sprintf '%2i) %s', $_, $$self{_sighash}{$_}} sort {$a <=> $b} @k ];
-		return;
-	}
-
-	my $sig = '15'; # sigterm, the default
-	if ($_[0] =~ /^--?(\w+)/) {
-		if ( defined (my $s = $self->sig_by_spec($1)) ) {
-			$sig = $s;
-			shift;
+sub _logic {
+	my ($self, @list) = @_;
+	my $op = ref( $list[0] ) ? 'EOS' : shift @list ;
+	# mind that logic grouping for AND and OR isn't the same, OR is stronger
+	while ( $$self{shell}{error} ? ( $op eq 'AND' ) : ( $op eq 'OR' ) ) { # skip
+		my $i = 0;
+		while ( ref $list[0] or $list[0] eq 'AND' ) {
+			shift @list;
+			$i++;
 		}
+		debug "error => $i blocks skipped";
+		$op = shift @list;
 	}
-	elsif ($_[0] eq '-s') {
-		shift;
-		$sig = $self->sig_by_spec(shift);
-	}
-
-	for (@_) {
-		if (/^\%/) {
-			my $j = $self->job_by_spec($_);
-			CORE::kill($sig, -$j->{pgid});
-		}
-		else { CORE::kill($sig, $_) }
-	}
-}
-
-sub disown { # dissociate job ... remove from @jobs, nohup
-	todo 'see bash manpage for implementaion details';
-
-	# is disowning the same as deamonizing the process ?
-	# if it is, see man perlipc for example code
-
-	# does this suggest we could also have a 'own' to hijack processes ?
-	# all your pty are belong:0
+	return @list;
 }
 
 # ############# #
@@ -254,14 +185,18 @@ use Zoidberg::Utils;
 
 our @ISA = qw/Zoidberg::Contractor/;
 
-sub exec { # like new() but runs immediatly
-	my $self = ref($_[0]) ? shift : &new;
+sub exec { 
+	die unless ref($_[0]); # check against deprecated api
+	my $self = shift;
 	$$self{pwd} = $ENV{PWD};
+	return unless @{$$self{procs}};
 	local $ENV{ZOIDREF} = "$$self{shell}";
 
+	$$self{shell}{error} = undef;
 	my @re = eval { $self->run };
-	$$self{shell}{error} = $@ || $$self{exit_status} || undef;
+	$$self{shell}{error} ||= $@ || $$self{exit_status};
 	complain if $@;
+
 	if ($self->completed()) {
 		$$self{shell}->broadcast('envupdate'); # FIXME breaks interface
 		$$self{boss}->reinc_job($self) if @{ $$self{tree} };
@@ -277,7 +212,7 @@ sub exec { # like new() but runs immediatly
 	return @re;
 }
 
-sub new { # @_ should at least contain (tree=>$pipe, boss=>$ref) here
+sub new { # @_ should at least contain 'tree' and 'boss' here
 	shift; # class
 	my $self = { id => 0, procs => [], @_ };
 	$$self{shell} ||= $$self{boss}{shell};
@@ -285,22 +220,21 @@ sub new { # @_ should at least contain (tree=>$pipe, boss=>$ref) here
 	$$self{$_} = $$self{boss}{$_} for qw/_sighash terminal/; # FIXME check this
 
 	while ( ref $$self{tree}[0] ) {
-		my @b = $$self{shell}->parse_block(shift @{$$self{tree}});  # FIXME breaks interface, should be a hook
+		my @b = grep {defined $_} $$self{shell}->parse_block(shift @{$$self{tree}});  # FIXME breaks interface, should be a hook
 		if (@b > 1) { unshift @{$$self{tree}}, @b } # probably macro expansion
 		else { push @{$$self{procs}}, @b }
 	}
 	$$self{bg}++ if $$self{tree}[0] eq 'BGS';
 
-	return unless @{$$self{procs}}; # FIXME ugly
+	return bless {%$self, empty => 1}, 'Zoidberg::Job' unless @{$$self{procs}};
 	debug 'blocks in job ', $$self{procs};
 	my $pipe = @{$$self{procs}} > 1;
 	$$self{string} ||= ($pipe ? '|' : '') . $$self{procs}[-1][0]{string}; # last one in the pipe is the one on screen
 
 	my $meta = $$self{procs}[0][0];
-	my $fork_job = $pipe
-		|| ( defined($$meta{fork_job}) ? $$meta{fork_job} : 0 )
-		|| $$self{bg} || $$self{capture} ;
-	unless ($fork_job) { bless $self, 'Zoidberg::Job::builtin' }
+	unless ($pipe || ( defined($$meta{fork_job}) ? $$meta{fork_job} : 0 ) || $$self{bg}) {
+		bless $self, 'Zoidberg::Job::builtin'
+	}
 	else { bless $self, 'Zoidberg::Job' }
 
 	return $self;
@@ -398,7 +332,7 @@ sub _capture { # called in parent when capturing
 	my @re = (<IN>);
 	close IN;
 	POSIX::close($stdin)  unless $stdin  == fileno STDIN ;
-	error if $self->{procs}[-1][0]->{exit_status};
+	$self->wait_job; # job should be dead by now
 	return @re;
 }
 
@@ -635,7 +569,7 @@ our @ISA = qw/Zoidberg::Job/;
 
 sub round_up { $_->round_up() for @{$_[0]->{jobs}} }
 
-sub run {
+sub run { # TODO something about capturing :(
 	my $self = shift;
 	my $block = $self->{procs}[0];
 	$$self{shell}{fg_job} = $self;

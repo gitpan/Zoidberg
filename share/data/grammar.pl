@@ -1,5 +1,4 @@
-
-$VAR1 = {
+{
 	_base_gram => {
 	        esc => '\\',
 	        nests => {

@@ -1,6 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 sub new {
 	my ($class, $zoid, $name) = @_;
@@ -64,9 +64,9 @@ sub ask {
 	$quest .= ($def =~ /^n$/i) ? ' [yN] '
 		: ($def =~ /^y$/i) ? ' [Yn] ' : " [$def] " if $def ;
 	my $ans = $self->call('readline', $quest);
-	return $ans =~ /y/i if $def =~ /^[ny]$/i;
 	$ans =~ s/^\s*|\s*$//g;
-	return length($ans) ? $ans : $def ;
+	$ans = $def unless length $ans;
+	return( ($def =~ /^[ny]$/i) ? ($ans =~ /y/i) : $ans );
 }
 
 sub add_context { # ALERT this logic might change

@@ -1,161 +1,62 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 use strict;
+use AutoLoader 'AUTOLOAD';
 use Cwd;
 use Env qw/@CDPATH @DIRSTACK/;
-use Data::Dumper;
 use base 'Zoidberg::Fish';
-#require Benchmark;
 use Zoidberg::Utils qw/:default abs_path/;
 
 # FIXME what to do with commands that use block input ?
 #  currently hacked with statements like join(' ', @_)
+
+=head1 NAME
+
+Zoidberg::Fish::Commands - Zoidberg plugin with builtin commands
+
+=head1 SYNOPSIS
+
+This module is a Zoidberg plugin, see Zoidberg::Fish for details.
+
+=head1 DESCRIPTION
+
+This object contains internal/built-in commands
+for the Zoidberg shell.
+
+=head2 EXPORT
+
+None by default.
+
+=cut
 
 sub init { 
 	$_[0]->{dir_hist} = [$ENV{PWD}];
 	$_[0]->{_dir_hist_i} = 0;
 }
 
-sub exec { # FIXME not completely stable I'm afraid
-	my $self = shift;
-	$self->{parent}->{round_up} = 0;
-	$self->{parent}->shell_string({fork_job => 0}, join(" ", @_));
-	# the process should not make it to this line
-	$self->{parent}->{round_up} = 1;
-	$self->{parent}->exit;
-}
+=head1 COMMANDS
 
-sub eval {
-	my $self = shift;
-	$self->parent->shell( join( ' ', @_) );
-}
+=over 4
 
-sub setenv {
-	my (undef, $var, $val) = @_;
-	$ENV{$var} = $val;
-}
+=item cd I<dir>
 
-sub export {
-	my $self = shift;
-	for (@_) {
-		if ($_ =~ m/^\s*(\w*)\s*=\s*['"]?(.*?)['"]?\s*$/) { $ENV{$1} = $2 }
-		else { error 'syntax error' }
-	}
-}
+Changes the current working directory to I<dir>.
 
-sub unsetenv {
-	my $self = shift;
-	delete $ENV{$_} for @_;
-}
+=over 4
 
-sub set {
-	my $self = shift;
-	# FIXME use some getopt
-	# be aware '-' is set '+' is unset (!!??)
-	unless (@_) { todo 'I should printout all shell vars' }
+=item -b
 
-	my ($sw, $opt, $val);
-	if ($_[0] =~ m/^([+-])(\w+)/) {
-		shift;
-		$sw = $1;
-		my %args = ( # quoted is yet unsupported
-			#a => 'allexport',
-			b => 'notify',
-			#C => 'noclobber',	e => 'errexit',
-			f => 'noglob',		#m => 'monitor',
-			#n => 'noexec',		u => 'nounset',
-			v => 'verbose',		#x => 'xtrace',
-		);
-		# other posix options: ignoreeof, nolog & vi
-		if ($2 eq 'o') { $opt = shift }
-		elsif ($args{$2}) { $opt = $args{$2} }
-		else { error "Switch $sw not (yet?) supported." }
-	}
-	else {
-		$opt = shift;
-		$sw = '-';
-		if ($opt =~ m/^(.+?)=(.*)$/) { ($opt, $val) = ($1, $2) }
-		elsif ($opt =~ m/^(.*)([+-]{2})$/) {
-			$opt = $1;
-			$sw = '+' if $2 eq '--'; # sh has evil logic
-		}
-	}
-	
-	$val = shift || 1 unless defined $val;
-	error "$opt : this setting contains a reference" if ref $self->{settings}{$opt};
+Go one directory back in the directory history
 
-	my ($path, $ref) = ('/', $$self{parent}{settings});
-	while ($opt =~ s#^/*(.+?)/##) {
-		$path .= $1 . '/';
-		if (! defined $$ref{$1}) { $$ref{$1} = {} }
-		elsif (ref($ref) ne 'HASH') { error "$path : no such settings hash" }
-		$ref = $$ref{$1};
-	}
-	debug "setting: $opt, value: $val, path: $path";
+=item -f
 
-	if ($sw eq '+') { delete $$ref{$opt} }
-	else { $$ref{$opt} = $val }
-}
+Go one directory forward in the directory history
 
-sub source {
-	my $self = shift;
-	# FIXME more intelligent behaviour -- see bash man page
-	$self->{parent}->source(@_);
-}
+=back
 
-sub alias {
-	my $self = shift;
-	unless (@_) {
-		my @aliases;
-		for (my ($k, $v) = each %{$$self{parent}{aliases}}) {
-			push @aliases, "alias $k='%v'";
-		}
-		output \@aliases;
-		return;
-	}
-	elsif ($_[0] !~ /\W/) { # tcsh alias format
-		my $cmd = shift;
-		$self->{parent}{aliases}{$cmd} = join ' ', @_;
-	}
-	else {
-		for (@_) {
-			error 'alias: wrong argument format'
-				unless /^(\w+)=['"]?(.*?)['"]?$/;
-			$self->{parent}{aliases}{$1} = $2;
-		}
-	}
-}
-
-sub unalias {
-	my $self = shift;
-	if ($_[0] eq '-a') { %{$self->{parent}{aliases}} = () }
-	else {
-		for (@_) {
-			error "alias: $_: not found" unless exists $self->{parent}{aliases}{$_};
-			delete $self->{parent}{aliases}{$_};
-		}
-	}
-}
-
-sub read { todo }
-
-sub wait { todo }
-
-sub fc { todo }
-
-sub getopts { todo }
-
-sub command { todo }
-
-sub newgrp { todo }
-
-sub umask { todo }
-
-sub false { error {silent => 1}, 'the "false" builtin' }
-
-sub true { 1 }
+=cut
 
 sub cd { # TODO [-L|-P] see man 1 bash
 	my $self = shift;
@@ -189,6 +90,319 @@ sub cd { # TODO [-L|-P] see man 1 bash
 
 	$self->__add_dir_hist unless $browse_hack;
 }
+
+1;
+
+__END__
+
+=item exec I<cmd>
+
+Execute I<cmd>. This effectively ends the shell session,
+process flow will B<NOT> return to the prompt.
+
+=cut
+
+sub exec { # FIXME not completely stable I'm afraid
+	my $self = shift;
+	$self->{parent}->{round_up} = 0;
+	$self->{parent}->shell_string({fork_job => 0}, join(" ", @_));
+	# the process should not make it to this line
+	$self->{parent}->{round_up} = 1;
+	$self->{parent}->exit;
+}
+
+=item eval I<cmd>
+
+Eval I<cmd> like a shell command. Main use of this is to
+run code stored in variables.
+
+=cut
+
+sub eval {
+	my $self = shift;
+	$self->parent->shell( join( ' ', @_) );
+}
+
+=item export I<var>=I<value>
+
+Set the environment variable I<var> to I<value>.
+
+=cut
+
+sub export {
+	my $self = shift;
+	for (@_) {
+		if ($_ =~ m/^(\w*)=(.*?)$/) { $ENV{$1} = $2 }
+		else { error 'syntax error' }
+	}
+}
+
+=item setenv I<var> I<value>
+
+Like B<export>, but with a slightly different syntax.
+
+=cut
+
+sub setenv {
+	my (undef, $var, $val) = @_;
+	$ENV{$var} = $val;
+}
+
+=item unsetenv I<var>
+
+Set I<var> to undefined.
+
+=cut
+
+sub unsetenv {
+	my $self = shift;
+	delete $ENV{$_} for @_;
+}
+
+=item set [+-][abCefnmnuvx]
+
+=item set [+o|-o] I<option> I<value>
+
+Set or unset a shell option. Although sometimes confusing
+a '+' switch unsets the option, while the '-' switch sets it.
+
+If no I<value> is given the value is set to 'true'.
+
+Short options correspond to the following names:
+
+	a  =>  allexport  *
+	b  =>  notify
+	C  =>  noclobber  *
+	e  =>  errexit    *
+	f  =>  noglob
+	m  =>  monitor    *
+	n  =>  noexec     *
+	u  =>  nounset    *
+	v  =>  verbose
+	x  =>  xtrace     *
+	*) Not yet supported by the rest of the shell
+
+See L<zoiduser> for a description what these and other options do.
+
+=cut
+
+sub set {
+	my $self = shift;
+	# FIXME use some getopt
+	# be aware '-' is set '+' is unset (!!??)
+	unless (@_) { todo 'I should printout all shell vars' }
+
+	my ($sw, $opt, $val);
+	if ($_[0] =~ m/^([+-])(\w+)/) {
+		shift;
+		$sw = $1;
+		my %args = (
+			a => 'allexport',	b => 'notify',
+			C => 'noclobber',	e => 'errexit',
+			f => 'noglob',		m => 'monitor',
+			n => 'noexec',		u => 'nounset',
+			v => 'verbose',		x => 'xtrace',
+		);
+		# other posix options: ignoreeof, nolog & vi
+		if ($2 eq 'o') { $opt = shift }
+		elsif ($args{$2}) { $opt = $args{$2} }
+		else { error "Switch $sw not (yet?) supported." }
+	}
+	else {
+		$opt = shift;
+		$sw = '-';
+		if ($opt =~ m/^(.+?)=(.*)$/) { ($opt, $val) = ($1, $2) }
+		elsif ($opt =~ m/^(.*)([+-]{2})$/) {
+			$opt = $1;
+			$sw = '+' if $2 eq '--'; # sh has evil logic
+		}
+	}
+	
+	$val = shift || 1 unless defined $val;
+	error "$opt : this setting contains a reference" if ref $self->{settings}{$opt};
+
+	my ($path, $ref) = ('/', $$self{parent}{settings});
+	while ($opt =~ s#^/*(.+?)/##) {
+		$path .= $1 . '/';
+		if (! defined $$ref{$1}) { $$ref{$1} = {} }
+		elsif (ref($ref) ne 'HASH') { error "$path : no such settings hash" }
+		$ref = $$ref{$1};
+	}
+	debug "setting: $opt, value: $val, path: $path";
+
+	if ($sw eq '+') { delete $$ref{$opt} }
+	else { $$ref{$opt} = $val }
+}
+
+=item source I<file>
+
+Run the B<perl> script I<file>. This script is B<NOT> the same
+as the commandline syntax. Try using L<Zoidberg::Shell> in these
+scripts.
+
+=cut
+
+sub source {
+	my $self = shift;
+	# FIXME more intelligent behaviour -- see bash man page
+	$self->{parent}->source(@_);
+}
+
+=item alias
+
+=item alias I<name>
+
+=item alias I<name>=I<command>
+
+=item alias I<name> I<command>
+
+Make I<name> an alias to I<command>. Aliases work like macros
+in the shell, this means they are substituted before the commnd
+code is interpreted and can contain complex statements.
+
+In zoid you also can use positional parameters (C<$_[0]>, C<$_[1]>
+etc.) and C<@_>, which will be replaced with the arguments to the alias.
+
+Without I<command> shows the alias defined for I<name> if any;
+without arguments lists all aliases that are currently defined.
+
+=cut
+
+sub alias {
+	my $self = shift;
+	unless (@_) {
+		output [
+			map {
+				my $al = $$self{parent}{aliases}{$_};
+				$al =~ s/(\\)|'/$1 ? '\\\\' : '\\\''/eg;
+				"alias $_='$al'",
+			} keys %{$$self{parent}{aliases}}
+		];
+	}
+	elsif ($_[0] !~ /^(\w+)=/) {
+		my $cmd = shift;
+		if (@_) { # tcsh alias format
+			$self->{parent}{aliases}{$cmd} = join ' ', @_;
+		}
+		else {
+			error "$cmd: no such alias"
+				unless exists $$self{parent}{aliases}{$cmd};
+			my $al = $$self{parent}{aliases}{$cmd};
+			$al =~ s/(\\)|'/$1 ? '\\\\' : '\\\''/eg;
+			output "alias $cmd='$al'";
+		}	
+	}
+	else {
+		for (@_) {
+			/^(\w+)=(.*?)$/;
+			$self->{parent}{aliases}{$1} = $2;
+		}
+	}
+}
+
+=item unalias I<name>
+
+Remove an alias definition.
+
+=cut
+
+sub unalias {
+	my $self = shift;
+	if ($_[0] eq '-a') { %{$self->{parent}{aliases}} = () }
+	else {
+		for (@_) {
+			error "alias: $_: not found" unless exists $self->{parent}{aliases}{$_};
+			delete $self->{parent}{aliases}{$_};
+		}
+	}
+}
+
+=item read [-r] I<var1> I<var2 ..>
+
+Read a line from STDIN, split the line in words 
+and assign the words to the named enironment variables.
+Remaining words are stored in the last variable.
+
+Unless '-r' is specified the backslash is treated as
+an escape char and is it possible to escape the newline char.
+
+=cut
+
+sub read {
+	my $self = shift;
+	my $esc = 1;
+	$esc = 0 and shift if $_[0] eq '-r';
+
+	my $string = '';
+	while (<STDIN>) {
+		if ($esc) {
+			my $more = 0;
+			$_ =~ s/(\\\\)|\\(.)|\\$/
+				if ($1) { '\\' }
+				if (length $2) { $2 }
+				else { $more++; '' }
+			/eg;
+			$string .= $_;
+			last unless $more;
+		}
+		else {
+			$string = $_;
+			last;
+		}
+	}
+	return unless @_;
+
+	my @words = $$self{parent}{stringparser}->split('word_gram', $string);
+	debug "read words: ", \@words;
+	if (@words > @_) {
+		@words = @words[0 .. $#_ - 1];
+		my $re = join '\s*', @words;
+		$string =~ s/^\s*$re\s*//;
+		push @words, $string;
+	}
+
+	$ENV{$_} = shift @words || '' for @_;
+}
+
+=item command
+
+TODO
+
+=cut
+
+sub command { todo }
+
+=item newgrp
+
+TODO
+
+=cut
+
+sub newgrp { todo }
+
+=item umask
+
+TODO
+
+=cut
+
+sub umask { todo }
+
+=item false
+
+A command that always returns an error without doing anything.
+
+=cut
+
+sub false { error {silent => 1}, 'the "false" builtin' }
+
+=item true
+
+A command that never fails and does absolutely nothing.
+
+=cut
+
+sub true { 1 }
 
 # ######## #
 # Dir Hist #
@@ -228,7 +442,24 @@ sub __get_dir_hist {
 # Dir stack #
 # ######### # 
 
-sub dirs { print join(' ', reverse @DIRSTACK) || $ENV{PWD}, "\n" } # FIXME some options - see man bash
+=item dirs
+
+Output the current dir stack.
+
+TODO some options
+
+=cut
+
+sub dirs { print join(' ', reverse @DIRSTACK) || $ENV{PWD}, "\n" }
+# FIXME some options - see man bash
+
+=item popd I<dir>
+
+Pops a directory from the dir stack and B<cd>s to that directory.
+
+TODO some options
+
+=cut
 
 sub popd { # FIXME some options - see man bash
 	my $self = shift;
@@ -238,20 +469,36 @@ sub popd { # FIXME some options - see man bash
 	$self->cd($dir);
 }
 
+=item pushd I<dir>
+
+Push I<dir> on the dir stack.
+
+TODO some options
+
+=cut
+
 sub pushd { # FIXME some options - see man bash
 	my ($self, $dir) = (@_);
+	my $pwd = $ENV{PWD};
 	$dir ||= $ENV{PWD};
 	$self->cd($dir);
-	@DIRSTACK = ($ENV{OLDPWD}) unless scalar @DIRSTACK;
+	@DIRSTACK = ($pwd) unless scalar @DIRSTACK;
 	push @DIRSTACK, $dir;
 }
 
 ##################
 
+=item pwd
+
+Prints the current PWD.
+
+=cut
+
 sub pwd {
 	my $self = shift;
 	output $ENV{PWD};
 }
+
 
 sub _delete_object { # FIXME some kind of 'force' option to delte config, so autoload won't happen
 	my ($self, $zoidname) = @_;
@@ -293,30 +540,139 @@ sub _unhide {
 	else { error 'Dunno such a thing' }
 }
 
-1;
+# ############ #
+# Job routines #
+# ############ #
 
-__END__
+=item jobs
 
-=head1 NAME
+List current jobs.
 
-Zoidberg::Fish::Commands - Zoidberg plugin with builtin commands
+=cut
 
-=head1 SYNOPSIS
+sub jobs {
+	my $self = shift;
+	my $j = @_ ? \@_ : $$self{parent}->{jobs};
+	output $_->status_string for sort {$$a{id} <=> $$b{id}} @$j;
+}
 
-This module is a Zoidberg plugin, see Zoidberg::Fish for details.
+=item bg I<job_spec>
 
-=head1 DESCRIPTION
+Run the job corresponding to I<jobspec> as an asynchronous background process.
 
-This object contains internal/built-in commands
-for the Zoidberg shell.
+Without argument uses the "current" job.
 
-=head2 EXPORT
+=cut
 
-None by default.
+sub bg {
+	my ($self, $id) = @_;
+	my $j = $$self{parent}->job_by_spec($id)
+		or error 'No such job'.($id ? ": $id" : '');
+	debug "putting bg: $$j{id} == $j";
+	$j->put_bg;
+}
 
-=head1 COMMANDS
+=item fg I<job_spec>
 
-FIXME FIXME FIXME
+Run the job corresponding to I<jobspec> as a foreground process.
+
+Without argument uses the "current" job.
+
+=cut
+
+sub fg {
+	my ($self, $id) = @_;
+	my $j = $$self{parent}->job_by_spec($id)
+		or error 'No such job'.($id ? ": $id" : '');
+	debug "putting fg: $$j{id} == $j";
+	$j->put_fg;
+}
+
+=item wait
+
+TODO
+
+=cut
+
+sub wait { todo }
+
+=item kill -l
+
+=item kill [-s I<sigspec>|-n I<signum>|I<-sigspec>] [I<pid>|I<job__pec>]
+
+Sends a signal to a process or a process group.
+By default the "TERM" signal is used.
+
+The '-l' option list all possible signals.
+
+=cut
+
+# from bash-2.05/builtins/kill.def:
+# kill [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspec]
+# Send the processes named by PID (or JOB) the signal SIGSPEC.  If
+# SIGSPEC is not present, then SIGTERM is assumed.  An argument of `-l'
+# lists the signal names; if arguments follow `-l' they are assumed to
+# be signal numbers for which names should be listed.  Kill is a shell
+# builtin for two reasons: it allows job IDs to be used instead of
+# process IDs, and, if you have reached the limit on processes that
+# you can create, you don't have to start a process to kill another one.
+
+# Notice that POSIX specifies another list format then the one bash uses
+
+sub kill {
+	my $self = shift;
+	error "usage:  kill [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspec]"
+		unless defined $_[0];
+	if ($_[0] eq '-l') { # list sigs
+		shift;
+		my %sh = %{ $$self{parent}{_sighash} };
+		my @k = @_ ? (grep exists $sh{$_}, @_) : (keys %sh);
+		output [ map {sprintf '%2i) %s', $_, $sh{$_}} sort {$a <=> $b} @k ];
+		return;
+	}
+
+	my $sig = '15'; # sigterm, the default
+	if ($_[0] =~ /^--?(\w+)/) {
+		if ( defined (my $s = $$self{parent}->sig_by_spec($1)) ) {
+			$sig = $s;
+			shift;
+		}
+	}
+	elsif ($_[0] eq '-s') {
+		shift;
+		$sig = $$self{parent}->sig_by_spec(shift);
+	}
+
+	for (@_) {
+		if (/^\%/) {
+			my $j = $$self{parent}->job_by_spec($_);
+			CORE::kill($sig, -$j->{pgid});
+		}
+		else { CORE::kill($sig, $_) }
+	}
+}
+
+=item disown
+
+TODO
+
+=cut
+
+sub disown { # dissociate job ... remove from @jobs, nohup
+	todo 'see bash manpage for implementaion details';
+
+	# is disowning the same as deamonizing the process ?
+	# if it is, see man perlipc for example code
+
+	# does this suggest we could also have a 'own' to hijack processes ?
+	# all your pty are belong:0
+}
+
+=back
+
+=head2 Job specs
+
+TODO tell bout job specs
 
 =head1 AUTHOR
 

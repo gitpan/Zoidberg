@@ -1,6 +1,6 @@
 package Zoidberg::Eval;
 
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -126,9 +126,10 @@ sub _dezoidify {
 	while ($p->more) { 
 		$prev_token = $token;
 		($block, $token) = $p->get;
-#print "code is -->$n_code<-- prev token -->$prev_token<--\ngot block -->$block<-- token -->$token<--\n";
+		$block ||= ''; # for code below i want block defined
+	#print "# code is -->$n_code<-- prev token -->$prev_token<--\ngot block -->$block<-- token -->$token<--\n";
  
-		LAST:	
+		LAST:
 		if (! defined $n_code) { $n_code = $block }
 		elsif ($prev_token =~ /^([\@\$])(\w+)/) {
 			my ($s, $v) = ($1, $2);

@@ -25,7 +25,7 @@ my $array_gram = {
         },
 	meta => sub {
 		my ($self, $block) = @_;
-		return undef unless length($block);
+		return undef unless defined($block) and length($block);
 		return $block;
 	},
 };

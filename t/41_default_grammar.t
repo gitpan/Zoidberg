@@ -63,7 +63,7 @@ my @test_data2 = (
 
 import Test::More tests => scalar(@test_data1) + scalar(@test_data2) + 1;
 
-my $collection = read_file('./share/data/grammar.pd');
+my $collection = read_file('./share/data/grammar.pl');
 my $parser = Zoidberg::StringParser->new($collection->{_base_gram}, $collection);
 
 print "# script grammar\n";

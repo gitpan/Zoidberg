@@ -1,4 +1,4 @@
-$VAR1 = {
+{
 	output => {
 		warning => 'yellow',
 		error => 'red',

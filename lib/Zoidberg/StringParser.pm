@@ -196,7 +196,7 @@ sub fetch { $_[0]->[1]{$_[1]} }
 
 package Zoidberg::StringParser;
 
-our $VERSION = '0.53';
+our $VERSION = '0.54';
 
 use strict;
 no warnings; # can't stand the nagging
@@ -274,7 +274,7 @@ sub get { # get next block
 			)
 		}{}xs
 	) {
-		$block .= $1;
+		$block .= $1 if length $1;
 		$sign = $2;
 
 		debug "block: ==>$block<== token: ==>$sign<==";
@@ -466,6 +466,8 @@ Also these grammars can contain hooks to add meta information to each
 splitted block of text. The parser has a 'pull' mechanism to allow
 line-by-line parsing, or to define callbacks for when for example
 an unmatched bracket is encountered.
+
+Yes, I know of the existence of L<Text::Balanced>, but I wanted to do this the hard way :)
 
 I<All grammars and collections of grammars should be considered PRIVATE when used by a Z::SP object.>
 
