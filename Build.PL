@@ -3,13 +3,13 @@
 
 use lib './b';
 
-require MyBuilder;
+require ModuleBuildZoid;
 require File::Spec;
 
 my $requires = do File::Spec->catfile(qw/b Requires.pl/);
 $$requires{perl} = '5.6.1'; # I don't trust older versions will work
 
-my $build = MyBuilder->new(
+my $build = ModuleBuildZoid->new(
 	module_name => 'Zoidberg',
 	dist_author => 'Jaap Karssenberg <pardus@cpan.org>',
 	license => 'perl',
@@ -28,7 +28,11 @@ my $build = MyBuilder->new(
 #	create_makefile_pl => 'passthrough', # bug in M:B hacked Makefile.PL
 	dynamic_config => {}, # boolean but bug in M:B
 	PL_files => {}, # make it ignore my stuff
-	autosplit => ['lib/Zoidberg/Fish/Commands.pm'],
+	autosplit => [
+		'lib/Zoidberg/Fish/Commands.pm',
+		'lib/Zoidberg/Fish/Intel.pm',
+		'lib/Zoidberg/Fish/Log.pm',
+	],
 );
 
 $build->MyInit;

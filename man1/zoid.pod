@@ -26,8 +26,8 @@ suppress default behavior.
 Be aware that these source scripts are expected to be Perl scripts and are
 B<NOT> interpreted or executed the same way as normal input.
 
-This document only describes the commandline script B<zoid>, see L<zoiduser(1)>
-and L<zoidfaq(1)> for help on using the zoidberg shell.
+This document only describes the commandline script B<zoid>, see L<zoiduser>(1)
+and L<zoidfaq>(1) for help on using the zoidberg shell.
 
 =head1 OPTIONS
 
@@ -40,9 +40,20 @@ exit status of command string. Multiple commands may be given to build up
 a multi-line script.  Make sure to use semicolons where you would in a 
 normal multi-line script.
 
+=item B<-C>, B<--config>
+
+Print a list of configuration variable of this installation and exit.
+Most importantly this tells you where B<zoid> will search for it's configuration
+and data files.
+
 =item B<-c> I<command>, B<--command>=I<command> 
 
 Does the same as B<--exec> but this is bound to change.
+
+=item B<-D>, B<-D>I<Class> B<--debug>
+
+Set either the global debug bit or set the debug bit for the given class.
+Using the global variant makes B<zoid> output a lot of debug information.
 
 =item B<-h>, B<--help>
 
@@ -65,6 +76,16 @@ supplied.
 Force login behavior, this will reset your current working directory.
 This variable is also available to plugins and scripts, which might act on it.
 
+=item B<-m>I<module>
+
+=item B<-M>I<module>
+
+=item B<-M>I<module>=I<args>[,I<arg>, ...]
+
+Import I<module> into the eval namespace.
+With B<-m> explicit import empty list, with B<-M> default arguments or 
+specified arguments. Details like the equivalent perl option, see L<perlrun>(1).
+
 =item B<-o> I<setting>[,I<setting>, ...]
 
 =item B<-o> I<setting>=I<value>
@@ -74,14 +95,18 @@ This variable is also available to plugins and scripts, which might act on it.
 Set (B<-o>) or unset (B<+o>) one or more settings.
 These can overrule other commandline switches.
 
+=item B<-r> I<file>, B<--rcfile>=I<file>
+
+Use an alternative rcfile.
+
 =item B<-s>, B<--stdin>
 
 Read input from stdin. This is the default if no other options are supplied and 
 neither stdin or stdout are terminal devices.
 
-=item B<-r> I<file>, B<--rcfile>=I<file>
+=item B<-V>, B<--version>
 
-Use an alternative rcfile.
+Display version information. 
 
 =item B<-v>, B<--verbose>
 
@@ -90,21 +115,6 @@ Sets the shell in verbose mode. This will cause each command to be echoed to STD
 =item B<--norc>
 
 Skip all rcfiles.
-
-=item B<-C>, B<--config>
-
-Print a list of configuration variable of this installation and exit.
-Most importantly this tells you where B<zoid> will search for it's configuration
-and data files.
-
-=item B<-D>, B<-D>I<Class> B<--debug>
-
-Set either the global debug bit or set the debug bit for the given class.
-Using the global variant makes B<zoid> output a lot of debug information.
-
-=item B<-V>, B<--version>
-
-Display version information. 
 
 =back
 
@@ -116,9 +126,6 @@ the parent process.
 The variable $ZOID will point to the location of the B<zoid> executable, it is similar
 to $SHELL for POSIX compliant shells. B<zoid> uses a different variable because
 some programs seem to expect $SHELL to point to a POSIX compliant shell.
-
-B<zoid> also uses $XDG_CACHE_HOME to define the directory to write temporary files,
-it defaults to F<$HOME/.cache>.
 
 To switch off ansi colours on the terminal set $CLICOLOR to 0 (null).
 
@@ -147,11 +154,11 @@ package. Visit the web page to submit bug reports or mail the author.
 
 =head1 SEE ALSO
 
-L<perl(1)>,
-L<zoiduser(1)>,
-L<zoiddevel(1)>,
-L<zoidfaq(1)>,
-L<Zoidberg(3)>,
+L<perl>(1),
+L<zoiduser>(1),
+L<zoiddevel>(1),
+L<zoidfaq>(1),
+L<Zoidberg>(3),
 L<http://zoidberg.sourceforge.net>
 
 =head1 AUTHORS

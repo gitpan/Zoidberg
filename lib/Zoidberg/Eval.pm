@@ -1,6 +1,6 @@
 package Zoidberg::Eval;
 
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -11,6 +11,7 @@ use Zoidberg::Utils qw/:error :output :fs regex_glob/;
 require Env;
 
 $| = 1;
+$Data::Dumper::Sortkeys = 1;
 
 sub _new { bless { shell => $_[1] }, $_[0] }
 
@@ -19,11 +20,11 @@ sub _eval_block {
 	my $context = $$ref[0]{context};
 
 	if (
-		exists $self->{shell}{contexts}{$context} and
-		exists $self->{shell}{contexts}{$context}{handler}
+		exists $$self{shell}{parser}{$context} and
+		exists $$self{shell}{parser}{$context}{handler}
 	) {
 		debug "going to call handler for context: $context";
-		$self->{shell}{contexts}{$context}{handler}->($ref);
+		$self->{shell}{parser}{$context}{handler}->($ref);
 	}
 	elsif ($self->can('_do_'.lc($context))) {
 		my $sub = '_do_'.lc($context);
@@ -37,41 +38,52 @@ sub _eval_block {
 	}
 }
 
-sub _do_sh {
-	my ($self, $meta, @words) = @_;
-	if ($words[0] =~ m|/|) {
-		error $words[0].': No such file or directory' unless -e $words[0];
-		error $words[0].': is a directory' if -d _;
-		error $words[0].': Permission denied' unless -x _;
-	}
-	debug 'going to run: ', join ', ', @words;
-
-	# exec = exexvp which checks PATH allready
-	# the block syntax to force use of execvp, not shell for one argument list
-	exec {$words[0]} @words
-		or error $words[0].': command not found';
+sub _do_subz { # sub shell, forked if all is well
+	my ($self, $meta) = @_;
+	my $cmd = $$meta{zoidcmd};
+	$cmd = $1 if $cmd =~ /^\s*\((.*)\)\s*$/s;
+	%$meta = map {($_ => $$meta{$_})} qw/env/; # FIXME also add parser opts n stuff
+	# FIXME reset mode n stuff ?
+	$self->{shell}->shell_string($meta, $cmd);
+	error $$self{shell}{error}
+		if $$self{shell}{error};
 }
 
 sub _do_cmd {
 	my ($self, $meta, $cmd, @args) = @_;
-	debug 'going to run cmd: ', join ', ', $cmd, @args;
-	local $Zoidberg::Utils::Error::Scope = $cmd;
-	error qq(No such command: $cmd\n)
-		unless exists $self->{shell}{commands}{$cmd};
-	$self->{shell}{commands}{$cmd}->(@args);
+	# exec = exexvp which checks PATH allready
+	# the block syntax to force use of execvp, not shell for one argument list
+	$$meta{cmdtype} ||= '';
+	if ($cmd =~ m|/|) { # executable file
+		error 'builtin should not contain a "/"' if $$meta{cmdtype} eq 'builtin';
+		error $cmd.': No such file or directory' unless -e $cmd;
+		error $cmd.': is a directory' if -d _;
+		error $cmd.': Permission denied' unless -x _;
+		debug 'going to exec file: ', join ', ', $cmd, @args;
+		exec {$cmd} $cmd, @args or error $cmd.': command not found';
+	}
+	elsif ($$meta{cmdtype} eq 'builtin' or exists $$self{shell}{commands}{$cmd}) { # built-in, not forked I hope
+		error $cmd.': no such builtin' unless exists $$self{shell}{commands}{$cmd};
+		debug 'going to do built-in: ', join ', ', $cmd, @args;
+		local $Zoidberg::Utils::Error::Scope = $cmd;
+		$$self{shell}{commands}{$cmd}->(@args);
+	}
+	else { # command in path ?
+		debug 'going to exec: ', join ', ', $cmd, @args;
+		exec {$cmd} $cmd, @args or error $cmd.': command not found';
+	}
 }
 
 sub _do_perl {
 	my ($_Eval, $_Meta, $_Code) = @_;
-	$_Code = $_Eval->_parse_opts($_Code, $_Meta->{opts});
 	debug 'going to eval perl code: '.$_Code;
 
 	my $shell = $_Eval->{shell};
 	
 	local $Zoidberg::Utils::Error::Scope = ['zoid', 0];
 	$_ = $shell->{topic};
-	eval $_Code;
-	if ($@) { # post parse errors 'n stuff
+	ref($_Code) ? eval { $_Code->() } : eval $_Code;
+	if ($@) { # post parse errors
 		die if ref $@; # just propagate the exception
 		$@ =~ s/ at \(eval \d+\) line (\d+)(\.|,.*\.)$/ at line $1/;
 		error { string => $@, scope => [] };
@@ -82,117 +94,65 @@ sub _do_perl {
 	}
 }
 
-sub _interpolate_magic_char {
-	my ($self, $string) = @_;
-	$string =~ s/(?<!\\)\xA3\{(\w+)\}/$self->{shell}{vars}{$1}/eg;
-	$string =~ s/\\(\xA3)/$1/g;
-	return $string;
-}
-
-sub _parse_opts { # parse switches
-	my ($self, $string, $opts) = @_;
-	my %opts = map {($_ => 1)} split '', $opts;
-	debug 'options: ', \%opts;
-
-	$string = $self->_dezoidify($string) unless $opts{z};
-
-	if ($opts{g}) { $string = "\nwhile (<STDIN>) {\n\tif (eval {".$string."}) { print \$_; }\n}"; }
-	elsif ($opts{p}) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n\tprint \$_\n}"; }
-	elsif ($opts{n}) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n}"; }
-
-	$string = 'no strict; '.$string unless $opts{z};
-
-	return $string;
-}
-
-our $_Zoid_gram = {
-	tokens => [
-		[ qr/->/,   'ARR' ], # ARRow
-		[ qr/\xA3/, 'MCH' ], # Magic CHar
-		[ qr/[\$\@][A-Za-z_][\w\-]*(?<!\-)/, '_SELF' ], # env var
-	],
-	quotes => { "'" => "'" }, # interpolate also between '"'
-	nests => {},
-	no_esc_rm => 1,
-};
-
-sub _dezoidify {
-	my ($self, $code) = @_;
-	
-	my $p = $self->{shell}{stringparser};
-	$p->set($_Zoid_gram, $code);
-	my ($n_code, $block, $token, $prev_token, $thing);
-	my $i = 1;
-	while ($p->more) { 
-		$prev_token = $token;
-		($block, $token) = $p->get;
-		$block ||= ''; # for code below i want block defined
-	#print "# code is -->$n_code<-- prev token -->$prev_token<--\ngot block -->$block<-- token -->$token<--\n";
- 
-		LAST:
-		if (! defined $n_code) { $n_code = $block }
-		elsif ($prev_token =~ /^([\@\$])(\w+)/) {
-			my ($s, $v) = ($1, $2);
-			if (
-				$block =~ /^::/
-				or grep {$v eq $_} qw/_ ARGV ENV SIG INC JOBS/
-				or ( $v =~ /[a-z]/ and ! exists $ENV{$v} )
-			) { $n_code .= $s.$v.$block} # reserved or non-env var
-			elsif ($s eq '@' or $block =~ /^\[/) { # array
-				no strict 'refs';
-				unless (defined *{$v}{ARRAY} and @{$v}) {
-					Env->import('@'.$v);
-					debug "imported \@$v from Env";
-				}
-				$n_code .= $s.$v.$block;
-			}
-			else { $n_code .= '$ENV{'.$v.'}'.$block } # scalar or hash deref
-		}
-		elsif ($prev_token eq 'ARR' and $n_code =~ /[\w\}\)\]]$/) { $n_code .= '->'.$block }
-		elsif (! (($thing) = ($block =~ /^(\w+|\{\w+\})/)) ) { $n_code .= '->'.$block }
-		elsif (
-			$self->{shell}{settings}{naked_zoid} && ($prev_token ne 'MCH')
-			or grep {$_ eq $thing} @{$self->{shell}->list_clothes}
-		) { $n_code .= '$shell->'.$block }
-		elsif ($thing =~ /^\{/) { $n_code .= '$shell->{vars}'.$block }
-		else {
-			$block =~ s/^(\w+)/\$shell->{objects}{$1}/;
-			$n_code .= $block;
-		}
+{
+	no warnings;
+	sub AUTOLOAD {
+		## Code inspired by Shell.pm ##
+		my $cmd = (split/::/, $AUTOLOAD)[-1];
+		return undef if $cmd eq 'DESTROY';
+		shift if ref($_[0]) eq __PACKAGE__;
+		debug "Zoidberg::Eval::AUTOLOAD got $cmd";
+		@_ = ([$cmd, @_]); # force words
+		unshift @{$_[0]}, '!'
+			if lc( $Zoidberg::CURRENT->{settings}{mode} ) eq 'perl';
+		goto \&shell;
 	}
-	if ($i-- && defined $token) { # one more iteration please
-		$prev_token = $token;
-		$block = undef;
-		goto LAST;
-	}
-	return $n_code;
 }
 
-# ################# #
-# Some hidden utils #
-# ################# #
+# ######### #
+# Some util #
+# ######### #
 
-sub _dump_fish {
-	my $ding = shift;
-	my ($zoid, $parent);
-	$ding->{shell} = "$zoid" if $zoid = delete $ding->{shell};
-	$ding->{parent} = "$parent" if $parent = delete $ding->{parent};
-#	print Dumper $ding;
-	$ding->{shell} = $zoid if defined $zoid;
-	$ding->{parent} = $parent if defined $parent;
+sub pp { # pretty print
+	local $Data::Dumper::Maxdepth = shift if $_[0] =~ /^\d+$/;
+	if (wantarray) { return Dumper @_ }
+	else { print Dumper @_ }
 }
 
 1;
 
 =head1 NAME
 
-Zoidberg::Eval - eval namespace
+Zoidberg::Eval - Eval namespace
 
 =head1 DESCRIPTION
 
 This module is intended for internal use only.
 It is the namespace for executing builtins and perl code, also
 it contains some routines to execute builtin syntaxes.
+
+=head1 METHODS
+
+Some methods are prefixed with a '_' to keep the namespace as
+clean as possible.
+
+=over 4
+
+=item _new($shell)
+
+Simple contstructor.
+
+=item _eval_block($block)
+
+Eval (execute) a block.
+
+=item pp($data)
+
+"Pretty Print", a simple wrapper routine for L<Data::Dumper>.
+If the first argument is an integer this is used as the maximum
+recursion depth for the dump.
+
+=back
 
 =head1 AUTHOR
 
@@ -205,7 +165,6 @@ modify it under the same terms as Perl itself.
 =head1 SEE ALSO
 
 L<Zoidberg>, L<Zoidberg::Parser>, L<Zoidberg::Contractor>
-L<http://zoidberg.sourceforge.net>
 
 =cut
 

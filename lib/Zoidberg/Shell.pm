@@ -1,22 +1,34 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 use strict;
 use vars qw/$AUTOLOAD/;
-use Zoidberg::Utils qw/:error :output abs_path/;
-use Exporter::Tidy
-	default	=> [qw/AUTOLOAD shell/],
-	jobs    => [qw/job @JOBS/],
-	other	=> [qw/alias unalias set setting source/];
 use UNIVERSAL qw/isa/;
+use Zoidberg::Utils qw/:error :output path getopt/;
+use Exporter::Tidy
+	default	=> [qw/AUTOLOAD shell command builtin/],
+	command	=> [qw/shell command builtin/],
+	jobs    => [qw/job @JOBS/],
+	data	=> [qw/alias unalias set setting/],
+	other	=> [qw/source readpipe/];
 
 our @JOBS;
 tie @JOBS, 'Zoidberg::Shell::JobsArray';
 
-sub new { return $Zoidberg::CURRENT }
+sub new { 
+	shift; #class
+	eval 'use Zoidberg';
+	die if $@;
+	Zoidberg->new(@_);
+}
 
 sub current { return $Zoidberg::CURRENT }
+
+sub any {
+	goto &new unless $Zoidberg::CURRENT;
+	return $Zoidberg::CURRENT;
+}
 
 sub _self { (isa $_[0], __PACKAGE__) ? shift : $Zoidberg::CURRENT }
 
@@ -30,7 +42,7 @@ sub AUTOLOAD {
 	return undef if $cmd eq 'DESTROY';
 	shift if ref($_[0]) eq __PACKAGE__;
 	debug "Zoidberg::Shell::AUTOLOAD got $cmd";
-	@_ = ([$cmd, @_]); # force words
+	@_ = ([{plain_words => 1}, $cmd, @_]); # force words
 	goto \&shell;
 }
 
@@ -38,6 +50,7 @@ sub shell { # FIXME FIXME should not return after ^Z
 	my $self = &_self;
 	my $pipe = ($_[0] =~ /^-\||\|-$/) ? shift : undef ;
 	todo 'pipeline syntax' if $pipe;
+	my $save_error = $$self{error};
 	$$self{fg_job} ||= $self;
 	my $c = defined wantarray;
 	my @re;
@@ -45,8 +58,39 @@ sub shell { # FIXME FIXME should not return after ^Z
 	elsif (@_ > 1)        { @re = $$self{fg_job}->shell_list( {capture => $c}, \@_) }
 	else                  { @re = $self->shell_string( {capture => $c}, @_ ) }
 	$@ = $$self{error};
+	$$self{error} = $save_error;
 	return wantarray ? (map {chomp; $_} @re) :
 		Zoidberg::Shell::scalar->new( join('', @re), ($@ ? 0 : 1) ) ;
+}
+
+sub builtin {
+	unshift @_, 'builtin';
+	goto \&_shell_cmd;
+}
+
+sub command {
+	unshift @_, 'system';
+	goto \&_shell_cmd;
+}
+
+sub _shell_cmd {
+	my $type = shift;
+	my $self = &_self;
+	my $save_error = $$self{error};
+	$$self{fg_job} ||= $self;
+	my $c = defined wantarray;
+	my @re = $$self{fg_job}->shell_job( {capture => $c},
+		[{context => 'CMD', cmdtype => $type}, @_] );
+	$@ = $$self{error};
+	$$self{error} = $save_error;
+	return wantarray ? (map {chomp; $_} @re) :
+		Zoidberg::Shell::scalar->new( join('', @re), ($@ ? 0 : 1) ) ;
+}
+
+sub readpipe { # TODO handle STDOUT differently, see perlop
+	my $self = &_self;
+	my @re = $self->shell_string( {capture => 1}, @_ );
+	return wantarray ? @re : join('', @re);
 }
 
 sub system {
@@ -66,22 +110,28 @@ sub system {
 
 sub alias {
 	my $self = &_self;
-	if (ref($_[0]) eq 'HASH') { # perl style, merge hashes
-		error 'alias: only first argument is used' if $#_;
-		%{$self->{aliases}} = ( %{$self->{aliases}}, %{$_[0]} );
-	}
-	else { error q/alias: can't handle input data type: /.ref($_[0]) }
+	my (undef, $hash) = getopt '%', @_;
+	$$self{aliases}{$_} = $$hash{$_} for keys %$hash;
+	# TODO merge code from Commands here
 }
 
 sub unalias {
 	my $self = &_self;
-	for (@_) {
-		error "alias: $_: not found"
-			unless delete $self->{aliases}{$_};
+	my ($opts, $args) = getopt 'all,a @', @_;
+	if ($$opts{all}) { %{$$self{aliases}} = () }
+	else {
+		for (@$args) {
+			error "alias: $_: not found"
+				unless delete $$self{aliases}{$_};
+		}
 	}
+	# TODO merge code from Commands here
+	# use path2hashref
 }
 
 sub set {
+	# TODO merge code from Commands here
+	# use path2hashref
 	my $self = &_self;
 	if (ref($_[0]) eq 'HASH') { # perl style, merge hashes
 		error 'set: only first argument is used' if $#_;
@@ -92,6 +142,7 @@ sub set {
 }
 
 sub setting {
+	# use path2hashref
 	my $self = &_self;
 	my $key = shift;
 	return exists($$self{settings}{$key}) ? $$self{settings}{$key}  : undef;
@@ -101,11 +152,11 @@ sub source {
 	my $self = &_self;
 	local $Zoidberg::CURRENT = $self;
 	for my $file (@_) {
-		my $file = abs_path($file);
+		my $file = path($file);
 		error "source: no such file: $file" unless -f $file;
 		debug "going to source: $file";
 		# FIXME more intelligent behaviour -- see bash man page
-		eval q{package Main; do $file; error $@ if $@ };
+		eval q{package Main; do $file; die $@ if $@ };
 		# FIXME wipe Main
 		complain if $@;
 	}
@@ -116,10 +167,21 @@ sub job { $Zoidberg::CURRENT->job_by_spec(pop @_) }
 package Zoidberg::Shell::scalar;
 
 use overload
-	'""'   => sub { $_[0][0] },
-	'bool' => sub { $_[0][1] };
+	'""'   => \&string,
+	'bool' => \&error,
+	'@{}'  => \&lines,
+	fallback => 'TRUE';
 
-sub new { bless [@_[1,2]], $_[0] }
+sub new { bless \[@_[1,2]], $_[0] }
+
+sub error { my $s = ${ shift() };  $$s[1] }
+
+sub string { my $s = ${ shift() }; $$s[0] }
+
+sub lines {
+	my $s = ${ shift() };
+	$$s[2] ||= [ split /\n/, $$s[0] ]; # returning $$s[2]
+}
 
 package Zoidberg::Shell::JobsArray;
 
@@ -166,7 +228,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Shell - a scripting interface to the Zoidberg shell
+Zoidberg::Shell - A scripting interface to the Zoidberg shell
 
 =head1 SYNOPSIS
 
@@ -216,11 +278,13 @@ and the C<job()> method.
 
 B<Be aware:> All commands are executed in the B<parent> shell environment.
 
+FIXME document the new export tags, document all routines better
+
 =over 4
 
 =item C<new()>
 
-TODO wrapper to create a new Zoidberg object
+Simple wrapper for the constructor of the Zoidberg class.
 
 =item C<current()>
 
@@ -228,6 +292,10 @@ Returns the current L<Zoidberg> object, which in turn inherits from this package
 or undef when there is no such object.
 
 TODO should also do ipc
+
+=item C<any()>
+
+Uses the current shell if any, else starts a new one.
 
 =item C<system($command, @_)>
 
@@ -255,7 +323,7 @@ Create a logic list and/or pipeline. Available tokens are 'AND', 'OR' and
 'EOS' (End Of Statement, ';').
 
 C<shell()> allows for other kinds of pseudo parse trees, these can be considered
-as a kind of "expert mode". See L<zoiddevel(1)> for more details.
+as a kind of "expert mode". See L<zoiddevel>(1) for more details.
 You might not want to use these without good reason.
 
 =item C<set(..)>
@@ -268,7 +336,7 @@ Update settings in parent shell.
 	# set these bits to true
 	set( qw/hide_private_method hide_hidden_files/ );
 
-See L<zoiduser(1)> for a description of the several settings.
+See L<zoiduser>(1) for a description of the several settings.
 
 =item C<setting($setting)>
 
@@ -331,8 +399,10 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Shell>, L<Zoidberg>, L<Zoidberg::Utils>,
+L<Zoidberg>, L<Zoidberg::Utils>,
 L<http://zoidberg.sourceforge.net>
+
+L<Shell>
 
 =cut
 

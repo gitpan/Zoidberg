@@ -11,11 +11,14 @@ message(
 $shell->{events}{exit} = sub { message("--[ CU ]--[ Please report all bugs ]--") };
 
 ### set environment
+# Default prompt
 $ENV{PS1} = '\C{bold,blue}\u@\h \A \C{green}\W\$\C{reset} ';
 $ENV{PS2} = '\C{bold,blue}>\C{reset} ';
-# For those wannabe l337 people ;)
-#$ENV{PS1} = '\C{bold,black}/--( \u@\H )-( \t )-( \w )-( load \P{%l} ) * *\n\\-- * \$\C{reset} ';
-#$ENV{PS2} = ' \C{bold,black}* *\C{reset} ';
+
+# Black & verbose prompt
+#$ENV{PS1} = '\C{bold,black}--( \u@\H )-( \t )-( \w )-( \! )-( load \P{%l} )--\C{reset}\\n\C{bold,black} \$ \C{reset}';
+#$ENV{PS2} = '\C{bold,black} \$ \C{reset}';
+
 defined $ENV{$$_[0]} or $ENV{$$_[0]} = $$_[1] for
 	[ EDITOR   => 'vim'  ],
 	[ VISUAL   => 'vim'  ],
@@ -30,11 +33,16 @@ if (
 	open EXP, '/etc/profile.env'
 ) {
 	while (<EXP>) {
-		next unless /^\s*export\s*(\w+)=['"](.*?)['"]/;
-		$ENV{$1} = $2 unless defined $ENV{$1};
+		next unless /^\s*export\s*(\w+)=(['"])(.*?)\2\s*$/;
+		$ENV{$1} = $3 unless defined $ENV{$1};
 	}
 	close EXP;
 }
+
+# just to be sure we have a path at all
+$ENV{PATH} ||= ($> == 0)
+	? '/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin'
+	: '/bin:/usr/bin:/usr/local/bin';
 
 # Some programs expect this var to point to a fully posix compliant shell.
 # Since zoid doesn't use this var, no harm is done.
@@ -44,6 +52,8 @@ $ENV{SHELL} = '/bin/sh';
 ### set aliases
 alias( {
 	up  => 'cd ..',
+	b   => 'back',
+	f   => 'forw',
 	bye => 'exit Bye bye',
 	l   => 'ls',
 	ll  => 'ls -l',
@@ -51,11 +61,18 @@ alias( {
 	lh  => 'ls -lh',
 	j   => 'jobs',
 	'?' => 'help',
+	h   => 'help',
+	p   => 'print',
+	x   => 'pp',
+	r   => 'fc -s',
 	( ($> == 0) # root gets other aliases
 		? ( perldoc => 'perldoc -U', perlfunc => 'perldoc -Uf' )
 		: ( perlfunc => 'perldoc -f' )
 	),
 } );
+
+# add some alias to perl_keywords to make completion work
+push @{ $$shell{settings}{perl_keywords} }, qw/p pp x/;
 
 ### default settings
 set('notify', 'notify_verbose');

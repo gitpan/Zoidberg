@@ -1,97 +1,126 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 use strict;
 use vars qw/$DEVNULL/;
+use AutoLoader 'AUTOLOAD';
 use Zoidberg::Fish;
-use Zoidberg::Utils qw/:error debug abs_path list_path list_dir/;
+use Zoidberg::Utils qw/:default path list_path list_dir/;
 use Zoidberg::DispatchTable _prefix => '_', 'stack';
 
 our @ISA = qw/Zoidberg::Fish/;
 
 sub init {
 	my $self = shift;
-	if ($self->{config}{man_cmd}) {} # TODO split \s+
+	#if ($self->{config}{man_cmd}) {} # TODO split \s+
 }
+
+=head1 NAME
+
+Zoidberg::Fish::Intel - Completion plugin for Zoidberg
+
+=head1 SYNOPSIS
+
+This module is a Zoidberg plugin, see Zoidberg::Fish for details.
+
+=head1 DESCRIPTION
+
+This class provides intelligence for tab-expansion
+and similar functions. It is very dynamic structured.
+
+=head1 METHODS
+
+=over 4
+
+=item completion_function
+
+
+=cut
 
 sub completion_function {
 	my ($self, $word, $buffer, $start) = @_;
 	debug "\ncomplete for predefined word '$word' starting at $start";
-	my ($m, @c) = $self->complete($word, $buffer, $start);
+	my ($m, $c) = $self->_complete($word, $buffer, $start);
 	my $diff = $start - $$m{start}; # their word isn't ours
 	return if $diff < 0; # you never know
 	$diff -= length substr $$m{prefix}, 0, $diff, '';
 	if ($diff) { # we can't be sure about the real length due to escapes
-		if (substr($c[0], 0, $diff) =~ /^(.*\W)/) { $diff = length $1 }
-		substr $_, 0, $diff, '' for @c;
+		if (substr($$c[0], 0, $diff) =~ /^(.*\W)/) { $diff = length $1 }
+		substr $_, 0, $diff, '' for @$c;
 	}
-	elsif (length $$m{prefix}) { @c = map {$$m{prefix}.$_} @c }
-	if (@c == 1) { # postfix only if we have a match
-		$c[0] .= $$m{postfix};
-		$c[0] .= $$m{quoted}.' ' if $c[0] =~ /\w$/;
+	elsif (length $$m{prefix}) { @$c = map {$$m{prefix}.$_} @$c }
+	if (@$c == 1) { # postfix only if we have a match
+		$$c[0] .= $$m{postfix};
+		$$c[0] .= $$m{quote}.' ' if $$c[0] =~ /\w$/;
 	}
-	return @c;
+	output $c;
 }
 
-sub complete {
+=item complete
+
+=cut
+
+sub complete { output _complete(@_) }
+
+sub _complete {
 	my ($self, $word, $buffer, $start) = @_;
+	#debug "complete got word: $word, start $start, line: ".$buffer;
 	my $cursor = $start + length $word;
+	$buffer ||= $word;
 
 	# fetch block
 	$buffer = substr $buffer, 0, $cursor;
 	my ($pref, $block) = $self->_get_last_block($buffer);
 #	$$block[0]{i_feel_lucky} = $i_feel_lucky; TODO, also T:RL:Zoid support for this
-	$$block[0]{quoted} = $1 if $$block[-1] =~ s/^(['"])//;
+	@{$$block[0]}{qw/quote/} = $1 if $$block[-1] =~ s/^(['"])//;
 
 	debug "\ncompletion prefix: ", $pref, "\nand start block: ", $block;
 	$block = $self->do($block, $$block[0]{context});
 	$block = $self->join_blocks(@$block) if ref($$block[0]) eq 'ARRAY';
 	my %meta = (
 		start => length $pref,
-		( map {($_ => $$block[0]{$_})} qw/message prefix postfix quoted/ )
+		( map {($_ => $$block[0]{$_})} qw/message prefix postfix quoted quote/ )
 	);
-	$meta{prefix} = $meta{quoted} . $meta{prefix} if $meta{quoted};
-	debug scalar(@{$$block[0]{poss}}) . ' completions, meta: ', \%meta;
+	if ($meta{quote}) { $meta{prefix} = $meta{quote} . $meta{prefix} }
+	else { $meta{quote} = sub { $_[0] =~ s#\\\\|(?<!\\)([\\\s&|><*?\[\]{}()\$%@])#$1?"\\$1":'\\\\'#eg; $_[0] } } # escaping
+	#debug scalar(@{$$block[0]{poss}}) . ' completions, meta: ', \%meta;
 	#debug [$$block[0]{poss}];
-	return (\%meta, @{$$block[0]{poss}});
-
-
+	return (\%meta, $$block[0]{poss});
 }
 
 sub _get_last_block {
 	my ($self, $string) = @_;
 
-	# get block (last block) and words
-	my @words;
-	my ($block) = reverse $self->{parent}{stringparser}->split('script_gram', $string);
-	if ($block && ref $block) {
-		$block = $$block;
-		@words = grep {length $_} 
-			$self->{parent}{stringparser}->split('word_gram', $block);
-	}
-	else { $block = '' }
-	push @words, '' if $block =~ /\s$/ and $words[-1] !~ /\s$/;
+	#debug 'string: '.$string;
+	my ($block) = reverse $$self{shell}{stringparser}->split('script_gram', $string);
+	#debug 'last block: '.$$block;
+	$block = '' unless ref $block;
 
-	# parse block
-	$block = scalar(@words) # if @words == 1 the word could be for example env
-		? $$self{parent}->parse_block([{string => $block}, @words], undef, 'PRETEND')
-		: [{context => '_WORDS', string => $block}, ''] ;
+	#debug "parsing block: $block";
+	$block = $$self{shell}->parse_block({pretend => 1}, $block);
+	#debug 'parsed last block: ', $block;
+	return $string, [ {
+		context => uc( $$self{shell}{settings}{mode} ) || '_WORDS',
+		string => '', poss => [], pref => ''
+	}, ''] unless $block;
+
 	@{$$block[0]}{'poss', 'pref'} = ([], '');
-	$$block[0]{context} ||= '_WORDS';
-
-	# get words right
-	# FIXME what to do with {start} ?
-	if (exists $$block[0]{end} and @{$$block[0]{end}}) {
-		$$block[0]{context} = 'SH';
-		push @$block, @{$$block[0]{end}};
+	if (exists $$block[0]{compl}) {
+		$$block[0]{context} = 'CMD';
+		@$block = ($$block[0], '_stub_', $$block[0]{compl});
 	}
 	elsif (@$block == 1) { push @$block, '' } # empty string
+	elsif ($$block[0]{string} =~ /\s$/ and $$block[-1] !~ /\s$/) { push @$block, '' }
+	$$block[0]{context} ||= (@$block == 2) ? '_WORDS' : 'CMD';
 
 	# get pref right
-	unless ($string =~ s/\Q$$block[-1]\E$//) {
-		my @words = $self->{parent}{stringparser}->split(
-			['word_gram', {no_esc_rm => 1}], $string );
+	if (length $$block[-1] and $string !~ s/\Q$$block[-1]\E$//) {
+		debug 'last word didn\'t match prefix';
+		my @words = $$self{shell}{stringparser}->split(
+			{was_regexp => 1, no_esc_rm => 1, tokens => [ [qr/\s/, '_CUT'] ]},
+			$string );
+		debug 'no_esc_rm resulted in: '.$words[-1];
 		$string =~ s/\Q$words[-1]\E$//;
 	}
 
@@ -110,14 +139,17 @@ sub join_blocks {
 	return [{poss => \@poss}, @{$blocks[0]}];
 }
 
-sub do {
+sub do { # FIXME with mode it is possible to have no words but context set to somethingdifferent from _WORDS => word_list should be checked
 	my ($self, $block, $try, @try) = @_;
 	debug "gonna try $try (".'i_'.lc($try).")";
 	return $block unless $try;
 	my @re;
 	if (ref($try) eq 'CODE') { @re = $try->($self, $block) }
-	elsif (exists $self->{parent}{contexts}{$try}{intel}) {
-		@re = $self->{parent}{contexts}{$try}{intel}->($block)
+	elsif (exists $self->{shell}{parser}{$try}{intel}) {
+		@re = $self->{shell}{parser}{$try}{intel}->($block)
+	}
+	elsif (exists $self->{shell}{parser}{$try}{completion_function}) {
+		@re = $self->do_completion_function($try, $block);
 	}
 	elsif ($self->can('i_'.lc($try))) {
 		my $sub = 'i_'.lc($try);
@@ -140,7 +172,122 @@ sub do {
 	else { return scalar(@try) ? $self->do($block, @try) : $block } # recurs
 }
 
+sub do_completion_function {
+		my ($self, $try, $block) = @_;
+		error "$try: no such context or no completion_function"
+			unless exists $$self{shell}{parser}{$try}{completion_function};
+		my ($line, $word) = ($$block[0]{zoidcmd}, $$block[-1]);
+		my $start = length($line) - length($word);
+		my $end = length($line);
+		debug qq#completion_function: $try line: "$line" word: "$word" from $start to $end#;
+		my @poss = $$self{shell}{parser}{$try}{completion_function}->($word, $line, $start);
+		$$block[0]{poss} = \@poss;
+		return $block;
+}
+
+=back
+
+=head1 COMPLETIONS
+
+=over 4
+
+=cut
+
+sub i__words { # to expand the first word
+	my ($self, $block) = @_;
+
+	my $arg = $block->[-1];
+	push @{$block->[0]{poss}}, grep /^\Q$arg\E/, keys %{$self->{shell}{aliases}};
+	push @{$block->[0]{poss}}, grep /^\Q$arg\E/, keys %{$self->{shell}{commands}};
+	push @{$block->[0]{poss}}, grep /^\Q$arg\E/, list_path() unless $arg =~ m#/#;
+
+	my @blocks = ($self->i_dirs_n_files($block, 'x'));
+	my @alt;
+	for (_stack($$self{shell}{parser}, 'word_list')) {
+		my @re = $_->($block);
+		unless (@re) { next }
+		elsif (ref $re[0]) {
+			push @blocks, shift @re;
+			push @alt, @re;
+		}
+		else { push @{$block->[0]{poss}}, grep {defined $_} @re }
+	}
+	push @blocks, $block;
+
+	return (\@blocks, @alt);
+}
+
+sub i_cmd {
+	my ($self, $block) = @_;
+	if (! exists $$self{shell}{commands}{$$block[1]} and $$block[-1] =~ /^-/) {
+		return $block, 'man_opts';
+	}
+	elsif (exists $self->{config}{commands}{$$block[1]}) { # FIXME non compat with dispatch table
+		my $exp = $self->{config}{commands}{$$block[1]};
+		return $block, (ref($exp) ? (@$exp) : $exp), qw/env_vars dirs_n_files/;
+	}
+	elsif ($self->can('i_cmd_'.lc($$block[1]))) {
+		my $sub = 'i_cmd_'.lc($$block[1]);
+		return $self->$sub($block);
+	}
+	else { return $block, qw/env_vars dirs_n_files/ }
+}
+
+sub i__end { i_dirs_n_files(@_) } # to expand after redirections
+
+sub i_dirs { i_dirs_n_files(@_, 'd') }
+sub i_files { i_dirs_n_files(@_, 'f') }
+sub i_exec { i_dirs_n_files(@_, 'x') }
+
+sub i_dirs_n_files { # types can be x, f, ans/or d # TODO globbing tab :)
+	my ($self, $block, $type) = @_;
+	$type = 'df' unless $type;
+
+	my $arg = $block->[-1];
+	if ($arg =~ s/^(.*?(?<!\\):|\w*(?<!\\)=)//) { # /usr/bin:/<TAB> or VAR=<TAB>
+		$$block[0]{prefix} .= $1 unless $$block[0]{i_dirs_n_files};
+	}
+	$arg =~ s#\\##g;
+
+	my $dir;
+	if ($arg =~ m#^~# && $arg !~ m#/#) { # expand home dirs
+		return unless $type =~ /d/;
+		push @{$$block[0]{poss}}, grep /^\Q$arg\E/, map "~$_/", list_users();
+		return $block;
+	}
+	else {
+		if ($arg =~ s!^(.*/)!!) { 
+			$dir = path($1);
+			$block->[0]{prefix} .= $1;
+		}
+		else { $dir = '.' }
+		return undef unless -d $dir;
+	}
+	debug "Expanding files ($type) from dir: $dir with arg: $arg";
+
+	my (@f, @d, @x);
+	for (grep /^\Q$arg\E/, list_dir($dir)) {
+		(-d "$dir/$_") ? (push @d, $_) :
+			(-x _) ? (push @x, $_) : (push @f, $_) ;
+	}
+	
+	my @poss = ($type =~ /f/) ? (sort @f, @x) : ($type =~ /x/) ? (@x) : ();
+	unshift @poss, map $_.'/', @d;
+
+	@poss = grep {$_ !~ /^\./} @poss
+		if $$self{shell}{settings}{hide_hidden_files} && $arg !~ /^\./;
+
+	push @{$$block[0]{poss}}, @poss;
+
+	return $block;
+}
+
 sub i_perl { return ($_[1], qw/_zoid env_vars dirs_n_files/) }
+# FIXME how bout completing commands as subs ?
+
+1;
+
+__END__
 
 sub i__zoid {
 	my ($self, $block) = @_;
@@ -150,7 +297,7 @@ sub i__zoid {
 		$block->[-1] =~ /^( (?:\$shell)? ( (?:->|->|\xA3) (?:\S+->)* (?:[\[\{].*?[\]\}])* )) (\S*)$/x;
 	my ($pref, $code, $arg) = ($1, $2, qr/^\Q$3\E/);
 
-	$code = '$self->{parent}' . $code;
+	$code = '$self->{shell}' . $code;
 	$code =~ s/\xA3/->/;
 	$code =~ s/->$//;
 	my $ding = eval($code);
@@ -167,12 +314,11 @@ sub i__zoid {
 	elsif ($type eq 'ARRAY') { push @poss, grep m/$arg/, map {'['.$_.']'} (0 .. $#$ding) }
 	elsif ($type eq 'CODE' ) { $block->[0]{message} = "\'$pref\' is a CODE reference"   } # do nothing (?)
 	else { # $ding is object
-		if ( $type eq ref $$self{parent} and ! $$self{parent}{settings}{naked_zoid} ) {
+		if ( $type eq ref $$self{shell} and ! $$self{shell}{settings}{naked_zoid} ) {
 			# only display clothes
 			debug 'show zoid clothed';
-			push @poss, grep m/$arg/, @{ $$self{parent}->list_vars    };
-			push @poss, grep m/$arg/, @{ $$self{parent}->list_clothes };
-			push @poss, grep m/$arg/, @{ $$self{parent}->list_objects };
+			push @poss, grep m/$arg/, @{ $$self{shell}->list_clothes };
+			push @poss, grep m/$arg/, sort keys %{ $$self{shell}{objects} };
 			$block->[0]{postf} = '->';
 		}
 		else {
@@ -199,52 +345,15 @@ sub i__zoid {
 	}
 
 	@poss = grep {$_ !~ /^\{?_/} @poss
-		if $$self{parent}{settings}{hide_private_method} && $arg !~ /_/;
-	$block->[0]{poss} = \@poss;
+		if $$self{shell}{settings}{hide_private_method} && $arg !~ /_/;
+	$$block[0]{poss} = \@poss;
+	$$block[0]{quoted}++;
 	return $block;
 }
 
 sub _subs { 
 	no strict 'refs';
 	grep defined *{"$_[0]::$_"}{CODE}, keys %{"$_[0]::"};
-}
-
-sub i__words { # to expand the first word
-	my ($self, $block) = @_;
-
-	my $arg = $block->[-1];
-	push @{$block->[0]{poss}}, grep /^\Q$arg\E/, keys %{$self->{parent}{aliases}};
-	push @{$block->[0]{poss}}, grep /^\Q$arg\E/, keys %{$self->{parent}{commands}};
-	push @{$block->[0]{poss}}, grep /^\Q$arg\E/, list_path() unless $arg =~ m#/#;
-
-	my @blocks = ($self->i_dirs_n_files($block, 'x'));
-	my @alt;
-	for (_stack($$self{parent}{contexts}, 'word_list')) {
-		my @re = $_->($block);
-		unless (@re) { next }
-		elsif (ref $re[0]) {
-			push @blocks, shift @re;
-			push @alt, @re;
-		}
-		else { push @{$block->[0]{poss}}, grep {defined $_} @re }
-	}
-	push @blocks, $block;
-
-	return (\@blocks, @alt);
-}
-
-sub i__end { i_dirs_n_files(@_) } # to expand after redirections
-
-sub i_sh { return $_[1], ($_[1]->[-1] =~ /^-/) ? 'man_opts' : 'cmd' }
-
-sub i_cmd {
-	my ($self, $block) = @_;
-	my @exp = qw/env_vars dirs_n_files/;
-	if (exists $self->{config}{commands}{$$block[1]}) { # FIXME non compat with dispatch table
-		my $exp = $self->{config}{commands}{$$block[1]};
-		unshift @exp, ref($exp) ? (@$exp) : $exp;
-	}
-	return $block, @exp;
 }
 
 sub i_env_vars {
@@ -255,54 +364,12 @@ sub i_env_vars {
 	return $block;
 }
 
-sub i_dirs { i_dirs_n_files(@_, 'd') }
-sub i_files { i_dirs_n_files(@_, 'f') }
-sub i_exec { i_dirs_n_files(@_, 'x') }
-
-sub i_dirs_n_files { # types can be x, f, ans/or d # TODO globbing tab :)
-	my ($self, $block, $type) = @_;
-	$type = 'df' unless $type;
-
-	my $arg = $block->[-1];
-	if ($arg =~ s/^(.*?(?<!\\):|\w*(?<!\\)=)//) { # /usr/bin:/<TAB> or VAR=<TAB>
-		$$block[0]{prefix} .= $1 unless $$block[0]{i_dirs_n_files};
-	}
-	$arg =~ s#\\##g;
-
-	my $dir;
-	if ($arg =~ m#^~# && $arg !~ m#/#) { # expand home dirs
-		return unless $type =~ /d/;
-		push @{$$block[0]{poss}}, grep /^\Q$arg\E/, map "~$_/", list_users();
-		return $block;
-	}
-	else {
-		if ($arg =~ s!^(.*/)!!) { 
-			$dir = abs_path($1);
-			$block->[0]{prefix} .= $1;
-		}
-		else { $dir = '.' }
-		return undef unless -d $dir;
-	}
-	debug "Expanding files ($type) from dir: $dir with arg: $arg";
-
-	my (@f, @d, @x);
-	for (grep /^\Q$arg\E/, list_dir($dir)) {
-		(-d "$dir/$_") ? (push @d, $_) :
-			(-x _) ? (push @x, $_) : (push @f, $_) ;
-	}
-	
-	my @poss = ($type =~ /f/) ? (sort @f, @x) : ($type =~ /x/) ? (@x) : ();
-	unshift @poss, map $_.'/', @d;
-
-	@poss = grep {$_ !~ /^\./} @poss
-		if $$self{parent}{settings}{hide_hidden_files} && $arg !~ /^\./;
-
-	push @{$$block[0]{poss}}, @poss;
-
-	return $block;
+sub i_cdpath { # TODO
+#	for  (@CDPATH) {
+#	}
 }
 
-sub i_users {
+sub i_users { # TODO use this
 	my ($self, $block) = @_;
 	$block->[0]{poss} = [ grep /^\Q$block->[-1]\E/, list_users() ];
 	return $block;
@@ -367,28 +434,45 @@ sub i_man_opts { # TODO caching (tie classe die ook usefull is voor FileRoutines
 	return $block;
 }
 
-1;
+sub i_cmd_make { # TODO vars etc. -- see http://www.gnu.org/software/make/manual/make.html
+	my ($self, $block) = @_;
+	my ($mfile) = sort grep /makefile/i, list_dir();
+	$$block[0]{poss} = [];
+	debug "reading $mfile";
+	open MFILE, $mfile;
+	while (<MFILE>) {
+		/^(\Q$$block[-1]\E\S*?)\s*:/ or next;
+		push @{$$block[0]{poss}}, $1;
+	}
+	close MFILE;
+	return $block;
+}
 
-__END__
+sub i_cmd_man {
+	my ($self, $block) = @_;
+	return $block, 'files' if $$block[-1] =~ m#/#;
+	my @manpath = split /:/, $ENV{MANPATH}; # in the environemnt we trust
+	my $section = $$block[-2] if @$block > 3;
+	my @pages;
+	for my $mdir (@manpath) {
+		next unless -d $mdir;
+		my @sect = list_dir($mdir);
+		@sect = grep /\Q$section\E/, @sect if $section;
+		for (@sect) {
+			my $dir = "$mdir/$_";
+			next unless -d $dir;
+			push @pages,
+				map  { s/\..*$//; $_ }
+				grep /^\Q$$block[-1]\E/, list_dir($dir);
+		}
+	}
+	$$block[0]{poss} = [sort @pages];
+	return $block;
+}
 
-=head1 NAME
+=back
 
-Zoidberg::Fish::Intel - Completion plugin for Zoidberg
-
-=head1 SYNOPSIS
-
-This module is a Zoidberg plugin, see Zoidberg::Fish for details.
-
-=head1 DESCRIPTION
-
-This class provides intelligence for tab-expansion
-and similar functions. It is very dynamic structured.
-
-=head1 METHODS
-
-FIXME
-
-=head2 Build-in expansions
+=head1 CUSTOM COMPLETION
 
 FIXME
 
@@ -403,7 +487,6 @@ modify it under the same terms as Perl itself.
 =head1 SEE ALSO
 
 L<Zoidberg>, L<Zoidberg::Fish>,
-L<http://zoidberg.sourceforge.net>
 
 =cut
 

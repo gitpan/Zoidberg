@@ -1,15 +1,15 @@
 
 package Zoidberg::Utils::Error;
 
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 use strict;
-use Carp;
 use UNIVERSAL qw/isa can/;
 use Exporter::Tidy default => [qw/error bug todo/];
 use overload
 	'""' => \&stringify,
-	'eq' => sub { return $_[0] };
+	'eq' => sub { $_[0] },
+	fallback => 'TRUE';
 
 our $Scope = 'zoid';
 
@@ -105,6 +105,7 @@ sub stringify {
 
 sub PROPAGATE { # see perldoc -f die
 	my ($self, $file, $line) = @_;
+	($file, $line) = ( caller() )[1,2] unless $file or $line;
 	if (ref $self) {
 		$self->{propagated} ||= [];
 		push @{$self->{propagated}}, [$file, $line];
@@ -140,6 +141,10 @@ This library supplies the methods to replace C<die()>.
 These methods raise an exception but passing a object containing both the error string
 and caller information. Thus, when the exception is caught, more subtle error messages can be produced
 depending on for example verbosity settings.
+
+If the global variable C<$ERROR_CALLER> is set in a package using this library, all errors
+will pretend to originate from the call-frame identified by the number of the variable.
+Setting C<$ERROR_CALLER> to 1 will result in L<Carp> like behaviour.
 
 Although when working within the Zoidberg framework this module should be used through
 the L<Zoidberg::Utils> interface, it also can be used on it's own.
@@ -269,9 +274,8 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Zoidberg>, 
+L<Zoidberg>,
 L<Zoidberg::Utils>,
-L<http://zoidberg.sourceforge.net>,
 L<http://www.gnu.org/prep/standards_15.html#SEC15>
 
 =cut

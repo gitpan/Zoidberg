@@ -24,7 +24,7 @@ sub ack {
 package main;
 
 use strict;
-use Test::More tests => 18;
+use Test::More tests => 19;
 use Zoidberg::DispatchTable ':all';
 
 my $parent = bless {}, 'parent_class';
@@ -34,7 +34,7 @@ my $child = bless { parent => $parent }, 'child_class';
 my %tja;
 tie %tja, 'Zoidberg::DispatchTable', $child;
 
-$tja{trans} = sub { shift; return 'trans', @_ };
+$tja{trans} = sub { return 'trans', @_ };
 is_deeply
 	[$tja{trans}->('hmm')],
 	[qw/trans hmm/],
@@ -130,5 +130,8 @@ my @empty = stack(\%dus, 'non existent key');
 ok @empty == 0, 'empty stack'; # 17
 
 $dus{hash} = { ping4 => q{->ack('4')} };
-is_deeply( [$dus{hash}{ping4}->('dus')], [qw/ack 4 dus/], 'recursive hash'); # 18
+is_deeply( [$dus{hash}{ping4}->('dus')], [qw/ack 4 dus/], 'recursive hash 1'); # 18
+
+$dus{otherhash}{ping4} = q{->ack('4')};
+is_deeply( [$dus{otherhash}{ping4}->('dus')], [qw/ack 4 dus/], 'recursive hash 2'); # 19
 

@@ -15,7 +15,7 @@ my $error = {
 #use Data::Dumper;
 #print Dumper $@;
 
-is_deeply( $@, $error, 'biasic exception');
+is_deeply( $@, $error, 'basic exception');
 
 # overloaded use
 

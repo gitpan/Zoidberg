@@ -1,117 +1,82 @@
-use Test::More tests => 19;
+use Test::More tests => 13;
 use Zoidberg::StringParser;
 
 my $simple_gram = {
 	esc => '\\',
 	tokens => { '|' => 'PIPE' },
-	nests => {
-		'{' => '}',
-	},
-	quotes => { 
-		'"' => '"',
+	nests  => { '{' => '}'    },
+	quotes => {
+		'"'  => '"' ,
 		'\'' => '\'',
 	},
 };
 
 my $array_gram = {
 	esc => '\\',
-	tokens => [ 
+	tokens => [
 		[ qr/\|/,  'PIPE' ],
 		[ qr/\s+/, '_CUT' ],
 	],
 	quotes => {
-                '"' => '"',
+                '"'  => '"' ,
                 '\'' => '\'',
         },
-	meta => sub {
-		my ($self, $block) = @_;
-		return undef unless defined($block) and length($block);
-		return $block;
-	},
 };
 
 my $parser = Zoidberg::StringParser->new({}, {simple => $simple_gram, array => $array_gram });
 
-$parser->set('');
-my @r = $parser->get;
-ok(!defined($r[0]), 'empty get' ); # 1
-
-$parser->set('simple', 'dit is een "quoted | pipe" | dit niet');
-
-is_deeply([$parser->get], ['dit is een "quoted | pipe" ', 'PIPE'], 'simple get'); # 2
-is_deeply([$parser->get], [' dit niet'], 'another get'); # 3
-
-$parser->set('simple', 0);
-is_deeply([$parser->get], ['0'], 'null value'); # 4
+my @r = $parser->split('simple', 'dit is een "quoted | pipe" | dit niet');
+#use Data::Dumper; print STDERR Dumper \@r;
+is_deeply(\@r, [\'dit is een "quoted | pipe" ', 'PIPE', \' dit niet'], 'simple split'); # 1
 
 for (
-	[
-		['simple', 'just { checking { how |  this } works | for } | you :)'],
-		['just { checking { how |  this } works | for } ', 'PIPE'],
+	[	['simple', 0],
+		[\'0'],
+		'null value'
+	], # 2
+	[	['simple', 'just { checking { how |  this } works | for } | you :)'],
+		[\'just { checking { how |  this } works | for } ', 'PIPE', \' you :)'],
 		'nested nests'
-	], # 5
-	[
-		['simple', 'dit was { een bug " } " in | de } | vorige versie'],
-		['dit was { een bug " } " in | de } ', 'PIPE'],
+	], # 3
+	[	['simple', 'dit was { een bug " } " in | de } | vorige versie'],
+		[\'dit was { een bug " } " in | de } ', 'PIPE', \' vorige versie'],
 		'quoted nests'
-	], # 6
-	[
-		['simple', 'hier open " ik dus qquotes', sub { return ' die ik hier " sluit | ja' }],
-		['hier open " ik dus qquotes die ik hier " sluit ', 'PIPE'],
-		'pull mechanism'
-	], # 7
+	], # 4
 ) {
-	$parser->set( @{$_->[0]} );
-	is_deeply([$parser->get], $_->[1], $_->[2]);
+	@r = $parser->split( @{$$_[0]} );
+	#use Data::Dumper; print STDERR Dumper \@r;
+	is_deeply( \@r, $$_[1], $$_[2] );
 }
 
-my @blocks = $parser->split('simple', 'ls -al | grep -v CVS | xargs grep "dus | ja" | rm -fr');
-my @i_want = (\'ls -al ', 'PIPE', \' grep -v CVS ', 'PIPE', \' xargs grep "dus | ja" ', 'PIPE', \' rm -fr');
-is_deeply(\@blocks, \@i_want, 'basic split'); # 8
+@r = $parser->split('simple', 'ls -al | grep -v CVS | xargs grep "dus | ja" | rm -fr');
+#use Data::Dumper; print STDERR Dumper \@r;
+is_deeply( \@r,
+	[\'ls -al ', 'PIPE', \' grep -v CVS ', 'PIPE', \' xargs grep "dus | ja" ', 'PIPE', \' rm -fr'],
+	'basic split' ); # 5
 
 for (
-	[
-		['simple', 'dit is line 1 | grep 1', 'dit is alweer | de volgende line'],
-		[\'dit is line 1 ', 'PIPE', \' grep 1'],
-		'basic getline'
-	],
-	[
-		['simple', sub { return 'dit is line 1 | grep 1' }, sub { die "WTF !?\n" }],
-		[\'dit is line 1 ', 'PIPE', \' grep 1'],
-		'getline with subs'
-	],
-	[
-		['array', 'dit is dus | ook "zoiets ja"'],
+	[	['simple', ['dit is line 1 | grep 1', 'dit is alweer | de volgende line']],
+		[\'dit is line 1 ', 'PIPE', \' grep 1', \'dit is alweer ', 'PIPE', \' de volgende line'],
+		'basic array input'
+	], # 6
+	[	['simple', 'dit is line 1 | dit is alweer | de volgende line', 2],
+		[\'dit is line 1 ', 'PIPE', \' dit is alweer | de volgende line'],
+		'max parts integer'
+	], # 7
+	[	['array', 'dit is dus | ook "zoiets ja"'],
 		[map( {\$_} qw/dit is dus/), 'PIPE', \'ook', \'"zoiets ja"'],
-		'advanced getline with array gram'
-	],
-	[
-		['simple', 'dit is een escaped \| pipe, en dit een escape \\\\ dus, "dit \\\\ trouwens ook"'],
+		'advanced with array gram'
+	], # 8
+	[	['simple', 'dit is een escaped \| pipe, en dit een escape \\\\ dus, "dit \\\\ trouwens ook"'],
 		[\'dit is een escaped | pipe, en dit een escape \\\\ dus, "dit \\\\ trouwens ook"'],
 		'escape removal and escaping'
-	],
+	], # 9
 ) {
-	@blocks = $parser->getline( @{$_->[0]} );
-	#use Data::Dumper;
-	#print Dumper \@blocks;
-	is_deeply(\@blocks, $_->[1], $_->[2]); # 9 10 11 12
+	@r = $parser->split( @{$_->[0]} );
+	#use Data::Dumper; print STDERR Dumper \@r;
+	is_deeply(\@r, $$_[1], $$_[2]);
 }
-
-# test caching
-
-ok(
-	$simple_gram->{_prepared} && ref($simple_gram->{quotes}) eq 'Zoidberg::StringParser::hash',
-	'grammars are cached' ); # 13
-
-# test error
-
-$parser->split('simple', 'some broken { syntax');
-ok( $parser->error eq 'Unmatched nest at end of input: {', 'error function works' ); # 14
-#print 'error -->', $parser->error, "<--\n";
-
-$parser->split(['simple', {no_esc_rm=>1}], 'some broken { syntax');
-ok( $parser->error eq 'Unmatched nest at end of input: {', 'error function works with no_esc_rm' ); # 15
-#print 'error -->', $parser->error, "<--\n";
+# TODO test integer argument
 
 # test synopsis - just be sure
 
@@ -126,19 +91,18 @@ my $base_gram = {
 $parser = Zoidberg::StringParser->new($base_gram);
 @blocks = $parser->split(qr/\|/, qq{ls -al | cat > "somefile with a pipe | in it"} );
 @i_want = ('ls -al ', ' cat > "somefile with a pipe | in it"');
-is_deeply(\@blocks, \@i_want, 'base gram works'); # 16
+is_deeply(\@blocks, \@i_want, 'base gram works'); # 10
 
 # testing settings
 
 $parser = Zoidberg::StringParser->new($base_gram, {}, { no_split_intel => 1 });
-@blocks = $parser->split(qr/\|/, qq{ls -al | cat > "somefile with a pipe | in it"} );
-@i_want = (\'ls -al ', \' cat > "somefile with a pipe | in it"');
-is_deeply(\@blocks, \@i_want, 'no_split_intel setting works'); # 17
+@r = $parser->split(qr/\|/, qq{ls -al | cat > "somefile with a pipe | in it"} );
+is_deeply(\@r, [\'ls -al ', \' cat > "somefile with a pipe | in it"'], 'no_split_intel setting works'); # 11
 
 $parser = Zoidberg::StringParser->new({}, { simple => $simple_gram }, { allow_broken => 1 });
-@blocks = $parser->getline('simple', 'some  { syntax ', 'and } more');
-ok( ! $parser->error && scalar(@blocks) == 1 , 'allow_broken works' ); # 18
+$parser->split('simple', 'some  { syntax ');
+ok('we didn\'t die', 'allow_broken works' ); # 12
 
-$parser = Zoidberg::StringParser->new({}, { simple => $simple_gram }, { raise_error => 1 });
+$parser = Zoidberg::StringParser->new({}, { simple => $simple_gram });
 eval { $parser->split('simple', 'some broken { syntax') };
-ok( $@ eq "Unmatched nest at end of input: {\n", 'raise_error works'); # 19
+ok( $@ eq "Unmatched nest at end of input: {\n", 'raising an error works'); # 13

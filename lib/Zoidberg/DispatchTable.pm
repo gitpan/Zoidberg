@@ -1,12 +1,14 @@
 package Zoidberg::DispatchTable;
 
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 use strict;
 use Zoidberg::Utils qw/debug bug error/;
 use Exporter::Tidy all => [qw/stack wipe tag tags/];
 
-#our $ERROR_CALLER = 1; 
+our $ERROR_CALLER = 1; 
+
+# reserved keys _AUTOLOAD and _META
 
 # $self->[0] hash with arrays of dispatch strings/refs
 # $self->[1] hash with arrays of tags
@@ -16,7 +18,7 @@ use Exporter::Tidy all => [qw/stack wipe tag tags/];
 # $self->[5] iteration index for keys()
 
 # keys are kept in order to avoid inconsistencies
-# for example when iterating trough {contexts}
+# for example when iterating trough {parser}
 
 # ############# #
 # Tie interface #
@@ -30,7 +32,9 @@ sub TIEHASH  {
 		? $ref
 		: [{}, {}, $ref, $ref->can('parent'), [], 0];
 	bless $self, $class;
-	for my $ref (@_) { $self->STORE($_, $$ref{$_}) for keys %$ref }
+	while (my $hash = shift @_) {
+		$self->STORE($_, $$hash{$_}) for keys %$hash;
+	}
 	return $self;
 }
 
@@ -42,23 +46,18 @@ sub STORE {
 	my $t = ref $value;
 	if ($t eq 'HASH') {
 		unless (tied $value) { # recurs tie'ing
-			my %value;
-			tie %value, __PACKAGE__, $$self[2], $value;
-			$value = \%value;
+			tie %$value, __PACKAGE__, $$self[2], $value;
+			# be careful to reuse same ref - else perl bugs :(
 		}
 		# else just store the tied hash
 	}
-	elsif ($t eq 'CODE') { # curry code ref
-		my $closure = $value; # strange error without copy
-		$value = sub { $closure->($$self[2], @_) };
-	}
-	elsif ($t) { bug "Can't store ref of type $t in DispatchTable" }
-	else {
+	elsif (! $t) {
 		$value =~ s/(^\s*|\s*$)//g;
 		error "Can't use ==>$value<== as subroutine."
 			if ! length $value
 			or $value =~ /^\$/; # no vars
 	}
+	elsif ($t ne 'CODE') { bug "Can't store ref of type $t in DispatchTable" }
 
 	push @{$self->[0]{$key}}, $value;
 	push @{$self->[1]{$key}}, $tag;
@@ -77,7 +76,7 @@ sub FETCH {
 		for (@{$self->[0]{_AUTOLOAD}}) {
 	        	$sub = $_->($key);
         		next unless $sub;
-		        $self->STORE($key, $sub);
+		        $self->STORE($key, $sub) unless $self->EXISTS($key);
         		return $self->FETCH($key);
 		}
 	}
@@ -209,7 +208,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::DispatchTable - class to tie dispatch tables
+Zoidberg::DispatchTable - Class to tie dispatch tables
 
 =head1 SYNOPSIS
 
@@ -254,12 +253,13 @@ The following strings are supported:
 
 You can store either config strings or CODE references in the table.
 
-If you store a CODE reference it will be wrapped in order to make it look like a 
-method of the object to which the table belongs. The method will get an object
-reference as it's first argument.
+The tables is transparent to CODE references, they are used as given.
+( An earlier version of this module did currying .. this behaviour is altered. )
 
 If you store an ARRAY ref it is expected to be of the form C<[$value, $tag]>,
 where C<$tag> is an identifier used for handling selections of the table.
+The $value can again be a string or CODE ref.
+
 If you store a HASH ref it will be tied recursively as a DispatchTable.
 
 Keys are kept in the order they are first added, thus C<keys(%table)> will always
@@ -305,7 +305,7 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Zoidberg>, L<http://zoidberg.sourceforge.net>
+L<Zoidberg>
 
 =cut
 

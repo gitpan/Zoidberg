@@ -14,9 +14,68 @@
 
 use strict;
 use Cwd qw/cwd/;
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 my @inc = (); # You can list custom includes here
+my $cwd = cwd;
+
+unshift @INC, map {m!^/! ? $_ : "$cwd/$_" } @inc;
+
+$0 =~ s!(.*/)!!;
+if (defined $1) {
+	my $dir = $1;
+	$dir = "$cwd/$_" unless $dir =~ m!^/!;
+	$Zoidberg::_base_dir = $dir;
+	unshift @INC, "$dir/lib" if -d "$dir/lib";
+}
+else { $Zoidberg::_base_dir = '' }
+
+# ########### #
+# Get Options #
+# ########### #
+
+eval q#use Zoidberg::Utils::GetOpt 'getopt'; 1# or die $@;
+
+my ($opts, $args) = eval { getopt( '
+	help,h,usage,u version,V config,C
+	exec,e@ command,c@ stdin,s
+	interactive,i login,l
+	rcfile,r@ norc plug,p@
+	debug,-D verbose,v include,-I@
+	-I* -D* +o@ -o@ -m* -M*
+	@', @ARGV ) } ;
+if ($@) { # renice error message
+	print STDERR ref($@) ? $@->stringify(format => 'gnu') : $@;
+	exit 1;
+}
+
+# TODO -q
+#     Quiet (usually without argument). Suppress normal result or 
+#     diagnostic output. This is very common. Examples: ci(1), co(1), make(1).
+# TODO find switch to set mode / include plugins
+
+if ($$opts{help}) { # pre-emptive #1
+	print (<DATA>);
+	exit 0;
+}
+
+if ($$opts{_opts}) { # special switches
+	for (grep /^-[IDMm]./, @{$$opts{_opts}}) {
+		if (s/^-I//) { push @inc, $_ }
+		elsif (s/^-D//) {
+			no strict 'refs';
+			${$_.'::DEBUG'}++;
+		}
+		else {
+			my $import = /^-M/ ? 1 : 0 ;
+			my $use =
+				/-[Mm](\S+)=(.*)/ ? "use $1 split(/,/,q{$2}); " :
+				s/^-M//           ? "use $_; "  : "use $_ (); " ;
+			$use =~ s/^use -/no /;
+			$$opts{use} .= $use;
+		}
+	}
+}
 
 # ############### #
 # set environment #
@@ -27,88 +86,9 @@ $ENV{USER} ||= $user_info[0];
 $ENV{HOME} ||= $user_info[7];
 $ENV{ZOID} = $0; # _Don't_ change this to ENV{SHELL} !
 
-# ########### #
-# Get Options #
-# ########### #
-
-my (%settings, %args);
-my %opts = (
-	# name	=> [char, expect_arg_bit ]
-	'help'		=> ['h'],
-	'usage'		=> ['u'],
-	'exec'		=> ['e', 1],
-	'command'	=> ['c', 1],
-	'version'	=> ['V'],
-	'config'	=> ['C'],
-	'interactive'	=> ['i'],
-	'login'		=> ['l'],
-	'stdin'		=> ['s'],
-	'rcfile'	=> ['r', 1],
-	'norc'		=> [undef],
-	'debug'		=> ['D'],
-	'verbose'	=> ['v'],
-	# TODO -M use module etc.
-	# -q
-	#     Quiet (usually without argument). Suppress normal result or 
-	#     diagnostic output. This is very common. Examples: ci(1), co(1), make(1).
-	#
-);
-
-while ((@ARGV) && ($ARGV[0] =~ /^[+\-]/)) {
-	my $opt = shift @ARGV;
-	if ($opt =~ /^--?$/) { last; }
-	# specials
-	elsif ($opt =~ s/^-I//) { $args{inc} .= ($args{inc} ? ',' : '').$opt }
-	elsif ($opt =~ /^-D(.+)/) { no strict 'refs'; ${$1.'::DEBUG'}++ }
-	elsif ($opt =~ /^([+\-])o/) {
-		my $arg = shift @ARGV;
-		complain($opt, 2) unless defined $arg;
-		if ($1 eq '+') { $settings{$_} = 0 for split ',', $arg }
-		elsif ($arg =~ s/^(\w+)=//) { $settings{$1} = $arg }
-		else { $settings{$_} = 1 for split ',', $arg }
-	}
-	# default
-	elsif ($opt =~ s/^--([\w-]+)(?:=['"]?(.*)['"]?)?/$1/) {
-		if (exists $opts{$opt}) {
-			if ($opts{$opt}[1]) { 
-				my $arg = $2 || shift @ARGV;
-				complain('--'.$opt, 2) unless defined $arg;
-				$args{$opt} .= ( $args{$opt} ? ' ' : '' ) . $arg;
-			}
-			else { $args{$opt}++; }
-		}
-		else { complain('--'.$opt) }
-	}
-	elsif ($opt =~ s/^-(?!-)//) {
-		foreach my $o (split //, $opt) {
-			my ($key) = grep { $opts{$_}[0] eq $o } keys %opts;
-			unless ($key) { complain($o) }
-
-			if ($opts{$key}[1]) { 
-				my $arg = shift @ARGV;
-				complain('-'.$o, 2) unless defined $arg;
-				$args{$key} .= ( $args{$key} ? ' ' : '' ).$arg; # join with whitespace
-			}
-			else { $args{$key}++; }
-		}
-	}
-	else { complain($opt) }
-}
-
-if ($args{help} || $args{usage}) { # pre-emptive #1
-	print (<DATA>);
-	exit 0;
-}
-
-# ############# #
-# Load includes #
-# ############# #
-
-my $cwd = cwd;
-
 # fix environment
-$args{login} = 1 unless $ENV{PWD}; # FIXME a better check ?
-if ($args{login}) {
+$$opts{login} = 1 unless $ENV{PWD}; # FIXME a better check ?
+if ($$opts{login}) {
 	$ENV{LOGNAME} = $ENV{USER} = $user_info[0];
 	$ENV{HOME} = $user_info[7];
 	$ENV{PWD} = $ENV{HOME} || '/';
@@ -116,27 +96,19 @@ if ($args{login}) {
 }
 else { $ENV{PWD} = $cwd }
 
+# ############# #
+# Load includes #
+# ############# #
+
 # parse includes
-push @inc, split /\,/, $args{inc};
-
-$0 =~ s!(.*/)!!;
-if (defined $1) {
-	$Zoidberg::_base_dir = $1;
-	push @inc, "$1/lib" if -d "$1/lib";
-}
-else { $Zoidberg::_base_dir = '' }
-
-for (grep @inc, $Zoidberg::_base_dir) {
-	next if m!^/!;
-	$_ = defined($_) ? "$cwd/$_" : $cwd
-}
-
-unshift @INC, @inc;
+unshift @INC,
+	map {m!^/! ? $_ : "$cwd/$_" }
+	grep s/^-I//, @{ $$opts{_opts} } if $$opts{_opts};
 
 # load Zoidberg.pm
-eval "require Zoidberg" or die $@;
+eval q#require Zoidberg# or die $@;
 
-if ($args{version}) { # pre-emptive #2
+if ($$opts{version}) { # pre-emptive #2
 	print "zoid $VERSION\n$Zoidberg::LONG_VERSION\n";
 	exit 0;
 }
@@ -145,55 +117,76 @@ if ($args{version}) { # pre-emptive #2
 # Parse settings #
 # ############## #
 
-$settings{rcfiles} = $args{rcfile} if defined $args{rcfile};
-$settings{$_} = [ split /:/, $settings{$_} ]
-	for grep {defined $settings{$_}} qw/data_dirs rcfiles/;
-$settings{rcfiles} = [] if $args{norc};
-for (qw/verbose debug login/) {
-	$settings{$_} = $args{$_} unless defined $settings{$_};
+my %settings;
+
+if ($$opts{'-o'}) {
+	for ( @{$$opts{'-o'}} ) {
+		my ($opt, $arg) = split '=', $_, 2;
+		$settings{$opt} = defined($arg) ? $arg : 1;
+	}
+}
+if ($$opts{'+o'}) {
+	for ( @{$$opts{'+o'}} ) {
+		my ($opt, $arg) = split '=', $_, 2;
+		$settings{$opt} = defined($arg) ? $arg : 0;
+	}
 }
 
-if ($args{config}) { # pre-emptive #3
+if ($$opts{rcfile}) { $settings{rcfiles} = $$opts{rcfile} }
+elsif ($$opts{norc}) {  $settings{rcfiles} = [] }
+
+for (qw/data_dirs rcfiles/) { # arrays
+	$settings{$_} = [ split /:/, $settings{$_} ]
+		if defined $settings{$_} and ! ref $settings{$_};
+}
+
+for (qw/verbose debug login/) { # bits
+	$settings{$_} = $$opts{$_} unless defined $settings{$_};
+}
+
+if ($$opts{config}) { # pre-emptive #3
 	%settings = (%Zoidberg::_settings, %settings);
-	while ( my ($k,$v) = each %settings) {
-		next unless defined $v;
-		print $k, ' = ', ref($v) ? join(', ', @$v) : $v, "\n"
+	for (sort keys %settings) {
+		next unless defined $settings{$_};
+		my $val = $settings{$_};
+		if (ref($val) eq 'ARRAY') { $val = join ', ', @$val }
+		elsif (ref($val) eq 'HASH') {
+			$val = join ', ', map "$_ => $$val{$_}", sort keys %$val;
+		}
+		print "$_ = $val\n"
 	}
 	exit 0;
-}
+} # FIXME shouldn't this be a machine parsable format ?
 
 # ################## #
 # prepare for launch #
 # ################## #
 
-my $exec_string = $args{exec} || $args{command} || '';
+my $exec_string = 
+	$$opts{exec}    ? join(' ', @{$$opts{exec}})    :
+	$$opts{command} ? join(' ', @{$$opts{command}}) : '' ;
 
 # rest ARGV should be files
-for (@ARGV) { complain($_, 3) unless -f $_ }
+for (@$args) { complain($_, 3) unless -f $_ }
 
-my $interact;
-if ($args{interactive}) { $interact = 1; }
-elsif (!@ARGV && !$exec_string && !$args{stdin}) { 
-	$interact = (-t STDIN) && (-t STDOUT); 
-}
-else { $interact = 0; }
+my $interact = $$opts{interactive} ||
+	(@$args || $exec_string || $$opts{stdin}) ? 0 : (-t STDIN and -t STDOUT) ;
+
+$settings{interactive} = $interact;
 
 # ############## #
 # AND Lift-off ! #
 # ############## #
 
-my $cube = Zoidberg->new( {
-	settings => {
-		%settings,
-		interactive => $interact,
-		output => {
-			( $interact ? () : (
-				message => 'mute',
-				warning => 'mute',
-			) ),
-		},
-	}
-} );
+my $cube = Zoidberg->new( settings => \%settings );
+
+eval qq{
+	package # hide from pause indexer
+		Zoidberg::Eval;
+	$$opts{use}
+} if $$opts{use};
+
+if ($$opts{plug}) { $cube->plug($_) for @{$$opts{plug}} }
 
 if ($exec_string) {
 #	if ($args{command}) { $cube->{ipc}->do($exec_string) }
@@ -202,9 +195,9 @@ if ($exec_string) {
 #	}
 }
 
-$cube->source($_) for @ARGV;
+$cube->source($_) for @$args;
 
-if ( $args{stdin} || -p STDIN || (!$interact && !$exec_string) ) {
+if ( $$opts{stdin} || -p STDIN || (!$interact && !$exec_string) ) {
 	while (<STDIN>) { $cube->shell_string($_) }
 	# FIXME do something like set nobuffer and let zoid read STDIN
 	# then it can also pull from it

@@ -3,8 +3,8 @@ $VAR1 = {
 	'config' => {
 		man_cmd => 'man',
 		commands => {
-			cd => 'dirs',
+			cd => ['dirs', 'cdpath'],
 		},
 	},
-	import => [qw/complete completion_function/],
+	export => [qw/complete completion_function/],
 }

@@ -1,88 +1,47 @@
 
 package Zoidberg::Utils;
 
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 use strict;
 use vars '$AUTOLOAD';
-use Carp;
 use Zoidberg::Utils::Error;
+use Exporter::Tidy
+	default => [qw/:output :error/],
+	output	=> [qw/output message debug/],
+	error	=> [qw/error bug todo complain/],
+	fs	=> [qw/path list_dir/],
+	other	=> [qw/
+		setting read_data_file read_file merge_hash
+		complain typed_output
+		list_path unique_file regex_glob
+		getopt usage version path2hashref
+	/] ;
 
 our $ERROR_CALLER = 1;
 
-## Funky import/autoload/autouse thingy ##
-
-my %tags = (
-	default => [qw/:output :error/],
-
-	output	=> [qw/output message debug/],
-	fs	=> [qw/abs_path list_dir/],
-	fs_engine => [qw/f_index_path f_wipe_cache f_read_cache f_save_cache/],
-	error	=> [qw/error bug todo complain/],
-	other	=> [qw/setting read_data_file read_file merge_hash/],
-
-	_fs	=> [qw/abs_path list_path list_dir unique_file regex_glob/],
-	_output	=> [qw/output message debug complain typed_output/],
-	_cluster => {
-		fs_engine => [qw/Zoidberg::Utils::FileSystem _prefix f_ :engine/],
-		_fs	=> [qw/Zoidberg::Utils::FileSystem/],
-		_output	=> [qw/Zoidberg::Utils::Output/],
-	},
+our %loadable = (
+	fs      => ['Zoidberg::Utils::FileSystem', qw/path list_dir list_path unique_file regex_glob/ ],
+	output	=> ['Zoidberg::Utils::Output',     qw/output message debug complain typed_output/     ],
+	getopt	=> ['Zoidberg::Utils::GetOpt',     qw/getopt usage version path2hashref/              ],
 );
 
-my %available;
-my $map = delete $tags{_map};
-my $cluster = delete $tags{_cluster};
-@available{ grep !ref, keys %$map } = () if $map;
-@available{ grep !/^:/, map @$_, values %tags } = ();
-for my $key (keys %$cluster) { $available{$_} = $key for @{$tags{$key}} }
-$tags{all} ||= [ keys %available ];
+sub AUTOLOAD {
+	$AUTOLOAD =~ s/.*:://;
+	return if $AUTOLOAD eq 'DESTROY';
 
-sub import {
-        my ($me, @symbols) = @_;
-        my $caller = caller;
-        @symbols = @{ $tags{default} } if @symbols == 0 and exists $tags{default};
-        my %exported;
-        my $prefix = '';
-        while (my $symbol = shift @symbols) {
-            $symbol eq '_prefix' and ($prefix = shift @symbols, next);
-            my $real = $map && exists $map->{$symbol} ? $map->{$symbol} : $symbol;
-            next if exists $exported{"$prefix$real"};
-            undef $exported{"$prefix$symbol"};
-            $real =~ /^:(.*)/ and (
-                (exists $tags{$1} or
-                    (require Carp, Carp::croak("Unknown tag: $1"))),
-                push(@symbols, @{ $tags{$1} }),
-                next
-            );
-            ref $real and (
-                $symbol =~ s/^[\@\$%*]//,
-                *{"$caller\::$prefix$symbol"} = $real,
-                next
-            );
-            exists $available{$symbol} or 
-                (require Carp, Carp::croak("Unknown symbol: $real"));
-	    _load($available{$symbol});
-            my ($sigil, $name) = $real =~ /^([\@\$%*]?)(.*)/;
-            $symbol =~ s/^[\@\$%*]//;
-	    no strict 'refs';
-            *{"$caller\::$prefix$symbol"} =
-                $sigil eq ''  ? \&{"$me\::$name"}
-              : $sigil eq '$' ? \${"$me\::$name"}
-              : $sigil eq '@' ? \@{"$me\::$name"}
-              : $sigil eq '%' ? \%{"$me\::$name"}
-              : $sigil eq '*' ? \*{"$me\::$name"}
-              : (require Carp, Carp::croak("Strange symbol: $real"));
-        }
-}
+	my ($class, @subs);
+	for my $key (keys %loadable) {
+		next unless grep {$AUTOLOAD eq $_} @{$loadable{$key}};
+		($class, @subs) = @{delete $loadable{$key}};
+		eval "use $class \@subs";
+		die if $@;
+		last;
+	}
 
-sub _load {
-	my $tag = shift;
-	return unless defined $tag and exists $$cluster{$tag};
-	my ($class, @args) = @{delete $$cluster{$tag}};
-	eval "require $class; $class->import(\@args)";
-	die if $@;
-	undef $_ for grep {defined $_ and $_ eq $tag} values %available;
+	die "Could not load '$AUTOLOAD'" unless $class;
+	no strict 'refs';
+	goto &{$AUTOLOAD};
 }
 
 ## Various methods ##
@@ -97,7 +56,7 @@ sub setting {
 
 sub read_data_file {
 	my $file = shift;
-	croak 'read_data_file() is not intended for fully specified files, try read_file()'
+	error 'read_data_file() is not intended for fully specified files, try read_file()'
 		if $file =~ m!^/!;
 	for my $dir (setting('data_dirs')) {
 		for ("$dir/data/$file", map "$dir/data/$file.$_", qw/pl pd yaml/) {
@@ -115,9 +74,14 @@ sub read_file {
 
 	my $ref;
 	if ($file =~ /^\w+$/) { todo 'executable data file' }
-	elsif ($file =~ /\.(pl)$/i) { $ref = do $file }
+	elsif ($file =~ /\.(pl)$/i) {
+		eval q{package Main; $ref = do $file; die $@ if $@ };
+       	}
 	elsif ($file =~ /\.(pd)$/i) { $ref = pd_read($file) }
-	elsif ($file =~ /\.(yaml)$/i) { todo qq/yaml data file support\n/ }
+	elsif ($file =~ /\.(yaml)$/i) { 
+       		eval 'require YAML' or error $@;
+		$ref = YAML::LoadFile($file);
+	}
 	else { error qq/Unkown file type: "$file"\n/ }
 
 	error "In file $file\: $@" if $@;
@@ -141,6 +105,7 @@ sub pd_read {
 
 sub merge_hash {
     my $ref = {};
+    local $ERROR_CALLER = 2;
     $ref = _merge($ref, $_) for @_;
     return $ref;
 }
@@ -148,12 +113,10 @@ sub merge_hash {
 sub _merge { # Removed use of Storable::dclone - can throw nasty bugs
 	my ($ref, $ding) = @_;
 	while (my ($k, $v) = each %{$ding}) {
-            if (defined($ref->{$k}) && ref($v)) {
-                if (ref($v) eq 'ARRAY') { # this one is open for discussion
-                        push @{$ref->{$k}}, @{$ding->{$k}};
-                }
-                elsif (grep {ref($v) eq $_} qw/SCALAR CODE Regexp/) { $ref->{$k} = $v; }
-                else { $ref->{$k} = _merge($ref->{$k}, $ding->{$k}); } #recurs for HASH (or object)
+            if (defined $$ref{$k} and ref($v) eq 'HASH') {
+	    	error 'incompatible types for key: '.$k.' in merging hashes'
+			unless ref($$ref{$k}) eq 'HASH';
+                $$ref{$k} = _merge($$ref{$k}, $v); #recurs
             }
             else { $ref->{$k} = $v; }
         }
@@ -166,7 +129,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Utils - an interface to zoid's utility libs
+Zoidberg::Utils - An interface to zoid's utility libs
 
 =head1 SYNOPSIS
 
@@ -200,7 +163,7 @@ L<Zoidberg::Utils::Output>.
 
 =item :fs
 
-Gives you C<abs_path> and C<list_dir>, which belong to 
+Gives you C<path> and C<list_dir>, which belong to 
 L<Zoidberg::Utils::FileSystem>.
 
 =back
@@ -223,8 +186,8 @@ FIXME more explanation
 =item C<read_file($file)>
 
 Returns a hash reference with the contents of C<$file>.
-Currently only "Data::Dumper files" (.pd) are supported, 
-but possibly other formats like yaml will be added later.
+Currently only perl scripts are read and these should return (or end with)
+a hash reference. Possibly other formats like yaml will be added later.
 
 =back
 
@@ -242,9 +205,11 @@ clustering feature.
 
 =head1 SEE ALSO
 
-L<Zoidberg::Utils::Error>, L<Zoidberg::Utils::Output>,
+L<Zoidberg>,
+L<Zoidberg::Utils::Error>,
+L<Zoidberg::Utils::Output>,
 L<Zoidberg::Utils::FileSystem>,
-L<Zoidberg>, L<http://zoidberg.sourceforge.net>
+L<Zoidberg::Utils::GetOpt>
 
 =cut
 

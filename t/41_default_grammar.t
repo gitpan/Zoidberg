@@ -1,6 +1,5 @@
 
 use Zoidberg;
-use Zoidberg::Utils qw/read_file/;
 use Zoidberg::StringParser;
 
 require Test::More;
@@ -45,16 +44,21 @@ my @test_data1 = (
 );
 
 my @test_data2 = (
-	[ qq#ls -al ../dus \n#,			[qw#ls -al ../dus#],			'simple statement'  ],
-	[ qq#ls -al "./ dus  " ../hmm\n#,	[qw/ls -al/, '"./ dus  "', '../hmm'],	'another statement' ],
-	[ q#alias du=du\ -k#, 			['alias', 'du=du -k'],			'escape whitespace' ],
+	[ qq#ls -al ../dus \n#,	          [qw#ls -al ../dus#],                  'simple statement'  ],
+	[ qq#ls -al "./ dus  " ../hmm\n#, [qw/ls -al/, '"./ dus  "', '../hmm'], 'another statement' ],
+	[ q#alias du=du\ -k#,             ['alias', 'du=du -k'],                'escape whitespace' ],
 );
 
 my @test_data3 = (
-	[ q#echo \\\\#,		['echo', '\\'],		'escape throughput'   ],
-	[ q#echo '\\\\'#,	['echo', '\\\\'],	'escape throughput 1' ],
-	[ q#echo {foo,bar}#,	[qw/echo foo bar/],	'GLOB_BRACE'          ],
-	[ q#echo \{foo,bar}#,	['echo', '{foo,bar}'],	'GLOB_QUOTE'          ],
+	[ q#echo \\\\#,		['echo', '\\'],		'escape throughput'	],
+	[ q#echo '\\\\'#,	['echo', '\\\\'],	'escape throughput 1'	],
+	[ q#echo {foo,bar}#,	[qw/echo foo bar/],	'GLOB_BRACE'		],
+	[ q#echo \{foo,bar}#,	['echo', '{foo,bar}'],	'GLOB_QUOTE'		],
+	[ q#     #,		[],			'empty command'		],
+	[ q#alias r='fc -s'#,	['alias', 'r=fc -s'],	'quoted assignment'	],
+	[ q#print ->ls()#,	['print', '->ls()'],	'-> isn\'t redir'	],
+	[ q#print dus => ja#,   [qw/print dus => ja/],	'=> isn\'t redir'	],
+	[ q#echo 0#,		[qw/echo 0/],		'zero value'		],
 );
 
 import Test::More tests =>
@@ -62,7 +66,7 @@ import Test::More tests =>
 	+ scalar(@test_data2)
 	+ scalar(@test_data3) + 1;
 
-my $collection = read_file('./share/data/grammar.pl');
+my $collection = \%Zoidberg::_grammars;
 my $parser = Zoidberg::StringParser->new($collection->{_base_gram}, $collection);
 
 print "# script grammar\n";
@@ -79,16 +83,25 @@ for my $data (@test_data2) {
         is_deeply(\@words, $data->[1], $data->[2]);
 }
 
-print "# both grammars and parse_words\n";
+print "# 3 grammars and parse_words\n";
 
-{
+{ # $Zoidberg::StringParser::DEBUG++;
 	no warnings; # yeah yeah, somethings are undefined 
-	my $z = bless {}, 'Zoidberg';
+	my $z = bless { stringparser => $parser }, 'Zoidberg';
+	my $meta = { map {($_ => 1)} @Zoidberg::_parser_settings };
 	for my $data (@test_data3) {
 		my ($block) = $parser->split('script_gram', $data->[0]);
+		#use Data::Dumper; print 'words', Dumper $block;
 		my @words = $parser->split('word_gram', $$block);
-		(undef, @words) = @{ $z->parse_words([{}, @words]) };
-		is_deeply(\@words, $data->[1], $data->[2]);
+		#use Data::Dumper; print 'words', Dumper \@words;
+		@words = $parser->split('redirect_gram', \@words);
+		#use Data::Dumper; print 'words', Dumper \@words;
+		if (grep {! ref $_} @words) { ok(0, $data->[2]) } # not ok
+		else {
+			@words = map $$_, @words;
+			(undef, @words) = @{ $z->parse_words([$meta, @words]) };
+			is_deeply(\@words, $data->[1], $data->[2]);
+		}
 	}
 }
 

@@ -18,7 +18,7 @@ my ($rc, $data) = (
 my %conf = (
 	rcfiles   => "[$rc, \"\$ENV{HOME}/.zoidrc\", \"\$ENV{HOME}/.zoid/zoidrc\"]",
 	data_dirs => "[\"\$ENV{HOME}/.zoid\", $data]",
-	cache_dir => '$ENV{XDG_CACHE_HOME} || "$ENV{HOME}/.cache"'
+#	cache_dir => '$ENV{XDG_CACHE_HOME} || "$ENV{HOME}/.cache"'
 );
 
 my ($from, $to) = (
@@ -34,9 +34,7 @@ while (<IN>) {
 	print OUT $_;
 }
 
-print OUT "our %_settings = ( # default settings\n";
 print OUT "\t$_ => $conf{$_},\n" for keys %conf;
-print OUT ");\n";
 
 while (<IN>) { print OUT $_ }
 

@@ -1,19 +1,17 @@
 --- #YAML:1.0
 name: Zoidberg
-version: 0.55
+version: 0.90
 author: Jaap Karssenberg <pardus@cpan.org>
-abstract: a modular perl shell
+abstract: A modular perl shell
 license: perl
 requires:
   AutoLoader: 0
-  Carp: 0
   Cwd: 0
   Data::Dumper: 0
   Env: 0
   Exporter::Tidy: 0
   File::Glob: 0
   File::Spec: 0
-  IO::File: 0
   POSIX: 0
   perl: 5.6.1
 recommends:
@@ -29,10 +27,10 @@ dynamic_config: {}
 provides:
   Bundle::Zoidberg:
     file: lib/Bundle/Zoidberg.pm
-    version: 0.02
+    version: 0.04
   Zoidberg:
     file: lib/Zoidberg.pm
-    version: 0.55
+    version: 0.90
   Zoidberg::Contractor:
     file: lib/Zoidberg/Contractor.pm
   Zoidberg::DispatchTable:
@@ -43,8 +41,6 @@ provides:
     file: lib/Zoidberg/Fish.pm
   Zoidberg::Fish::Commands:
     file: lib/Zoidberg/Fish/Commands.pm
-  Zoidberg::Fish::Help:
-    file: lib/Zoidberg/Fish/Help.pm
   Zoidberg::Fish::Intel:
     file: lib/Zoidberg/Fish/Intel.pm
   Zoidberg::Fish::Log:
@@ -57,6 +53,9 @@ provides:
     file: lib/Zoidberg/Contractor.pm
   Zoidberg::PluginHash:
     file: lib/Zoidberg/PluginHash.pm
+  Zoidberg::SettingsHash:
+    file: lib/Zoidberg.pm
+    version: 0.90
   Zoidberg::Shell:
     file: lib/Zoidberg/Shell.pm
   Zoidberg::Shell::JobsArray:
@@ -65,12 +64,6 @@ provides:
     file: lib/Zoidberg/Shell.pm
   Zoidberg::StringParser:
     file: lib/Zoidberg/StringParser.pm
-  Zoidberg::StringParser::array:
-    file: lib/Zoidberg/StringParser.pm
-  Zoidberg::StringParser::grammar:
-    file: lib/Zoidberg/StringParser.pm
-  Zoidberg::StringParser::hash:
-    file: lib/Zoidberg/StringParser.pm
   Zoidberg::Utils:
     file: lib/Zoidberg/Utils.pm
   Zoidberg::Utils::Error:
@@ -78,6 +71,8 @@ provides:
   Zoidberg::Utils::FileSystem:
     file: lib/Zoidberg/Utils/FileSystem.pm
     version: cvs
+  Zoidberg::Utils::GetOpt:
+    file: lib/Zoidberg/Utils/GetOpt.pm
   Zoidberg::Utils::Output:
     file: lib/Zoidberg/Utils/Output.pm
 generated_by: Module::Build version 0.25

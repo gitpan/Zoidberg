@@ -1,5 +1,5 @@
 package # hide from pause indexer
-	MyBuilder;
+	ModuleBuildZoid;
 
 use strict;
 
@@ -141,7 +141,7 @@ sub install_base_relative { # Added etc, share and doc paths + AppDir hack
 
 =head1 NAME
 
-MyBuilder
+ModuleBuildZoid - a custom subclass of Module::Build
 
 =head1 DESCRIPTION
 

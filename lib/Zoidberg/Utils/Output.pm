@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils::Output;
 
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 use strict;
 use Data::Dumper;
@@ -27,40 +27,54 @@ our %colours = ( # Copied from Term::ANSIScreen
 	'white'      => 37,   'on_white'   => 47,
 );
 
-sub output { typed_output('output', @_) }
+sub output {
+	if ($Zoidberg::CURRENT->{_builtin_output}) { # capturing output from builtin
+		my $out = $Zoidberg::CURRENT->{_builtin_output};
+		for (@_) {
+			unless (ref $_) {
+				if (@$out and !ref $$out[-1]) { $$out[-1] .= $_ }
+				else { push @$out, $_ }
+			}
+			elsif (ref($_) eq 'ARRAY' and ! grep {ref $_} @$_) {
+				push @$out, @$_;
+			}
+			else { push @$out, $_ }
+		}
+		return 1;
+	}
+	typed_output('output', @_);
+}
 
-sub message { typed_output('message', @_) }
+sub message {
+	return 1 if ! $Zoidberg::CURRENT->{settings}{interactive};
+	typed_output('message', @_);
+}
 
 sub debug {
 	my $class = caller;
 	no strict 'refs';
-	return unless $Zoidberg::CURRENT->{settings}{debug} || ${$class.'::DEBUG'};
-	my @caller = caller;
-	{
-		no strict 'refs';
-		@caller = caller(${ $caller[0].'::ERROR_CALLER' }) 
-			if ${ $caller[0].'::ERROR_CALLER' };
-	}
+	#local $Data::Dumper::Maxdepth = 2;
+	return 1 unless $Zoidberg::CURRENT->{settings}{debug} || ${$class.'::DEBUG'};
 	my $fh = select STDERR;
+	my @caller = caller;
 	typed_output('debug', "$caller[0]: $caller[2]: ", @_);
 	select $fh;
 	1;
 }
 
 sub complain { # strip @INC: for little less verbose output
-	@_ = ($@) || return 0 unless @_;
+	return 0 unless @_ || $@;
+	my @error = @_ ? (@_) : ($@);
 	my $fh = select STDERR;
-	my @copy = @_;
-	typed_output('error', map {s/\(\@INC contains\: (.*?)\)\s*//g; $_} @copy);
+	typed_output('error', map {s/\(\@INC contains\: (.*?)\)\s*//g; $_} @error);
 	select $fh;
 	1;
 }
 
-sub typed_output {	# TODO term->no_color bitje s{\e.*?m}{}g
+sub typed_output {
 	my $type = shift;
 	my @dinge = @_;
 	return unless @dinge > 0;
-#	$self->silent unless -t STDOUT && -t STDIN; # FIXME what about -p ??
 
 	$type = $Zoidberg::CURRENT->{settings}{output}{$type} || $type;
 	return 1 if $type eq 'mute';
@@ -81,7 +95,7 @@ sub typed_output {	# TODO term->no_color bitje s{\e.*?m}{}g
 				print $_->stringify(format => 'gnu');
 			}
 		}
-		elsif (ref($_) =~ 'Zoidberg') {
+		elsif (ref($_) =~ /Zoidberg/) {
 			 print 'Cowardly refusing to dump object of class '.ref($_)."\n";
 		}
 		else { print map {s/^\$VAR1 = //; $_} Dumper $_ }
@@ -159,7 +173,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Utils::Output - zoidberg output routines
+Zoidberg::Utils::Output - Zoidberg output routines
 
 =head1 SYNOPSIS
 
@@ -226,8 +240,7 @@ modify it under the same terms as Perl itself.
 =head1 SEE ALSO
 
 L<Zoidberg>,
-L<Zoidberg::Utils>,
-L<http://zoidberg.sourceforge.net>
+L<Zoidberg::Utils>
 
 =cut
 

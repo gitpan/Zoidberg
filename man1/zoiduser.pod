@@ -15,14 +15,12 @@ these are ordinary perl scripts that can interface with zoid.
 In general data files are found in F<~/.zoid/>, F</usr/local/share/zoid/>
 or F</usr/share/zoid/> these are called 'data_dirs'.
 
-Of the data dirs the sub dir F<data> contains some hashes with general config values,
-here the most important is the F<settings> file because this is the first file read, 
-it is evaluated before anything else, even before the run scripts. The hash defined
-by this file is the settings hash which contains all your run time configuration.
-
 The sub dir F<plugins> can contains config files
 for various plugins or directories with all files belonging to a plugin.
 The following plugins are included in the standard distribution:
+
+FIXME tell which builtins are provided by each plugin
+FIXME tell commands provided by Zoidberg.pm
 
 =over 4
 
@@ -30,6 +28,11 @@ The following plugins are included in the standard distribution:
 
 Ships a collection of standard builtin commands that one 
 would expects to have in a shell.
+
+Provides: B<cd>, B<pwd>, B<exec>, B<eval>, B<source>, B<true>, B<false>,
+B<newgrp>, B<umask>, B<read>, B<wait>, B<fg>, B<bg>, B<kill>, B<jobs>,
+B<set>, B<export>, B<setenv>, B<unsetenv>, B<alias>, B<unalias>, B<dirs>,
+B<popd>, B<pushd> and B<symbols>
 
 =item Log
 
@@ -39,9 +42,17 @@ Keeps a history of your doings.
 
 Takes care of tab expansion.
 
+Provides: B<complete>
+
 =item ReadLine
 
 Tries to load a module from the L<Term::ReadLine> family of modules.
+
+Provides: B<readline>, B<readmore> and B<select>
+
+=item CPAN
+
+Adds a 'CPAN mode' which uses CPAN::Shell.
 
 =back
 
@@ -140,8 +151,7 @@ and.
 
 At last for each of these sub-blocks a context is decided like:
 
-	SH	- sh like syntax (only very basic statements)
-	CMD	- builtin commands
+	CMD	- commands sytax (like sh syntax)
 	PERL	- blocks of perl code
 
 Each is executed differently by a suitable subroutine or application, and all
@@ -160,21 +170,21 @@ To disable hardcoded contexts see the L<_no_hardcoded_context> setting.
 
 Perl is the default context if the whole block is between curly brackets, when
 the first non-whitespace char of the block matches $,@ or % , 
-when the first word seems to be a subroutine because it has parenthis
+when the first word seems to be a subroutine because it has parenthesis
 or when the first word is a perl keyword like 'if', 'while', 'for' etc.
 These keywords can be configured with the array in C<< ->{settings}{perl_keywords} >>
 
 	# perl because of reserved word
-	zoid> for (0..3) { sleep 1; print $_ . "\n" }
+	zoid$ for (0..3) { sleep 1; print $_ . "\n" }
 	
 	# perl because of dollar sign
-	zoid> $self->{settings}{naked_zoid}++
+	zoid$ $self->{settings}{naked_zoid}++
 	
-	# perl because of parentheses
-	zoid> ls(qw/-al/)
+	# perl because of parenthesis
+	zoid$ ls(qw/-al/)
 	
 	# perl because of curlies
-	zoid> { open TEST, '<test.dat' }
+	zoid$ { open TEST, '<test.dat' }
 
 Perl code can have modifiers after the last curly. Currently supported are :
 
@@ -184,28 +194,28 @@ Perl code can have modifiers after the last curly. Currently supported are :
 	z: use strict, no strict is the default
 	
 	# example
-	zoid> ls -al | { s/^(d)\S+/DIR:/ }g
+	zoid$ ls -al | { s/^(d)\S+/DIR:/ }g
 
 Zoidberg applies a bit of source filtering is applied to the perl code.
 This renders a lonesome dereference operator C<< -> >> into C<< $self-> >>.
 
 	# Thus
-	zoid> ->kill('1230')
+	zoid$ ->kill('1230')
 	
 	# is the same as
-	zoid> $self->kill('1230')
+	zoid$ $self->kill('1230')
 
 Also variables in all capitals get translated to environment variables,
 arrays in all capitals cause a tied array to be imported from L<Env>.
 
 	# Thus
-	zoid> print $PATH
+	zoid$ print $PATH
 	
 	# is the same as
-	zoid> print $ENV{PATH}
+	zoid$ print $ENV{PATH}
 	
 	# and this also works
-	zoid> push @PATH, '/usr/X11R6/bin/'
+	zoid$ push @PATH, '/usr/X11R6/bin/'
 
 To avoid this source filtering you can use the C<perl{ ... }> syntax.
 ( Although once a tied array is imported, it's there. )
@@ -214,32 +224,32 @@ Non-existent sub routines are AUTOLOAD'ed to be built-in or system commands,
 alias- and other expansions apply.
 
 	# Thus
-	zoid> ls('*')
+	zoid$ ls('*')
 	# is perl, but does exactly the same as
-	zoid> ls *
+	zoid$ ls *
 
 When such a AUTOLOAD'ed routine is used in scalar or list context it's output will
 be captured and returned as scalar or list.
 
 	# examples
-	zoid> ls($_) for cat('MANIFEST')
-	zoid> mplayer( locate('blinkenlights.mpg') )
+	zoid$ ls($_) for cat('MANIFEST')
+	zoid$ mplayer( locate('blinkenlights.mpg') )
 
 For this "capturing mode" the record separator (C<$/>) can be set by using C<$ENV{RS}>.
 
-=item SH
+=item CMD
 
 This context is intended to make the Zoidberg shell a little friendlier to
 people used to shells like bash(1). Also this syntax requires less chars to
-execute a system command. Only the most basic stuff is implemented, you should 
+execute a system or built-in command. Only the most basic stuff is implemented, you should 
 use perl for things like flow control. Since the default syntax for pipelines and 
 logic lists is also the same as in "sh like" shells a lot of simple constructs
 will work as expected.
 
 	# this does what it would in /.*sh/
-	zoid> ls -al | grep -v CVS | grep ^d > dirs.txt
+	zoid$ ls -al | grep -v CVS | grep ^d > dirs.txt
 
-I< Be aware redirections ain't fully supported >
+I< Be aware redirections ain't fully supported yet >
 
 Currently only the following operators are defined for redirections :
 '>', '<' and '>>'.
@@ -261,20 +271,15 @@ array elements.
 To avoid conflicts with things like the 'user@host' format used by many 
 applications this special case can only be used as a separate unquoted word.
 
-	zoid> echo $PATH
+	zoid$ echo $PATH
 	/bin:/usr/bin/:/usr/local/bin
-	zoid> echo $PATH[2]
+	zoid$ echo $PATH[2]
 	/usr/local/bin
-	zoid> echo @PATH
+	zoid$ echo @PATH
 	/bin /usr/bin/ /usr/local/bin
 
-=item CMD
-
-This context is not really distinguishable from the SH context, but it is used
-for builtin commands (perl subs that fake to be a system command). There was
-need for a separate context for this so built-ins won't have to fork (unless used
-in a pipeline) and thus can alter the parent environment. Commands are housed in
-the hash C<< ->{commands} >> and plugins can add to these very easily.
+If the command matches an entry in the C<$$shell{commands}> hash, it is taken to be
+a built-in command and the job is not forked to a seperate process.
 
 =back
 
@@ -286,32 +291,32 @@ FIXME comment on aliases
 
 =head3 Examples
 
-Some system binary, context SH
+Some system command:
 
-	zoid> mplayer -vo sdl -ao sdl my_favorite_movie.avi
+	zoid$ mplayer -vo sdl -ao sdl my_favorite_movie.avi
 
-Perl code between brackets, context PERL
+Perl code between brackets:
 
-	zoid> { print "This is perl code." }
+	zoid$ { print "This is perl code." }
 
-A subroutine call to an object loaded in Zoidberg, context PERL but with a
-little source filtering applied.
+A subroutine call to an object loaded in Zoidberg, 
+perl code with a little source filtering:
 
-	zoid> ->Help->help
+	zoid$ ->Help->help
 	 -or-
-	zoid> ->Help->help('objects')
+	zoid$ ->Help->help('objects')
 
-A builtin command faking to be executable, context CMD
+A builtin command:
 
-	zoid> cd ..
+	zoid$ cd ..
 
 A custom syntax (SQL) enforced on a block:
 
-	zoid> sql{ SELECT * FROM users WHERE clue > 0 }
+	zoid$ sql{ SELECT * FROM users WHERE clue > 0 }
 
 And as said all of these can be combined:
 
-	zoid> cd /usr/local && { print "This is perl code." } | less || sql{SELECT * FROM users WHERE clue > 0}
+	zoid$ cd /usr/local && { print "This is perl code." } | less || sql{SELECT * FROM users WHERE clue > 0}
 
 This will first execute C<cd /usr/local>, on succes followed by C<{ print "This is perl code." } | less>
 and if one of these failed we get to see the result of C<< sql{SELECT * FROM users WHERE clue > 0} >>
@@ -334,6 +339,6 @@ prevent globs from accidentally adding switches to a command.
 
 =head1 SEE ALSO
 
-L<perl(1)>, L<zoiddevel(1)>, L<zoidfaq(1)>,
+L<perl>(1), L<zoiddevel>(1), L<zoidfaq>(1),
 L<http://zoidberg.sourceforge.net>
 

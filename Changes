@@ -1,7 +1,117 @@
 Revision history for Zoidberg - a modular perl shell
 <http://zoidberg.sourceforge.net>
 
-     Sun Jul  4
+0.90 Mon Sep  6 2004
+        This release is going to amsterdam.pm for demonstration.
+	It is supposed to be the first release candidate for a
+	stable 1.00 version (but not all builtins are done yet).
+        - Refactored the settings to control parser behaviour;
+        all kinds of blocks can be wrapped in array refs again
+
+     Sun Sep  5
+        - Modified the format of redirections in the parse tree
+	- {error} now also contains the signal that caused it
+        - made routines in Z:Shell not modify $$shell{error}
+
+     Sat Sep  4
+        - Fixed bug with multiline entries in the history file
+	- PWD is now also logged for interactive use
+
+     Fri Sep  3
+        - Blocks now also can be anonymous subroutines
+	- Added --plug option to fluff
+	- Mode can be a class now
+
+     Wed Sep  1
+        - Tweaked the parsing of redirections
+	- Made output() handle capturing more consequently
+	- Added command substitution for `..` $(..) and @(..)
+
+     Wed Aug 11
+        - Added the parser stack for word_expansion again
+	- Renamed {contexts} to {parser} because it contains more then just
+	contexts
+	- Renamed {parent} to {shell} because I think its clearer
+
+     Tue Aug 10
+        - Added the 'symbols' builtin to Commands - copied idea from Psh
+	- Removed some deprecated devel builtins from Commands
+	- Removed Help plugin, and merged the 'help' builtin in Commands
+	- Added the 'which' builtin - copied idea from Psh
+
+     Sun Aug  8
+        - Added autoloading of contexts (and thus modes)
+	- Several small fixes and clean ups
+	- Added shell_job() to skip parsing for a simple command
+
+     Sat Aug  7
+        - Added 'completion_function' hook for contexts to define
+	- Removed currying feature from DispatchTable
+	- Made fluff use our own GetOpt
+	- Added the CPAN plugin
+
+     Tue Aug 03
+        - Updated the Fish api
+
+     Mon Aug 02
+        - Made some obscure changes in the StringParser internals, it doesn't use
+	a tied grammar anymore, hope it performs better now
+	- Added 'builtin' and 'command' builtins to Z:Shell and made some changes
+	in the parse_block() logic to optimise these uses
+
+     Sat Aug 31
+        - Removed 'call' events in favour of using builtin commands for this
+	- Made the 'output' routine capture output of builtin commands
+	- Added parser flow chart to zoiddevel man page
+
+     Fri Jul 30
+	- Stripped down lot of the StringParser interface
+        - Added glob arguments and a 'path2hashref' routine to GetOpt
+	- Simplified the Utils autoloading mechanism
+
+     Wed Jul 28
+        - Finished Zoidberg::Utils::GetOpt base functionality
+
+     Tue Jul 27
+        - Added sub shells, it uses the 'SUBZ' context
+	- Removed 'SH' context in favour of 'CMD' context with the 'fork_job' bit set
+	- Removed PATH caching, it isn't needed anmore since execvp knows the path
+	this means no cache dir is used anymore
+	- Added logic for redirection operators '>|', '>&', and  '<&'
+
+     Sun Jul 25
+        - Added GetOpt to the Utils collection
+	- Removed data/settings.pl and data/grammar.pl and inlined their
+	contents in Zoidberg.pm
+	- Removed 'load_on_init' config for plugins, just use the 'loadrc' event
+	- gave 'plug' a '--list' option
+
+     Mon Jul 19
+        - Made Intel use Autoload
+	- Added completion for the 'make' and 'man' commands
+
+     Sun Jul 20
+        - Added Zoidberg::SettingsHash to Zoidberg.pm to tie the setting hash
+	modifying a setting now generates an event
+	- Added events for mode changes and plugin loading/deleting
+
+     Mon Jul 12
+        - Made PluginHash understand bare '.pm' files as plugins without hooks
+	- Made PluginHash understad 'settings', 'aliases' and 'context' in a PluginConf
+	- Added 'plug' and 'unplug' builtins to control plugin loading
+	- Fixed zoidcmd string so aliases work for non-word syntax
+	- Added the 'mode' feature to switch default contexts
+
+     Sun Jul 11
+        - Changed util funtion  "abs_path()" into "path()"
+	- Rewrote directory history feature in the 'cd' builtin
+
+     Thu Jul  8
+        - Added overload function for the array-dereference operator for
+	the return value of shell()
+	- Added a 'loadrc' event
+
+0.55 Sun Jul  4 2004
         - Added a tied @JOBS for a perlish job-/list-control interface
 
      Fri Jul  2

@@ -1,10 +1,8 @@
-
-use Zoidberg::Shell qw/AUTOLOAD/;
-
 $VAR1 = {
 	module => 'Zoidberg::Fish::ReadLine',
-	events => {
+	commands => {
 		readline => 'wrap_rl',
 		readmore => 'wrap_rl_more',
 	},
+	export => ['select'],
 }

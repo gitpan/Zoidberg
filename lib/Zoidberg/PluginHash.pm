@@ -1,6 +1,6 @@
 package Zoidberg::PluginHash;
 
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 use strict;
 use Zoidberg::Utils qw/:default read_file merge_hash list_dir/;
@@ -35,8 +35,7 @@ sub FETCH {
 
 sub STORE {
 	my ($self, $name, $ding) = @_;
-	my $data = ref($ding) ? $ding : read_file($ding);
-	$$data{config_file} = $ding unless ref($ding);
+	my $data = ref($ding) ? $ding : { config_file => $ding, %{read_file($ding)} } ;
 
 	if (exists $$data{object}) {
 		$$data{object}{zoidname} = $name
@@ -44,7 +43,13 @@ sub STORE {
 		$self->[0]{$name} = $$data{object}
 	}
 
-	# settings
+	# settings && aliases
+	for my $t (qw/settings aliases/) {
+		$$self[2]{$t}{$_} = $$data{$t}{$_} for keys %{$$data{$t}};
+		delete $$data{$t};
+	}
+
+	# config
 	$self->[2]{settings}{$name} = merge_hash(
 		$$data{config},
 		$self->[2]{settings}{$name}
@@ -52,8 +57,10 @@ sub STORE {
 	delete $$data{config};
 	
 	# commands
-	$$data{commands}{$_} =~ s/^(\w)/->$name->$1/
-		for keys %{$$data{commands}};
+	for (keys %{$$data{commands}}) {
+		$$data{commands}{$_} =~ s/^(\w)/->$name->$1/
+			unless ref $$data{commands}{$_};
+	}
 	if (exists $$data{export}) {
 		$$data{commands}{$_} = "->$name->$_"
 			for @{$$data{export}};
@@ -66,8 +73,10 @@ sub STORE {
 	delete $$data{commands};
 
 	# events
-	$$data{events}{$_} =~ s/^(\w)/->$name->$1/
-		for keys %{$$data{events}};
+	for (keys %{$$data{events}}) {
+		$$data{events}{$_} =~ s/^(\w)/->$name->$1/
+			unless ref $$data{events}{$_};
+	}
 	if (exists $$data{import}) {
 		$$data{events}{$_} = "->$name->$_"
 			for @{$$data{import}};
@@ -78,26 +87,32 @@ sub STORE {
 	}
 	delete $$data{events};
 
+	# parser
+	if (exists $$data{parser}) {
+		require Zoidberg::Fish;
+		my @c = (ref($$data{parser}) eq 'ARRAY') ? (@{$$data{parser}}) : ($$data{parser});
+		Zoidberg::Fish::add_context({zoidname => $name, shell => $$self[2]}, $_) for @c;
+		delete $$data{parser};
+	}
+
 	$self->[1]{$name} = $data;
-	$self->load($name) if $$data{load_on_init};
 }
 
-sub FIRSTKEY { my $a = scalar keys %{$_[0][1]}; each %{$_[0][1]} }
+our @_keys;
 
-sub NEXTKEY { each %{$_[0][1]} }
+sub FIRSTKEY { @_keys = keys %{$_[0][1]}; shift @_keys }
+
+sub NEXTKEY { shift @_keys }
 
 sub EXISTS { exists $_[0][1]->{$_[1]} }
 
-sub DELETE {
+sub DELETE { # leaves config intact
 	my ($self, $key) = @_;
-	$self->[0]{$key}->round_up()
-		if ! defined wantarray
-		and ref $self->[0]{$key}
-		and isa $self->[0]{$key}, 'Zoidberg::Fish';
-	my $re = delete $self->[1]{$key};
-	$$re{object} = delete $self->[0]{$key};
-	$$re{$_} = wipe($self->[2]{$_}, $key) for qw/events commands/;
-	return $re;
+	$$self[0]{$key}->round_up() if isa $self->[0]{$key}, 'Zoidberg::Fish';
+	delete $$self[0]{$key};
+	wipe($$self[2]{$_}, $key) for qw/events commands/;
+	$$self[2]->broadcast('unplug_'.$key);
+	return $$self[1]{$key};
 }
 
 sub CLEAR { $_[0]->DELETE($_) for keys %{$_[0][1]} }
@@ -111,60 +126,65 @@ sub hash {
 	for my $dir (map "$_/plugins", @{$self->[2]{settings}{data_dirs}}) {
 		next unless -d $dir;
 		for (list_dir($dir)) {
+			/^(\w+)/ || next;
+			my ($name, $ding) = ($1, "$dir/$_");
+			next if exists $$self[1]{$name};
 			if (-d "$dir/$_") {
-				/^(\w+)/ || next;
 				my ($conf) = grep /^PluginConf/, list_dir("$dir/$_");
-				next unless $conf and ! exists $self->[1]{$1};
+				next unless $conf;
 				unshift @INC, "$dir/$_";
 				unshift @{$self->[2]{settings}{data_dirs}}, "$dir/$_/data"
 					if -d "$dir/$_/data";
-				eval { $self->STORE($1, "$dir/$_/$conf") };
-				complain if $@;
+				$ding = "$dir/$_/$conf";
 			}
-			else {
-				/^(\w+)/ || next;
-				next if exists $self->[1]{$1};
-				eval { $self->STORE($1, "$dir/$_") };
-				complain if $@;
+			elsif (/.pm$/) {
+				my $class = $_;
+				$class =~ s/.pm$//;
+				$ding = {module => $class, pmfile => "$dir/$_"};
 			}
+			eval { $self->STORE($name, $ding) };
+			complain if $@;
 		}
 	}
 }
 
 sub load {
-	my ($self, $zoidname) = @_;
-	my $class = $self->[1]{$zoidname}{module};
-	my @args =  $self->[1]{$zoidname}{init_args} 
-		? (@{$self->[1]{$zoidname}{init_args}}) : () ;
-
+	my ($self, $zoidname, @args) = @_;
+	my $class = $$self[1]{$zoidname}{module};
 	unless ($class) { # FIXME is this allright and does it belong in this package ?
 		$self->[0]{$zoidname} = {
-			parent => $self->[2],
+			shell => $self->[2],
 			zoidname => $zoidname,
 			settings => $self->[2]->{settings},
 			config => $self->[2]->{settings}{$zoidname},
 		};
 		debug "Loaded stub plugin $zoidname";
+		$$self[2]->broadcast('plug_'.$zoidname);
 		return $self->[0]{$zoidname};
 	}
 
-	debug "Going to load plugin $zoidname of class $class";
-	eval "require $class" and eval {
-		if ($class->isa('Zoidberg::Fish')) {
+	my $req = $class;
+	$req = '\''.$$self[1]{$zoidname}{pmfile}.'\'' if exists $$self[1]{$zoidname}{pmfile};
+	debug "Going to load plugin $zoidname of class $class, requiring $req";
+	eval "require $req";
+	eval {
+		if (isa $class, 'Zoidberg::Fish') {
 			$self->[0]{$zoidname} = $class->new($self->[2], $zoidname);
 			$self->[0]{$zoidname}->init(@args);
 		}
 		elsif ($class->can('new')) { $self->[0]{$zoidname} = $class->new(@args) }
 		else { error "Module $class doesn't seem to be Object Oriented" }
-	};
+	} unless $@;
 	if ($@) {
 		$@ =~ s/\n$/ /;
 		complain "Failed to load class: $class ($@)\nDisabling plugin: $zoidname";
 		$self->DELETE($zoidname);
+		delete $$self[1]{$zoidname};
 		return undef;
 	}
 	else {
 		debug "Loaded plugin $zoidname";
+		$$self[2]->broadcast('plug_'.$zoidname);
 		return $self->[0]{$zoidname};
 	}
 }
@@ -173,7 +193,7 @@ sub round_up {
 	my $self = shift;
 	for (keys %{$$self[0]}) {
 		$$self[0]{$_}->round_up(@_)
-			if $$self[0]{$_}->isa('Zoidberg::Fish');
+			if isa $$self[0]{$_}, 'Zoidberg::Fish';
 	}
 }
 
@@ -183,13 +203,13 @@ __END__
 
 =head1 NAME
 
-Zoidberg::PluginHash - magic plugin loader
+Zoidberg::PluginHash - Magic plugin loader
 
 =head1 SYNOPSIS
 
 	use Zoidberg::PluginHash;
 	my %plugins;
-	tie %plugins, q/Zoidberg::PluginHash/, $parent;
+	tie %plugins, q/Zoidberg::PluginHash/, $shell;
 	$plugins{foo}->bar();
 
 =head1 DESCRIPTION
@@ -201,16 +221,12 @@ interface. You should regard the tied hash as a simple hash with object
 references. You can B<NOT> store objects in the hash, all stored values 
 are expected to be either a filename or a hash with meta data.
 
-The C<$parent> object is expected to be a hash containing at least the array
-C<< $parent->{settings}{data_dirs} >> which contains the search path for 
+The C<$shell> object is expected to be a hash containing at least the array
+C<< $shell->{settings}{data_dirs} >> which contains the search path for 
 plugin meta data. Config data for plugins is located in 
-C<< $parent->{settings}{plugin_name} >>. Commands and events as defined by 
-the plugins are stored in C<< $parent->{commands} >> and C<< $parent->{events} >>.
+C<< $shell->{settings}{plugin_name} >>. Commands and events as defined by 
+the plugins are stored in C<< $shell->{commands} >> and C<< $shell->{events} >>.
 These two hashes are expected to be tied with class L<Zoidberg::DispatchTable>.
-
-In theory you can move plugins using the ref returned after L<delete>ing them
-from the hash. Practicly only the most simple plugins can be moved to an other
-parent object.
 
 B<Zoidberg::PluginHash> depends on L<Zoidberg::Utils> for reading files of various 
 content types. Also it has special bindings for initialising L<Zoidberg::Fish> objects.
@@ -228,8 +244,7 @@ modify it under the same terms as Perl itself.
 L<Zoidberg>,
 L<Zoidberg::Utils>,
 L<Zoidberg::Fish>,
-L<Zoidberg::DispatchTable>,
-L<http://zoidberg.sourceforge.net>
+L<Zoidberg::DispatchTable>
 
 =cut
 

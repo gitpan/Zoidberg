@@ -1,58 +1,31 @@
 
-package Fake::Zoid;
-
-use Zoidberg::Utils qw/read_file/;
-use Zoidberg::StringParser;
-
-sub new {
-	my $self = {};
-	my $coll = read_file('./share/data/grammar.pl');
-	$$self{stringparser} = Zoidberg::StringParser->new($$coll{_base_gram}, $coll);
-	bless $self;
-}
-
-sub list_clothes { [qw/{settings} dus/] }
-
-package main;
-
-use Zoidberg::Eval;
+use Zoidberg;
 require Test::More;
 
 my @test_data1 = (
 	['->dus', '$shell->dus', 'basic'], # 1
 	['$f00->dus', '$f00->dus', 'normal arrow'], # 2
-	['->Plug', '$shell->{objects}{Plug}', 'objects'], # 3
-	['->{Var}', '$shell->{vars}{Var}', 'vars'], # 4
+	['->Plug', '$shell->Plug', 'objects'], # 3
 	[
 		q/print 'OK' if ->{settings}{notify}/,
 		q/print 'OK' if $shell->{settings}{notify}/,
 		'old quoting bug'
-	], # 5
-	['print $PATH, "\n"', 'print $ENV{PATH}, "\n"', 'env variabele'], # 6
-);
-my @test_data2 = (
-	['->Plug', '$shell->Plug', 'naked objects'], # 7
-	['->{Var}', '$shell->{Var}', 'naked vars'], # 8
+	], # 6
+	['print $PATH, "\n"', 'print $ENV{PATH}, "\n"', 'env variabele'], # 7
+	['->->->\'->->->\'', '$shell->$shell->$shell->\'->->->\'','rubish 1'], # 8
+	['$$@dus$$', '$$@dus$$', 'rubish 2'], # 9
 );
 
-import Test::More tests => @test_data1 + @test_data2;
+import Test::More tests => scalar @test_data1 ;
 
-my $zoid = Fake::Zoid->new;
-my $eval = Zoidberg::Eval->_new($zoid);
+my $zoid = {};
+my $coll = \%Zoidberg::_grammars;
+$$zoid{stringparser} = Zoidberg::StringParser->new($$coll{_base_gram}, $coll);
+bless $zoid, 'Zoidberg';
 
 for (@test_data1) {
-	my $dezoid = $eval->_dezoidify($$_[0]);
+	my (undef, $dezoid) = $zoid->_expand_zoid({}, $$_[0]);
 	print "# $$_[0] => $dezoid\n";
-	ok($dezoid eq $$_[1], $$_[2]);
+	ok($dezoid =~ /\Q$$_[1]\E/, $$_[2]);
 }
-
-$$zoid{settings}{naked_zoid}++;
-
-for (@test_data2) {
-	my $dezoid = $eval->_dezoidify($$_[0]);
-	print "# $$_[0] => $dezoid\n";
-	ok($dezoid eq $$_[1], $$_[2]);
-}
-
-# TODO tests for "magic char"
 

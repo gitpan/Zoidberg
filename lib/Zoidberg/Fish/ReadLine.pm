@@ -1,12 +1,12 @@
 package Zoidberg::Fish::ReadLine;
 
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 use strict;
 use vars qw/$AUTOLOAD $PS1 $PS2/;
-use Carp;
 use Zoidberg::Fish;
-use Zoidberg::Utils qw/:error message debug/; # don't import output cause RL:Z has it's own
+use Zoidberg::Utils
+	qw/:error message debug/; # T:RL:Zoid also has output()
 
 our @ISA = qw/Zoidberg::Fish/;
 
@@ -22,13 +22,14 @@ sub init {
 		eval 'require Term::ReadLine::Zoid';
 		unless ($@) { # load RL zoid
 			$ENV{PERL_RL} = 'Zoid' unless defined $ENV{PERL_RL};
-			push @ISA, 'Term::ReadLine::Zoid';
+			$ENV{PERL_RL} =~ /^(\S+)/;
+			push @ISA, 'Term::ReadLine::'.$1; # could be a subclass of T:RL:Zoid
 			$self->_init('zoid');
 			@$self{'rl', 'rl_z'} = ($self, 1);
-			$$self{default_mode} = __PACKAGE__;
 			$$self{config}{PS2} = \$PS2;
 			$$self{config}{RPS1} = \$RPS1;
 			# FIXME support RL:Z shell() option
+			# FIXME what if config/PS1 was allready set to a string ?
 		}
 		else {
 			debug $@;
@@ -45,16 +46,24 @@ sub init {
 	}
 	## hook history
 	if (my ($thing) = grep { $$self{rl}->can($_) } qw/SetHistory AddHistory addhistory/) {
-		my @hist = $self->call('read_history');
+		my @hist = $$self{shell}->builtin('history');
 		if (@hist) {
-			if ($thing eq 'SetHistory') { $$self{rl}->SetHistory(@hist) }
+			if ($thing eq 'SetHistory') { $$self{rl}->SetHistory(reverse @hist) }
 			else { $$self{rl}->$thing($_) for @hist }
 		}
 	}
 
 	## completion
 	my $compl = $$self{rl_z} ? 'complete' : 'completion_function' ;
-	$$self{rl}->Attribs->{completion_function} = sub { return $self->call($compl, @_) };
+	$$self{rl}->Attribs->{completion_function} = sub { return $$self{shell}->builtin($compl, @_) };
+
+	## Env::PS1
+	# TODO in %Env::PS1::map
+	# \m  Current mode, '-' if default
+	# \M "general status string" in prompt to be used by mode plugins
+	# \j  The number of jobs currently managed by the application.
+	# \v  The version of the application.
+	# \V  The release number of the application, version + patchelvel
 }
 
 sub wrap_rl {
@@ -62,34 +71,59 @@ sub wrap_rl {
 	$prompt = $$self{rl_z} ? \$PS1 : $PS1 unless $prompt;
 	my $line;
 	{
-		local $SIG{TSTP} = 'DEFAULT' unless $$self{parent}{settings}{login};
+		local $SIG{TSTP} = 'DEFAULT' unless $$self{shell}{settings}{login};
 		$line = $$self{rl}->readline($prompt, $preput);
 	}
 	$$self{last_line} = $line;
-	return $line;
+	Zoidberg::Utils::output($line);
 }
 
 sub wrap_rl_more {
 	my ($self, $prompt, $preput) = @_;
-	if ($$self{rl_z}) { return $self->continue() }
-	else {
-		my $line = $$self{last_line} . $self->wrap_rl($prompt, $preput);
-		$$self{last_line} = $line;
-		return $line;
-	}
+	my $line;
+	if ($$self{rl_z}) { $line = $self->continue() }
+	else { $line = $$self{last_line} . $self->wrap_rl($prompt, $preput) }
+	$$self{last_line} = $line;
+	Zoidberg::Utils::output($line);
 }
 
 sub beat {
-	$_[0]{parent}->reap_jobs() if $_[0]{settings}{notify};
+	$_[0]{shell}->reap_jobs() if $_[0]{settings}{notify};
 	$_[0]->broadcast('beat');
 }
+
+sub select {
+	my ($self, @items) = @_;
+	@items = @{$items[0]} if ref $items[0];
+	my $len = length scalar @items;
+	Zoidberg::Utils::message(
+		[map { sprintf("%${len}u) ", $_ + 1) . $items[$_] }  0 .. $#items] );
+	SELECT_ASK:
+	my $re = $self->ask('#? ');
+	return undef unless $re;
+	unless ($re =~ /^\d+([,\s]+\d+)*$/) {
+		complain 'Invalid input: '.$re;
+		goto SELECT_ASK;
+	}
+	my @re = map $items[$_-1], split /\D+/, $re;
+	if (@re > 1 and ! wantarray) {
+		complain 'Please select just one item';
+		goto SELECT_ASK;
+	}
+	Zoidberg::Utils::output @re;
+}
+
+our $ERROR_CALLER;
 
 sub AUTOLOAD {
 	my $self = shift;
 	$AUTOLOAD =~ s/^.*:://;
 	return if $AUTOLOAD eq 'DESTROY';
 	if ( $$self{rl}->can( $AUTOLOAD ) ) { $$self{rl}->$AUTOLOAD(@_) }
-	else { croak "No such method Zoidberg::Fish::ReadLine::$AUTOLOAD()" }
+	else {
+		local $ERROR_CALLER = 1;
+		error "No such method Zoidberg::Fish::ReadLine::$AUTOLOAD()";
+	}
 }
 
 1;
@@ -98,7 +132,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Fish::ReadLine - readline glue for zoid
+Zoidberg::Fish::ReadLine - Readline glue for zoid
 
 =head1 SYNOPSIS
 

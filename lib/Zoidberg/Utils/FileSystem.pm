@@ -1,34 +1,21 @@
 package Zoidberg::Utils::FileSystem;
 
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 use strict;
 #use File::Spec;
-use Carp;
 use Env qw/@PATH/;
 use File::Spec; # TODO make more use of this lib
-use Zoidberg::Utils::Output qw/debug message/;
 use Exporter::Tidy 
-	default => [qw/abs_path list_path list_dir unique_file regex_glob/],
-	engine  => [qw/index_path wipe_cache read_cache save_cache/];
-
-our $cache = { VERSION => $VERSION };
-our $cache_atime = 300; # 5x60 -- 5 minutes
-our $dump_file = '';
+	default => [qw/path list_path list_dir unique_file regex_glob/];
 
 our $DEVNULL = File::Spec->devnull();
 
-our $_storable = eval 'use Storable qw(lock_store lock_retrieve); 1';
-warn "No Storable available, dir listing cache disabled\n" unless $_storable;
-
-## Basic file routines ##
-
-sub abs_path {
+sub path {
 	# return absolute path
 	# argument: string optional: reference
-	# FIXME use File::Spec in this sub
 	my $string = shift || return $ENV{PWD};
-	my $refer = $_[0] ? abs_path(shift @_) : $ENV{PWD}; # possibly recurs
+	my $refer = $_[0] ? path(shift @_) : $ENV{PWD}; # possibly recurs
 	$refer =~ s/\/$//;
 	$string =~ s{/+}{/}; # ever tried using $::main::main::main::something ?
 	unless ($string =~ m{^/}) {
@@ -55,36 +42,15 @@ sub abs_path {
 }
 
 sub list_dir {
-	my $dir = shift || $ENV{PWD};
+	my $dir = @_ ? shift : $ENV{PWD};
 	$dir =~ s#/$## unless $dir eq '/';
-	$dir = abs_path($dir) unless $$cache{dirs}{$dir};
-	
-	my $mtime = (stat($dir))[9];
-	return @{read_dir($dir, @_)->{items}}
-		unless exists $$cache{dirs}{$dir}
-		and $mtime == $$cache{dirs}{$dir}{mtime};
+	$dir = path($dir);
 
-	$$cache{dirs}{$dir}{cache_atime} = time;
-	return @{$$cache{dirs}{$dir}{items}};
-}
+	opendir DIR, $dir or die "could not open dir: $dir";
+	my @items = grep {$_ !~ /^\.{1,2}$/} readdir DIR ;
+	closedir DIR;
 
-sub read_dir {
-	my $dir = shift;
-	debug "(re-) scanning directory: $dir";
-	if (-e $dir) {
-		my $no_wipe = shift || $cache->{dirs}{$dir}{no_wipe};
-		$$cache{dirs}{$dir} = {
-			path => $dir,
-			mtime => (stat($dir))[9],
-			cache_atime => time,
-			no_wipe => $no_wipe,
-		};
-		opendir DIR, $dir or croak "could not open dir: $dir";
-		$$cache{dirs}{$dir}{items} = [ grep {$_ !~ /^\.{1,2}$/} readdir DIR ];
-		closedir DIR;
-	}
-	else { croak "no such dir: $dir" }
-	return $$cache{dirs}{$dir};
+	return @items;
 }
 
 sub list_path { return map list_dir($_), grep {-d $_} @PATH }
@@ -109,40 +75,6 @@ sub unique_file {
 	return $file;
 }
 
-## Engine routines ##
-
-sub index_path { read_dir($_, 1) for grep {-d $_} @PATH }
-
-sub wipe_cache { 
-	foreach my $dir (keys %{$$cache{dirs}})  {
-		next if $$cache{dirs}{$dir}{no_wipe};
-		my $diff = time - $$cache{dirs}{$dir}{cache_atime};
-		delete $$cache{dirs}{$dir} if $diff > $cache_atime;
-	}
-}
-
-sub read_cache {
-	my $file = _shift_file(@_);
-	return unless $_storable;
-	eval { $cache = lock_retrieve($file) } if -s $file;
-	$cache = { VERSION => $VERSION } unless $$cache{VERSION} eq $VERSION;
-}
-
-sub save_cache {
-	my $file = _shift_file(@_);
-	return unless $_storable;
-	lock_store($cache, $file);
-}
-
-sub _shift_file {
-	my $file = pop || $dump_file;
-        if ( !$file || ref $file) { die 'Got no valid filename.' }
-        $dump_file = $file; # memorise it
-	return $file;
-}
-
-## Regex glob ##
-
 sub regex_glob {
 	my ($glob, $opt) = @_;
 	my @regex = $Zoidberg::CURRENT->{stringparser}->split(qr#/#, $glob);
@@ -153,7 +85,7 @@ sub _regex_glob_recurs {
 	my ($regexps, $dir, $opt) = @_;
 	my $regexp = shift @$regexps;
 	$regexp = "(?$opt:".$regexp.')' if $opt;
-	debug "globbing for dir '$dir', regexp '$regexp', opt '$opt'\n";
+	#debug "globbing for dir '$dir', regexp '$regexp', opt '$opt'\n";
 	opendir DIR, $dir;
 	my @matches = @$regexps
 		? ( map  { _regex_glob_recurs([@$regexps], $dir.'/'.$_, $opt) }
@@ -171,7 +103,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Utils::FileSystem - filesystem routines
+Zoidberg::Utils::FileSystem - Filesystem routines
 
 =head1 DESCRIPTION
 
@@ -189,15 +121,15 @@ By default none, potentially all functions listed below.
 
 =over 4
 
-=item C<abs_path($file, $reference)>
+=item C<path($file, $reference)>
 
 Returns the absolute path for possible relative C<$file>
 C<$reference> is optional an defaults to C<$ENV{PWD}>
 
 =item C<list_dir($dir)>
 
-Returns list of content of dir.
-This is B<not> simply an alias for C<readdir> but uses caching.
+Returns list of content of dir. Does a lookup for the absolute path name
+and omits the '.' and '..' dirs.
 
 =item C<list_path()>
 
@@ -205,6 +137,10 @@ Returns a list of all items found in directories listed in C<$ENV{PATH}>,
 non existing directories in C<$ENV{PATH}> are silently ignored.
 
 =back
+
+=head1 TODO
+
+More usage of File::Spec ?
 
 =head1 AUTHOR
 
@@ -218,7 +154,7 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Zoidberg>
+L<Zoidberg>,
 L<Zoidberg::Utils>
 
 =cut

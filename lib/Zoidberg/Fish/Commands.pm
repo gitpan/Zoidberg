@@ -1,13 +1,13 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.55';
+our $VERSION = '0.90';
 
 use strict;
 use AutoLoader 'AUTOLOAD';
 use Cwd;
 use Env qw/@CDPATH @DIRSTACK/;
 use base 'Zoidberg::Fish';
-use Zoidberg::Utils qw/:default abs_path/;
+use Zoidberg::Utils qw/:default path getopt usage path2hashref/;
 
 # FIXME what to do with commands that use block input ?
 #  currently hacked with statements like join(' ', @_)
@@ -32,8 +32,8 @@ None by default.
 =cut
 
 sub init { 
-	$_[0]->{dir_hist} = [$ENV{PWD}];
-	$_[0]->{_dir_hist_i} = 0;
+	$_[0]{dir_hist} = [$ENV{PWD}]; # FIXME try to read log first
+	$_[0]{_dir_hist_i} = 0;
 }
 
 =head1 COMMANDS
@@ -42,53 +42,83 @@ sub init {
 
 =item cd I<dir>
 
+=item cd -
+
+=item cd [I<+->]I<number>
+
 Changes the current working directory to I<dir>.
+When used with a single dash changes to OLDPWD.
 
-=over 4
+This command uses the environment variable 'CDPATH'. It serves as
+a search path when the directory you want to change to isn't found
+in the current directory.
 
-=item -b
-
-Go one directory back in the directory history
-
-=item -f
-
-Go one directory forward in the directory history
-
-=back
+This command also uses a directory history.
+The '-number' and '+number' switches are used to change directory
+back and forward in this history. Note that 'cd -' and 'cd -1'
+have a different effect.
 
 =cut
 
-sub cd { # TODO [-L|-P] see man 1 bash
+sub cd { # TODO [-L|-P] see man 1 bash # FIXME simplify be putting fully specified pwd in history .. and log it
 	my $self = shift;
-	my ($dir, $browse_hack, $done);
-
-	if ($_[0] =~ /^-[bf]$/) {
-		$dir = $self->__get_dir_hist(@_);
-		error q{History index out of range} unless defined $dir;
-		$browse_hack++;
-	}
-	elsif ($_[0] eq '-') { 
+	my ($dir, $done, $verbose);
+	if (@_ == 1 and $_[0] eq '-') { # cd -
 		$dir = $ENV{OLDPWD};
-		output $dir;
+		$verbose++;
 	}
-	else { $dir = shift }
-
-	unless ($dir) { $done = chdir() }
 	else {
+		my ($opts, $args) = getopt 'list,-l verbose,-v +* -* @', @_;
+		error 'usage: cd [-l,--list|-v,--verbose|-idx|+idx] [dir]'
+			if %$opts > 2 or @$args > 1 or %$opts && @$args;
+		unless (%$opts) { # 'normal' cd
+			$dir = $$args[0];
+			unless ($dir eq $$self{dir_hist}[0]) {
+				unshift @{$$self{dir_hist}}, $dir;
+				$$self{_dir_hist_i} = 0;
+				splice @{$$self{dir_hist}}, $$self{config}{max_dir_hist}
+					if defined $$self{config}{max_dir_hist};
+			}
+		}
+		elsif ($$opts{list}) { # list dirhist
+			output [reverse @{$$self{dir_hist}}];
+			return;
+		}
+		elsif ($$opts{verbose}) { $verbose++ }
+		else { # cd back/forward in history
+			error 'usage: cd [-l,--list|-idx|+idx] [dir]'
+				unless $$opts{_opts}[0] =~ /^[+-]\d+$/;
+			my $idx = $$self{_dir_hist_i} - $$opts{_opts}[0];
+			error qq{No $_[0] in dir history}
+				unless $idx >= 0 and $idx <= $#{$$self{dir_hist}};
+			$$self{_dir_hist_i} = $idx;
+			$dir = $$self{dir_hist}[ $$self{_dir_hist_i} ];
+			$verbose++;
+		}
+	}
+
+	if ($dir) {
 		# due to things like autofs we must try every possibility
 		# instead of checking '-d'
-		my @dirs = ($dir);
-		push @dirs, map "$_/$dir", @CDPATH unless $dir =~ m#^\.{0,2}/#;
-
-		for (@dirs) { last if $done = chdir abs_path($_) }
+		$done = chdir path($dir);
+		if    ($done)                { message $dir if $verbose }
+		elsif ($dir !~ m#^\.{0,2}/#) {
+			for (@CDPATH) {
+				next unless $done = chdir path("$_/$dir");
+				message "$_/$dir" if $verbose;
+				last;
+			}
+		}
+	}
+	else {
+		message $ENV{HOME} if $verbose;
+		$done = chdir($ENV{HOME});
 	}
 
 	unless ($done) {
 		error $dir.': Not a directory' unless -d $dir;
 		error "Could not change to dir: $dir";
 	}
-
-	$self->__add_dir_hist unless $browse_hack;
 }
 
 1;
@@ -104,11 +134,11 @@ process flow will B<NOT> return to the prompt.
 
 sub exec { # FIXME not completely stable I'm afraid
 	my $self = shift;
-	$self->{parent}->{round_up} = 0;
-	$self->{parent}->shell_string({fork_job => 0}, join(" ", @_));
+	$self->{shell}->{round_up} = 0;
+	$self->{shell}->shell_string({fork_job => 0}, join(" ", @_));
 	# the process should not make it to this line
-	$self->{parent}->{round_up} = 1;
-	$self->{parent}->exit;
+	$self->{shell}->{round_up} = 1;
+	$self->{shell}->exit;
 }
 
 =item eval I<cmd>
@@ -120,7 +150,7 @@ run code stored in variables.
 
 sub eval {
 	my $self = shift;
-	$self->parent->shell( join( ' ', @_) );
+	$$self{shell}->shell(@_);
 }
 
 =item export I<var>=I<value>
@@ -129,11 +159,18 @@ Set the environment variable I<var> to I<value>.
 
 =cut
 
-sub export {
+sub export { # TODO if arg == 1 and not hash then export var from zoid::eval to env :D
 	my $self = shift;
-	for (@_) {
-		if ($_ =~ m/^(\w*)=(.*?)$/) { $ENV{$1} = $2 }
-		else { error 'syntax error' }
+	if (@_) {
+		my (undef, $args) = getopt '%', @_;
+		$ENV{$_} = $$args{$_} for keys %$args;
+	}
+	else { 
+		output [ map {
+			my $val = $ENV{$_};
+			$val =~ s/'/\\'/g;
+			"export $_='$val'";
+		} sort keys %ENV ];
 	}
 }
 
@@ -144,8 +181,9 @@ Like B<export>, but with a slightly different syntax.
 =cut
 
 sub setenv {
-	my (undef, $var, $val) = @_;
-	$ENV{$var} = $val;
+	shift;
+	my $var = shift;
+	$ENV{$var} = join ' ', @_;
 }
 
 =item unsetenv I<var>
@@ -161,18 +199,16 @@ sub unsetenv {
 
 =item set [+-][abCefnmnuvx]
 
-=item set [+o|-o] I<option> I<value>
+=item set [+o|-o] I<option>
 
 Set or unset a shell option. Although sometimes confusing
 a '+' switch unsets the option, while the '-' switch sets it.
-
-If no I<value> is given the value is set to 'true'.
 
 Short options correspond to the following names:
 
 	a  =>  allexport  *
 	b  =>  notify
-	C  =>  noclobber  *
+	C  =>  noclobber
 	e  =>  errexit    *
 	f  =>  noglob
 	m  =>  monitor    *
@@ -184,54 +220,37 @@ Short options correspond to the following names:
 
 See L<zoiduser> for a description what these and other options do.
 
+FIXME takes also hash arguments
+
 =cut
 
 sub set {
 	my $self = shift;
-	# FIXME use some getopt
-	# be aware '-' is set '+' is unset (!!??)
-	unless (@_) { todo 'I should printout all shell vars' }
+	unless (@_) { error 'should print out all shell vars, but we don\'t have these' }
+	my ($opts, $keys, $vals) = getopt
+	'allexport,a	notify,b	noclobber,C	errexit,e
+	noglob,f	monitor,m	noexec,n	nounset,u
+	verbose,v	xtrace,x	-o@ +o@  	*', @_;
+	# other posix options: ignoreeof, nolog & vi - bash knows a bit more
 
-	my ($sw, $opt, $val);
-	if ($_[0] =~ m/^([+-])(\w+)/) {
-		shift;
-		$sw = $1;
-		my %args = (
-			a => 'allexport',	b => 'notify',
-			C => 'noclobber',	e => 'errexit',
-			f => 'noglob',		m => 'monitor',
-			n => 'noexec',		u => 'nounset',
-			v => 'verbose',		x => 'xtrace',
-		);
-		# other posix options: ignoreeof, nolog & vi
-		if ($2 eq 'o') { $opt = shift }
-		elsif ($args{$2}) { $opt = $args{$2} }
-		else { error "Switch $sw not (yet?) supported." }
+	my %settings;
+	if (%$opts) {
+		$settings{$_} = $$opts{$_}
+			for grep {$_ !~ /^[+-]/} @{$$opts{_opts}};
+		if ($$opts{'-o'}) { $settings{$_} = 1 for @{$$opts{'-o'}} }
+		if ($$opts{'+o'}) { $settings{$_} = 0 for @{$$opts{'+o'}} }
 	}
-	else {
-		$opt = shift;
-		$sw = '-';
-		if ($opt =~ m/^(.+?)=(.*)$/) { ($opt, $val) = ($1, $2) }
-		elsif ($opt =~ m/^(.*)([+-]{2})$/) {
-			$opt = $1;
-			$sw = '+' if $2 eq '--'; # sh has evil logic
+
+	for (@$keys) { $settings{$_} = defined($$vals{$_}) ? delete($$vals{$_}) : 1 }
+
+	for my $opt (keys %settings) {
+		if ($opt =~ m#/#) {
+			my ($hash, $key, $path) = path2hashref($$self{shell}{settings}, $opt);
+			error "$path: no such hash in settings" unless $hash;
+			$$hash{$key} = $settings{$opt};
 		}
+		else { $$self{shell}{settings}{$opt} = $settings{$opt} }
 	}
-	
-	$val = shift || 1 unless defined $val;
-	error "$opt : this setting contains a reference" if ref $self->{settings}{$opt};
-
-	my ($path, $ref) = ('/', $$self{parent}{settings});
-	while ($opt =~ s#^/*(.+?)/##) {
-		$path .= $1 . '/';
-		if (! defined $$ref{$1}) { $$ref{$1} = {} }
-		elsif (ref($ref) ne 'HASH') { error "$path : no such settings hash" }
-		$ref = $$ref{$1};
-	}
-	debug "setting: $opt, value: $val, path: $path";
-
-	if ($sw eq '+') { delete $$ref{$opt} }
-	else { $$ref{$opt} = $val }
 }
 
 =item source I<file>
@@ -245,7 +264,7 @@ scripts.
 sub source {
 	my $self = shift;
 	# FIXME more intelligent behaviour -- see bash man page
-	$self->{parent}->source(@_);
+	$self->{shell}->source(@_);
 }
 
 =item alias
@@ -268,35 +287,47 @@ without arguments lists all aliases that are currently defined.
 
 =cut
 
-sub alias {
+sub alias { 
 	my $self = shift;
-	unless (@_) {
+	unless (@_) { # FIXME doesn't handle namespaces / sub hashes
+		my $ref = $$self{shell}{aliases};
 		output [
 			map {
-				my $al = $$self{parent}{aliases}{$_};
+				my $al = $$ref{$_};
 				$al =~ s/(\\)|'/$1 ? '\\\\' : '\\\''/eg;
 				"alias $_='$al'",
-			} keys %{$$self{parent}{aliases}}
+			} grep {! ref $$ref{$_}} keys %$ref
 		];
+		return;
 	}
-	elsif ($_[0] !~ /^(\w+)=/) {
+	elsif (@_ == 1 and ! ref($_[0]) and $_[0] !~ /^-|=/) {
 		my $cmd = shift;
-		if (@_) { # tcsh alias format
-			$self->{parent}{aliases}{$cmd} = join ' ', @_;
+		my $alias;
+		if ($cmd =~ m#/#) {
+			my ($hash, $key, $path) = path2hashref($$self{shell}{aliases}, $cmd);
+			error "$path: no such hash in aliases" unless $hash;
+			$alias = $$hash{$key};
 		}
-		else {
-			error "$cmd: no such alias"
-				unless exists $$self{parent}{aliases}{$cmd};
-			my $al = $$self{parent}{aliases}{$cmd};
-			$al =~ s/(\\)|'/$1 ? '\\\\' : '\\\''/eg;
-			output "alias $cmd='$al'";
-		}	
+		else { $alias = $$self{shell}{aliases}{$cmd} }
+		$alias =~ s/(\\)|'/$1 ? '\\\\' : '\\\''/eg;
+		output "alias $cmd='$alias'";
+		return;
 	}
-	else {
-		for (@_) {
-			/^(\w+)=(.*?)$/;
-			$self->{parent}{aliases}{$1} = $2;
+	
+	my (undef, $keys, $val) = getopt '*', @_;
+	return unless @$keys;
+	my $aliases;
+	if (@$keys == (keys %$val)) { $aliases = $val } # bash style
+	elsif (! (keys %$val)) { $aliases = {$$keys[0] => join ' ', splice @$keys, 1} }# tcsh style
+	else { error 'syntax error' } # mixed style !?
+
+	for my $cmd (keys %$aliases) {
+		if ($cmd =~ m#/#) {
+			my ($hash, $key, $path) = path2hashref($$self{shell}{aliases}, $cmd);
+			error "$path: no such hash in aliases" unless $hash;
+			$$hash{$key} = $$aliases{$cmd};
 		}
+		else { $$self{shell}{aliases}{$cmd} = $$aliases{$cmd} }
 	}
 }
 
@@ -308,11 +339,12 @@ Remove an alias definition.
 
 sub unalias {
 	my $self = shift;
-	if ($_[0] eq '-a') { %{$self->{parent}{aliases}} = () }
+	my ($opts, $args) = getopt 'all,a @', @_;
+	if ($$opts{all}) { %{$self->{shell}{aliases}} = () }
 	else {
-		for (@_) {
-			error "alias: $_: not found" unless exists $self->{parent}{aliases}{$_};
-			delete $self->{parent}{aliases}{$_};
+		for (@$args) {
+			error "alias: $_: not found" unless exists $self->{shell}{aliases}{$_};
+			delete $self->{shell}{aliases}{$_};
 		}
 	}
 }
@@ -330,16 +362,15 @@ an escape char and is it possible to escape the newline char.
 
 sub read {
 	my $self = shift;
-	my $esc = 1;
-	$esc = 0 and shift if $_[0] eq '-r';
+	my ($opts, $args) = getopt 'raw,r @';
 
 	my $string = '';
 	while (<STDIN>) {
-		if ($esc) {
+		unless ($$opts{raw}) {
 			my $more = 0;
 			$_ =~ s/(\\\\)|\\(.)|\\$/
 				if ($1) { '\\' }
-				if (length $2) { $2 }
+				elsif (length $2) { $2 }
 				else { $more++; '' }
 			/eg;
 			$string .= $_;
@@ -350,27 +381,19 @@ sub read {
 			last;
 		}
 	}
-	return unless @_;
+	return unless @$args;
 
-	my @words = $$self{parent}{stringparser}->split('word_gram', $string);
+	my @words = $$self{shell}{stringparser}->split('word_gram', $string);
 	debug "read words: ", \@words;
-	if (@words > @_) {
-		@words = @words[0 .. $#_ - 1];
-		my $re = join '\s*', @words;
-		$string =~ s/^\s*$re\s*//;
+	if (@words > @$args) {
+		@words = @words[0 .. $#$args - 1];
+		my $pre = join '\s*', @words;
+		$string =~ s/^\s*$pre\s*//;
 		push @words, $string;
 	}
 
-	$ENV{$_} = shift @words || '' for @_;
+	$ENV{$_} = shift @words || '' for @$args;
 }
-
-=item command
-
-TODO
-
-=cut
-
-sub command { todo }
 
 =item newgrp
 
@@ -404,40 +427,6 @@ A command that never fails and does absolutely nothing.
 
 sub true { 1 }
 
-# ######## #
-# Dir Hist #
-# ######## #
-
-sub __add_dir_hist {
-	my $self = shift;
-	my $dir = shift || $ENV{PWD};
-
-	return if $dir eq $self->{dir_hist}[0];
-
-	unshift @{$self->{dir_hist}}, $dir;
-	$self->{_dir_hist_i} = 0;
-
-	my $max = $self->{config}{max_dir_hist} || 5;
-	pop @{$self->{dir_hist}} if $#{$self->{dir_hist}} > $max ;
-}
-
-sub __get_dir_hist {
-	my $self = shift;
-
-	my ($sign, $num);
-	if (scalar(@_) > 1) { ($sign, $num) = @_ }
-	elsif (@_) { ($sign, $num) = (shift(@_), 1) }
-	else { $sign = '-' }
-
-	if ($sign eq '-') { return $ENV{OLDPWD} }
-	elsif ($sign eq '-f') { $self->{_dir_hist_i} -= $num }
-	elsif ($sign eq '-b') { $self->{_dir_hist_i} += $num }
-	else { return undef }
-
-	return undef if $num < 0 || $num > $#{$self->{dir_hist}};
-	return $self->{dir_hist}[$num];
-}
-
 # ######### #
 # Dir stack #
 # ######### # 
@@ -448,9 +437,12 @@ Output the current dir stack.
 
 TODO some options
 
+Note that the dir stack is ont related to the dir history.
+It was only implemented because historic implementations have it.
+
 =cut
 
-sub dirs { print join(' ', reverse @DIRSTACK) || $ENV{PWD}, "\n" }
+sub dirs { output @DIRSTACK ? [reverse @DIRSTACK] : $ENV{PWD} }
 # FIXME some options - see man bash
 
 =item popd I<dir>
@@ -499,45 +491,155 @@ sub pwd {
 	output $ENV{PWD};
 }
 
+=item symbols [-a|--all] [CLASS]
 
-sub _delete_object { # FIXME some kind of 'force' option to delte config, so autoload won't happen
-	my ($self, $zoidname) = @_;
-	error 'Usage: $command $object_name' unless $zoidname;
-	error "No such object: $zoidname"
-		unless exists $self->{parent}{objects}{$zoidname};
-	delete $self->{parent}{objects}{$zoidname};
-}
+Output a listing of symbols in the specified class.
+Class defaults to C<Zoidberg::Eval>.
 
-sub _load_object {
-	my ($self, $name, $class) = (shift, shift, shift);
-	error 'Usage: $command $object_name $class_name' unless $name && $class;
-	$self->{parent}{objects}{$name} = { 
-		module       => $class,
-		init_args    => \@_,
-		load_on_init => 1 ,
-	};
-}
+All symbols are prefixed by their sigil ('$', '@', '%', '&'
+or '*') where '*' is used for filehandles.
 
-sub _hide {
+By default sub classes (hashes containing '::')
+and special symbols (symbols without letters in their name)
+are hidden. Use the --all switch to see these.
+
+=cut
+
+sub symbols {
+	no strict 'refs';
 	my $self = shift;
-	my $ding = shift || $self->{parent}{topic};
-	if ($ding =~ m/^\{(\w*)\}$/) {
-		@{$self->{settings}{clothes}{keys}} = grep {$_ ne $1} @{$self->{settings}{clothes}{keys}};
+	my ($opts, $class) = getopt 'all,a @', @_;
+	error 'usage: symbols [-a|--all] [CLASS]' if @$class > 1;
+	$class = shift(@$class) || 'Zoidberg::Eval';
+	my @sym;
+	for (keys %{$class.'::'}) {
+		unless ($$opts{all}) {
+			next if /::/;
+			next unless /[a-z]/i;
+		}
+		push @sym, '$'.$_ if defined ${$class.'::'.$_};
+		push @sym, '@'.$_ if *{$class.'::'.$_}{ARRAY};
+		push @sym, '%'.$_ if *{$class.'::'.$_}{HASH};
+		push @sym, '&'.$_ if *{$class.'::'.$_}{CODE};
+		push @sym, '*'.$_ if *{$class.'::'.$_}{IO};
 	}
-	elsif ($ding =~ m/^\w*$/) {
-		@{$self->{settings}{clothes}{subs}} = grep {$_ ne $ding} @{$self->{settings}{clothes}{subs}};
-	}
+	output [sort @sym];
 }
 
-sub _unhide {
+=item help [TOPIC|COMMAND]
+
+Prints out a help text.
+
+=cut
+
+sub help { # TODO topics from man1 pod files ??
 	my $self = shift;
-	my $ding = shift || $self->{parent}{topic};
-	$self->{parent}->{topic} = '->'.$ding;
-	if ($ding =~ m/^\{(\w*)\}$/) { push @{$self->{settings}{clothes}{keys}}, $1; }
-	elsif (($ding =~ m/^\w*$/)&& $self->parent->can($ding) ) {
-		push @{$self->{settings}{clothes}{subs}}, $ding;
+	unless (@_) {
+		output << 'EOH';
+Help topics:
+  about
+  command
+
+see also man zoiduser
+EOH
+		return;
 	}
-	else { error 'Dunno such a thing' }
+
+	my $topic = shift;
+	if ($topic eq 'about') { output "$Zoidberg::LONG_VERSION\n" }
+	elsif ($topic eq 'command') {
+		error 'usage: help command COMMAND' unless scalar @_;
+		$self->help_command(@_)
+	}
+	else { $self->help_command($topic, @_) }
+}
+
+sub help_command {
+	my ($self, @cmd) = @_;
+	my @info = $self->type_command(@cmd);
+	if ($info[0] eq 'alias') { output "'$cmd[0]' is an alias\n  > $info[1]" }
+	elsif ($info[0] eq 'builtin') {
+		output "'$cmd[0]' is a builtin command,";
+		if (@info == 1) {
+			output "but there is no information available about it.";
+		}
+		else {
+			output "it belongs to the $info[1] plugin.";
+			if (@info == 3) { output "\n", usage($cmd[0], $info[2]) }
+			else { output "\nNo other help available" }
+		}
+	}
+	elsif ($info[0] eq 'system') {
+		output "'$cmd[0]' seems to be a system command, try\n  > man $cmd[0]";
+	}
+	elsif ($info[0] eq 'PERL') {
+		output "'$cmd[0]' seems to be a perl command, try\n  > perldoc -f $cmd[0]";
+	}
+	else { todo "Help functionality for context: $info[1]" }
+}
+
+=item which [-a|--all|-m|--module] ITEM
+
+Finds ITEM in PATH or INC if the -m or --module option was used.
+If the -a or --all option is used all it doesn't stop after the first match.
+
+TODO it should identify aliases
+
+TODO what should happen with contexts other then CMD ?
+
+=cut
+
+sub which {
+	my $self = shift;
+	my ($opt, $cmd) = getopt 'module,m all,a @', @_;
+	my @info = $self->type_command(@$cmd);
+	$cmd = shift @$cmd;
+	my @dirs;
+
+	if ($$opt{module}) {
+		$cmd =~ s#::#/#g;
+		$cmd .= '.pm' unless $cmd =~ /\.\w+$/;
+		@dirs = @INC;
+	}
+	else {
+		error "$cmd is a, or belongs to a $info[0]"
+			unless $info[0] eq 'system';
+		# TODO aliases
+		@dirs = split ':', $ENV{PATH};
+	}
+
+	my @matches;
+	for (@dirs) {
+		next unless -e "$_/$cmd";
+		push @matches, "$_/$cmd";
+		last unless $$opt{all};
+	}
+	output [@matches];
+	return;
+}
+
+sub type_command {
+	my ($self, @cmd) = @_;
+	
+	if (
+		exists $$self{shell}{aliases}{$cmd[0]}
+		and $$self{shell}{aliases}{$cmd[0]} !~ /^$cmd[0]\b/
+	) {
+		my $alias = $$self{shell}{aliases}{$cmd[0]};
+		$alias =~ s/'/\\'/g;
+		return 'alias', "alias $cmd[0]='$alias'";
+	}
+
+	my $block = $$self{shell}->parse_block({pretend => 1}, [@cmd]);
+	my $context = uc $$block[0]{context};
+	if (!$context or $context eq 'CMD') {
+		return 'system' unless exists $$self{shell}{commands}{$cmd[0]};
+		my $tag = Zoidberg::DispatchTable::tag($$self{shell}{commands}, $cmd[0]);
+		return 'builtin' unless $tag;
+		my $file = tied( %{$$self{shell}{objects}} )->[1]{$tag}{module};
+		return 'builtin', $tag, $file;
+	}
+	else { return $context }
 }
 
 # ############ #
@@ -552,7 +654,7 @@ List current jobs.
 
 sub jobs {
 	my $self = shift;
-	my $j = @_ ? \@_ : $$self{parent}->{jobs};
+	my $j = @_ ? \@_ : $$self{shell}->{jobs};
 	output $_->status_string() for sort {$$a{id} <=> $$b{id}} @$j;
 }
 
@@ -566,7 +668,7 @@ Without argument uses the "current" job.
 
 sub bg {
 	my ($self, $id) = @_;
-	my $j = $$self{parent}->job_by_spec($id)
+	my $j = $$self{shell}->job_by_spec($id)
 		or error 'No such job'.($id ? ": $id" : '');
 	debug "putting bg: $$j{id} == $j";
 	$j->bg;
@@ -582,7 +684,7 @@ Without argument uses the "current" job.
 
 sub fg {
 	my ($self, $id) = @_;
-	my $j = $$self{parent}->job_by_spec($id)
+	my $j = $$self{shell}->job_by_spec($id)
 		or error 'No such job'.($id ? ": $id" : '');
 	debug "putting fg: $$j{id} == $j";
 	$j->fg;
@@ -624,39 +726,31 @@ wipes the list that would be executed after the job ends.
 
 sub kill {
 	my $self = shift;
-	error "usage:  kill [-w] [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspec]"
-		unless defined $_[0];
-	if ($_[0] eq '-l') { # list sigs
-		shift;
-		my %sh = %{ $$self{parent}{_sighash} };
-		my @k = @_ ? (grep exists $sh{$_}, @_) : (keys %sh);
+	my ($opts, $args) = getopt 'wipe,-w list,-l sigspec,-s signum,-n -* @', @_;
+	error "usage:  kill [-w] [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspecs]"
+		unless %$opts || @$args;
+	if ($$opts{list}) { # list sigs
+		error 'too many options' if @{$$opts{_opts}} > 1;
+		my %sh = %{ $$self{shell}{_sighash} };
+		my @k = @$args ? (grep exists $sh{$_}, @$args) : (keys %sh);
 		output [ map {sprintf '%2i) %s', $_, $sh{$_}} sort {$a <=> $b} @k ];
 		return;
 	}
 
-	my $wipe;
-	if ($_[0] eq '-w' or $_[0] eq '--wipe') { # wipe list
-		shift;
-		$wipe = 1;
-	}
-
-	my $sig = '15'; # sigterm, the default
-	if ($_[0] =~ /^--?(\w+)/) {
-		if ( defined (my $s = $$self{parent}->sig_by_spec($1)) ) {
-			$sig = $s;
-			shift;
+	my $sig = $$opts{signum} || '15'; # sigterm, the default
+	if ($$opts{_opts}) {
+		for ($$opts{signum}, grep s/^-//, @$args) {
+			next unless $_;
+			my $sig = $$self{shell}->sig_by_spec($_);
+			error $_.': no such signal' unless defined $sig;
 		}
 	}
-	elsif ($_[0] eq '-s') {
-		shift;
-		$sig = $$self{parent}->sig_by_spec(shift);
-	}
 
-	for (@_) {
+	for (@$args) {
 		if (/^\%/) {
-			my $j = $$self{parent}->job_by_spec($_)
+			my $j = $$self{shell}->job_by_spec($_)
 				or error "$_: no such job";
-			$j->kill($sig, $wipe);
+			$j->kill($sig, $$opts{wipe});
 		}
 		else { CORE::kill($sig, $_) }
 	}
@@ -695,6 +789,6 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Zoidberg>, L<Zoidberg::Fish>, L<http://zoidberg.sourceforge.net>
+L<Zoidberg>, L<Zoidberg::Fish>
 
 =cut
