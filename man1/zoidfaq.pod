@@ -4,7 +4,7 @@
 
 =head1 NAME
 
-zoidfaq - Frequently Asked Questions for Zoidberg
+zoidfaq - Frequently Asked Questions about Zoidberg
 
 =head1 DESCRIPTION
 
@@ -25,8 +25,6 @@ This program was from the very beginning intended to become a huge and bloated m
 =head3 Is it stable yet ?
 
 B<NO !> If it is stable we'll call it 1.00 .
-Currently we are working towards a 0.50 release that will be the first candidate
-for a stable version.
 
 =head3 Is it safe to use it already ?
 
@@ -39,13 +37,29 @@ Kind of, as long as you don't try too fancy stuff with too many privileges.
 
 Set the environment variable CLICOLOR to 0 (null).
 
-=head3 What's with the single arrow ?
+=head3 What's with the single arrow syntax ?
 
 When you type perl code without brackets around it, zoid does a little source filtering making a arrow 'C<< -> >>' (the dereference operator) at the start of a word an alias for 'C<< $shell-> >>'. Where 'C<< $shell >>' is the main shell object. 
 
  zoid$ ->Commands->cd(q/../)
  # is the same as
  zoid$ $shell->Commands->cd(q/../)
+
+=head3 I dislike jobs ending without waiting for me to hit a key :(
+
+This behaviour is called asynchronous notification.
+It is not a real default option; it is turned on in the default 'zoidrc' file.
+Remove the setting "notify" from our 'zoidrc' file or try C<< set +o notify >>.
+
+=head3 Does zoid have a "RPROMPT" ?
+
+No, but Term::ReadLine::Zoid does :)
+If you use this module try setting C<< $ENV{RPS1} >>.
+
+=head3 I miss feature X, every shell should have feature X !
+
+Probably it's on the TODO list, or at some list at least.
+Try the mailing list.
 
 
 =head2 Errors
@@ -54,6 +68,13 @@ When you type perl code without brackets around it, zoid does a little source fi
 
 If you have all dependencies right you probably need to remove 
 either the directory C<< ~/.zoid >> or the file C<< ~/.cache/zoid_path_cache >>.
+
+Also it might be a good idea to clean up C<< /usr/share/zoid >> and/or
+C<< /usr/local/share/zoid >> before installing a new version.
+
+=head3 I upgraded to a new version of zoid and it hangs !
+
+See the previous question.
 
 =head3 I got a segfault after using perl syntax, is this a bug ?
 

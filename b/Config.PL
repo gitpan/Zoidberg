@@ -3,6 +3,7 @@ use Module::Build;
 require File::Spec;
 
 my $b = Module::Build->current;
+$b->read_config(); # work around M:B bug
 
 my ($rc, $data) = (
 	$b->notes('AppDir') ? (

@@ -228,6 +228,10 @@ FIXME more events
 
 =over 4
 
+=item beat
+
+Called every idle second when using L<Term::ReadLine::Zoid>. Used for asynchronous stuff.
+
 =item newpwd
 
 Called if C<$ENV{PWD}> has changed. The old pwd can be found in C<$ENV{OLDPWD}>.
@@ -244,10 +248,8 @@ This event is called after the input prompt with the commandline as the first ar
 =item envupdate
 
 This event is called after the spawning of every job. Like 'prompt' it can be used for
-update routines; since 'postcmd' is called more often then 'prompt', use 'prompt' if it
-makes no difference, 'postcmd' should only be used for atomic updates.
-
-Note this event is _not_ identical to the "special alias" 'postcmd' in tcsh(1).
+update routines; since 'envupdate' is called more often then 'prompt', use 'prompt' if it
+makes no difference, 'envupdate' should only be used for atomic updates.
 
 =item exit
 
@@ -431,7 +433,7 @@ It is intended that an IPC mechanism uses this hash to convert strings back to r
 This value should correspond to the object stored in the global C<$Zoidberg::CURRENT> at
 the time of forking.
 
-In secundairy scripts it is better to use C<< Zoidberg::Shell->current() >>.
+In secondary scripts it is better to use C<< Zoidberg::Shell->current() >>.
 
 TODO this mechanism seems to have some problems
 

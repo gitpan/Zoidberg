@@ -134,10 +134,6 @@ modules in use. The B<zoid> utility itself will only complain when the commandli
 options are wrong. If the error was thrown by one of the core modules, the error 
 message will either start with the module name or the name of the command that went wrong.
 
-FIXME what about debugging and more verbose errors ?
-
-See also L<splain(1)>.
-
 =head1 RESTRICTIONS
 
 Source files and command input are I<NOT> interpreted the same way.

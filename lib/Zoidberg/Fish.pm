@@ -1,6 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 sub new {
 	my ($class, $zoid, $name) = @_;

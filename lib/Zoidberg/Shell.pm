@@ -1,6 +1,6 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -34,13 +34,15 @@ sub shell { # FIXME FIXME should not return after ^Z
 	my $self = &_self;
 	my $pipe = ($_[0] =~ /^-\||\|-$/) ? shift : undef ;
 	todo 'pipeline syntax' if $pipe;
-	my $c = wantarray;
+	$$self{fg_job} ||= $self;
+	my $c = defined wantarray;
 	my @re;
-	if (grep {ref $_} @_) { @re = $self->shell_list({capture => $c}, @_)   }
-	elsif (@_ > 1)        { @re = $self->shell_list({capture => $c}, \@_)  }
-	else                  { @re = $self->shell_string({capture => $c}, @_) }
+	if (grep {ref $_} @_) { @re = $$self{fg_job}->shell_list( {capture => $c}, @_ ) }
+	elsif (@_ > 1)        { @re = $$self{fg_job}->shell_list( {capture => $c}, \@_) }
+	else                  { @re = $self->shell_string( {capture => $c}, @_ ) }
 	$@ = $$self{error} if $$self{error};
-	return $c ? (map {chomp; $_} @re) : $@ ? 0 : 1 ;
+	return wantarray ? (map {chomp; $_} @re) :
+		Zoidberg::Shell::scalar->new( join('', @re), ($@ ? 0 : 1) ) ;
 }
 
 sub system {
@@ -104,6 +106,14 @@ sub source {
 		complain if $@;
 	}
 }
+
+package Zoidberg::Shell::scalar;
+
+use overload
+	'""'   => sub { $_[0][0] },
+	'bool' => sub { $_[0][1] };
+
+sub new { bless [@_[1,2]], $_[0] }
 
 1;
 

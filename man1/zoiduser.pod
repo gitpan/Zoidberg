@@ -95,6 +95,14 @@ won't exit the shell.
 Don't hide the root object behind clothes for things like tab
 completion and the single arrow operator, but show it in full glory.
 
+=item notify
+
+Asynchronous notification, don't wait for the respawning of a prompt
+before notifying the user about background jobs that have finished.
+
+This option should be named 'notify_async' for clearity, but 'notify' is
+the proper name according to POSIX.
+
 =item notify_verbose
 
 When you stop a job the shell will show all jobs instead of just notifying

@@ -196,7 +196,7 @@ sub fetch { $_[0]->[1]{$_[1]} }
 
 package Zoidberg::StringParser;
 
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 use strict;
 no warnings; # can't stand the nagging
@@ -588,6 +588,8 @@ Boolean that controls whether the parser dies when an error is encountered - see
 =item no_split_intel
 
 Boolean, disables "intelligent" behaviour of C<split()> when set.
+
+=back
 
 =head1 DIAGNOSTICS
 

@@ -1,6 +1,6 @@
 package Zoidberg::Contractor;
 
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 use strict;
 use POSIX ();
@@ -8,7 +8,7 @@ use Config;
 use Zoidberg::Utils;
 use Zoidberg::Eval;
 
-sub new {
+sub new { # stub, to be overloaded
 	my $class = shift;
 	shell_init(bless {@_}, $class);
 }
@@ -23,7 +23,7 @@ sub shell_init {
 	my $self = shift;
 	bug 'Contractor can\'t live without a shell' unless $$self{shell};
 
-	## add some commands
+	## add some commands - FIXME this doesn't belong here, breaks interface
 	$self->{shell}{commands}{$_}   = $_  for qw/fg bg kill jobs/;
 
 	## jobs stuff
@@ -43,10 +43,7 @@ sub shell_init {
 		}
 		# ignore interactive and job control signals
 		$SIG{$_} = 'IGNORE' for qw/INT QUIT TSTP TTIN TTOU/;
-		# Put ourselves in our own process group, just to be sure.
-		#$self->{pgid} = $$;
-		#POSIX::setpgid(0, $self->{pgid}); # fails for login shell
-		
+
 		# And get terminal control
 		POSIX::tcsetpgrp($self->{terminal}, $self->{pgid});
 		$self->{tmodes} = POSIX::Termios->new;
@@ -60,79 +57,83 @@ sub shell_init {
 sub round_up { $_->round_up() for @{$_[0]->{jobs}} }
 
 sub shell_list {
-	my ($self, $meta, @list) = grep {defined $_} @_;
+	my ($self, @list) = grep {defined $_} @_;
 
-	return $$self{shell}{fg_job}->shell_list($meta, @list)
-		if $$self{shell}{fg_job} && $self ne $$self{shell}{fg_job};
-	my $save_fg_job = $$self{shell}{fg_job}; # could be ubdef
+	my $save_fg_job = $$self{shell}{fg_job}; # could be undef
 
-	unless (ref($meta) eq 'HASH' and @list) { # wasn't really meta
-		unshift @list, $meta;
-		undef $meta;
-	}
-	else { return unless @list }
-	$$self{queue} = \@list;
-	my @re;
-	my ($prev_sign, @chunk) = ('', $self->_next_chunk);
-	%{$chunk[0][0][0]} = (%{$chunk[0][0][0]}, %$meta) if defined $meta;
-	while (@chunk) { # @chunk = pipe, sign
-		# mind that logic grouping for AND and OR isn't the same, OR is stronger
-		if ($$self{shell}{error} ? ($prev_sign eq 'AND') : ($prev_sign eq 'OR')) {
-			my $i;
-			++$i and @chunk = $self->_next_chunk
-				while @chunk and ! grep {$_ eq $chunk[1]} qw/EOL EOS BGS OR/;
-			$prev_sign = $chunk[1];
-			debug "skipped $i chunks";
-		}
-		else {
-			debug 'going to do chunk: ', $chunk[0];
-			$prev_sign = $chunk[1];
-			if (@{$chunk[0]}) {
-				@re = Zoidberg::Job->exec(
-					boss => $self,
-					tree => $chunk[0],
-					bg   => $chunk[1] eq 'BGS', );
-				$$self{shell}->broadcast('envupdate');
-			}
-		}
-		@chunk = $self->_next_chunk;
-	}
+	my $meta = (ref($list[0]) eq 'HASH') ? shift(@list) : {} ;
+	return unless @list;
+	my $j = Zoidberg::Job->new(%$meta, boss => $self, tree => \@list) or return;
+	my @re = $j->exec();
 
 	$$self{shell}{fg_job} = $save_fg_job;
+
 	return @re;
 }
 
-sub _next_chunk {
-	my ($self, $skip) = @_;
-	my @r;
-	my $ref = $$self{queue};
-	unless (@$ref) {
-#		@$ref = $self->pull_blocks();
-		return unless @$ref;
+
+sub reap_jobs {
+	my $self = shift;
+	return unless  @{$self->{jobs}};
+	my (@completed, @running);
+	debug 'reaping jobs';
+	for ( @{$self->{jobs}} ) {
+		$_->update_status;
+		if ($_->completed) {
+			if (@{$$_{tree}}) { $self->reinc_job($_) } # reincarnate it
+			else { push @completed, $_ }
+		}
+		else { push @running, $_ }
 	}
-	while ( @$ref && ! grep {$_ eq $$ref[0]} qw/AND OR EOS EOL BGS/ ) {
-		my $b = shift @$ref;
-		$b = (!$skip && ref $b) ? $$self{shell}->parse_block($b, $$self{queue}) : $b;
-		push @r, $b if defined $b;
+	$self->{jobs} = \@running;
+	debug 'body count: '.scalar(@completed);
+	if ($$self{shell}{settings}{interactive}) {
+		++$$_{completed} and message $_->status_string
+			for sort {$$a{id} <=> $$b{id}} grep {! $$_{no_notify}} @completed;
 	}
-	my $sign = @$ref ? shift @$ref : '' ;
-	return \@r, $sign;
+
+	# reinc completed if tree
+	# FIXME FIXME heartbeat
+}
+
+sub reinc_job { # reincarnate
+	my ($self, $job) = @_;
+	my $op = ref( $$job{tree}[0] ) ? 'EOS' : shift @{ $$job{tree} } ;
+
+	debug "job \%$$job{id} reincarnates, op $op";
+	# mind that logic grouping for AND and OR isn't the same, OR is stronger
+	while ( $$self{shell}{error} ? ( $op eq 'AND' ) : ( $op eq 'OR' ) ) { # skip
+		my $i = 0;
+		while ( ref $$job{tree}[0] or $$job{tree}[0] eq 'AND' ) {
+			shift @{ $$job{tree} };
+			$i++;
+		}
+		debug "error => $i blocks skipped";
+		$op = shift @{ $$job{tree} };
+	}
+
+	return unless @{ $$job{tree} };
+
+	
+	my @b = @{ $$job{tree} };
+	$$job{tree} = [];
+	debug @b. ' blocks left';
+	$self->shell_list({ bg => $$job{bg}, id => $$job{id} }, @b); # should capture be inherited ?
 }
 
 # ############ #
 # Job routines #
 # ############ #
 
-sub jobs { 
+sub jobs {
 	my $self = shift;
 	my $j = @_ ? \@_ : $self->{jobs};
-	if (@$j) { output $_->status_string for sort {$$a{id} <=> $$b{id}} @$j }
-	else { message "No jobs" } # message won't show in pipeline
+	output $_->status_string for sort {$$a{id} <=> $$b{id}} @$j;
 }
 
 sub bg {
 	my ($self, $id) = @_;
-	my $j = $self->_job_by_spec($id)
+	my $j = $self->job_by_spec($id)
 		or error 'No such job'.($id ? ": $id" : '');
 	debug "putting bg: $$j{id} == $j";
 	$j->put_bg;
@@ -140,7 +141,7 @@ sub bg {
 
 sub fg {
 	my ($self, $id) = @_;
-	my $j = $self->_job_by_spec($id)
+	my $j = $self->job_by_spec($id)
 		or error 'No such job'.($id ? ": $id" : '');
 	debug "putting fg: $$j{id} == $j";
 	$j->put_fg;
@@ -171,19 +172,19 @@ sub kill {
 
 	my $sig = '15'; # sigterm, the default
 	if ($_[0] =~ /^--?(\w+)/) {
-		if ( defined (my $s = $self->_sig_by_spec($1)) ) {
+		if ( defined (my $s = $self->sig_by_spec($1)) ) {
 			$sig = $s;
 			shift;
 		}
 	}
 	elsif ($_[0] eq '-s') {
 		shift;
-		$sig = $self->_sig_by_spec(shift);
+		$sig = $self->sig_by_spec(shift);
 	}
 
 	for (@_) {
 		if (/^\%/) {
-			my $j = $self->_job_by_spec($_);
+			my $j = $self->job_by_spec($_);
 			CORE::kill($sig, -$j->{pgid});
 		}
 		else { CORE::kill($sig, $_) }
@@ -200,17 +201,17 @@ sub disown { # dissociate job ... remove from @jobs, nohup
 	# all your pty are belong:0
 }
 
-# ################## #
-# Internal interface #
-# ################## #
+# ############# #
+# info routines #
+# ############# #
 
-sub _job_by_id {
+sub job_by_id {
 	my ($self, $id) = @_;
 	for (@{$$self{jobs}}) { return $_ if $$_{id} eq $id }
 	return undef;
 }
 
-sub _job_by_spec {
+sub job_by_spec {
 	my ($self, $spec) = @_;
 	return @{$$self{jobs}} ? $$self{jobs}[-1] : undef unless $spec;
 	# see posix 1003.2 speculation for arbitrary cruft
@@ -229,7 +230,7 @@ sub _job_by_spec {
 	return undef;
 }
 
-sub _sig_by_spec {
+sub sig_by_spec {
 	my ($self, $z) = @_;
 	return $z if exists $$self{_sighash}{$z};
 	$z =~ s{^(sig)?(.*)$}{uc($2)}ei;
@@ -239,21 +240,6 @@ sub _sig_by_spec {
 	return undef;
 }
 
-sub reap_jobs {
-	my $self = shift;
-	my (@completed, @running);
-	for ( @{$self->{jobs}} ) {
-		$_->update_status;
-		if ($_->completed) { push @completed, $_ }
-		else { push @running, $_ }
-	}
-	$self->{jobs} = \@running;
-	debug 'reaping jobs, body count: '.scalar(@completed);
-	if ($$self{shell}{settings}{interactive}) {
-		++$$_{completed} and message $_->status_string
-			for sort {$$a{id} <=> $$b{id}} grep {! $$_{no_notify}} @completed;
-	}
-}
 
 # ########### #
 # Job objects #
@@ -274,29 +260,47 @@ sub exec { # like new() but runs immediatly
 	local $ENV{ZOIDREF} = "$$self{shell}";
 
 	my @re = eval { $self->run };
-	$$self{shell}{error} = $@ || $$self{status} || undef;
+	$$self{shell}{error} = $@ || $$self{exit_status} || undef;
 	complain if $@;
+	if ($self->completed()) {
+		$$self{shell}->broadcast('envupdate'); # FIXME breaks interface
+		$$self{boss}->reinc_job($self) if @{ $$self{tree} };
+	}
+
+	if ( $$self{tree}[0] eq 'BGS' ) { # step over it - FIXME conflicts with fg_job
+		shift @{$$self{tree}};
+		my $ref = $$self{tree};
+		$$self{tree} = [];
+		$$self{boss}->shell_list(@$ref);
+	}
 
 	return @re;
 }
 
 sub new { # @_ should at least contain (tree=>$pipe, boss=>$ref) here
 	shift; # class
-	my $self = { id => 0, @_ };
-	my $pipe = @{$$self{tree}} > 1;
-	$$self{string} ||= ($pipe ? '|' : '') . $$self{tree}[-1][0]{string};
-		# last one in the pipe is the one on screen
+	my $self = { id => 0, procs => [], @_ };
 	$$self{shell} ||= $$self{boss}{shell};
 	$$self{jobs}  ||= [];
 	$$self{$_} = $$self{boss}{$_} for qw/_sighash terminal/; # FIXME check this
 
-	my $meta = $$self{tree}[0][0];
+	while ( ref $$self{tree}[0] ) {
+		my @b = $$self{shell}->parse_block(shift @{$$self{tree}});  # FIXME breaks interface, should be a hook
+		if (@b > 1) { unshift @{$$self{tree}}, @b } # probably macro expansion
+		else { push @{$$self{procs}}, @b }
+	}
+	$$self{bg}++ if $$self{tree}[0] eq 'BGS';
+
+	return unless @{$$self{procs}}; # FIXME ugly
+	debug 'blocks in job ', $$self{procs};
+	my $pipe = @{$$self{procs}} > 1;
+	$$self{string} ||= ($pipe ? '|' : '') . $$self{procs}[-1][0]{string}; # last one in the pipe is the one on screen
+
+	my $meta = $$self{procs}[0][0];
 	my $fork_job = $pipe
 		|| ( defined($$meta{fork_job}) ? $$meta{fork_job} : 0 )
-		|| $$self{bg}
-		|| $$meta{capture} ;
+		|| $$self{bg} || $$self{capture} ;
 	unless ($fork_job) { bless $self, 'Zoidberg::Job::builtin' }
-#	elsif ( grep {! ref $_} @{$self->{tree}}) { bless $self, 'Zoidberg::Job::meta' }
 	else { bless $self, 'Zoidberg::Job' }
 
 	return $self;
@@ -328,11 +332,8 @@ sub run {
 	$$self{shell}{fg_job} = $self;
 
 	$self->{tmodes}	= POSIX::Termios->new;
-	# fixme procs and tree can be merged
-	$self->{procs} = [ map {block => $_, completed => 0, stopped => 0}, @{$self->{tree}} ];
 
-	my $capture = $self->{tree}[0][0]{capture};
-	$self->{procs}[-1]{last}++ unless $capture;
+	$self->{procs}[-1][0]{last}++ unless $$self{capture};
 
 	my ($pid, @pipe, $stdin, $stdout);
 	my $zoidpid = $$;
@@ -344,7 +345,7 @@ sub run {
 	my $i = 0;
 	for my $proc (@{$self->{procs}}) {
 		$i++;
-		if ($proc->{last}) { $stdout = fileno STDOUT }
+		if ($$proc[0]{last}) { $stdout = fileno STDOUT }
 		else { # open pipe to next process
 			@pipe = POSIX::pipe;
 			$stdout = $pipe[1];
@@ -353,7 +354,7 @@ sub run {
 		$pid = fork; # fork process
 		if ($pid) {  # parent process
 			# set pid and pgid
-			$proc->{pid} = $pid;
+			$$proc[0]{pid} = $pid;
 			$self->{pgid} ||= $pid ;
 			POSIX::setpgid($pid, $self->{pgid});
 			debug "job \%$$self{id} part $i has pid $pid and pgid $$self{pgid}";
@@ -376,11 +377,11 @@ sub run {
 
 		POSIX::close($stdin)  unless $stdin  == fileno STDIN ;
 		POSIX::close($stdout) unless $stdout == fileno STDOUT;
-		$stdin = $pipe[0] unless $proc->{last} ;
+		$stdin = $pipe[0] unless $$proc[0]{last} ;
 	}
 
-	my @re  = $$self{bg} ? $self->put_bg
-		: $capture   ? ($self->_capture($stdin)) : $self->put_fg ;
+	my @re  = $$self{bg}      ? $self->put_bg
+		: $$self{capture} ? ($self->_capture($stdin)) : $self->put_fg ;
  
 	# postrun
 	POSIX::tcsetpgrp($$self{shell}{terminal}, $$self{shell}{pgid});
@@ -397,13 +398,13 @@ sub _capture { # called in parent when capturing
 	my @re = (<IN>);
 	close IN;
 	POSIX::close($stdin)  unless $stdin  == fileno STDIN ;
-	error if $self->{procs}[-1]->{status};
+	error if $self->{procs}[-1][0]->{exit_status};
 	return @re;
 }
 
 sub _run_child { # called in child process
 	my $self = shift;
-	my ($proc, $stdin, $stdout) = @_;
+	my ($block, $stdin, $stdout) = @_;
 
 	$self->{shell}{round_up} = 0; # FIXME this bit has to many use
 	$self->{shell}{settings}{interactive} = 0; # idem
@@ -417,13 +418,13 @@ sub _run_child { # called in child process
 	}
 
 	# do redirections and env
-	$self->do_redirect($proc->{block});
-	$self->do_env($proc->{block});
+	$self->do_redirect($block);
+	$self->do_env($block);
 
     	$self->{shell}->silent;
 
 	# here we go ... finally
-	$self->{shell}{eval}->_eval_block($proc->{block});
+	$self->{shell}{eval}->_eval_block($block);
 }
 
 # ################ #
@@ -507,6 +508,12 @@ sub put_fg {
 			message $self->status_string;
 		}
 	}
+
+	$$self{shell}{error} = $$self{exit_status}; # FIXME clean up for this - see where evel goes n stuff
+	if ($self->completed()) {
+		$$self{shell}->broadcast('envupdate'); # FIXME breaks interface
+		$$self{boss}->reinc_job($self) if @{ $$self{tree} };
+	}
 }
 
 sub put_bg {
@@ -557,7 +564,7 @@ sub update_status {
 	}
 }
 
-sub completed { ! grep { ! $_->{completed} } @{$_[0]->{procs}} }
+sub completed { ! grep { ! $$_[0]{completed} } @{$_[0]{procs}} }
 
 sub _update_child {
 	my ($self, $pid, $status) = @_;
@@ -567,21 +574,21 @@ sub _update_child {
 	if ($pid == -1) { # -1 == all processes in group ended
 		kill( 15 => -$self->{pgid} ); # SIGTERM just to be sure
 		debug "group $$self{pgid} has disappeared:($!)";
-		$_->{completed}++ for @{$self->{procs}};
+		$$_[0]{completed}++ for @{$self->{procs}};
 	}
 	else {
-		my ($child) = grep {$$_{pid} == $pid} @{$$self{procs}};
+		my ($child) = grep {$$_[0]{pid} == $pid} @{$$self{procs}};
 		bug "Don't know this pid: $pid" unless $child;
-		$$child{status} = $status;
+		$$child[0]{exit_status} = $status;
 		if (WIFSTOPPED($status)) {
 			$$self{stopped} = 1;
 			(WSTOPSIG($status) == 22 or WSTOPSIG($status) == 21 ) # SIGTT(IN|OUT)
 				? $self->put_fg : $self->_put_bg;
 		}
 		else {
-			$$child{completed} = 1;
-			if ($pid == $$self{procs}[-1]{pid}) { # the end of the line ..
-				$$self{status} = $status;
+			$$child[0]{completed} = 1;
+			if ($pid == $$self{procs}[-1][0]{pid}) { # the end of the line ..
+				$$self{exit_status} = $status;
 				$$self{terminated}++ if WIFSIGNALED($status);
 				unless ($self->completed) {
 					local $SIG{PIPE} = 'IGNORE';
@@ -598,7 +605,7 @@ sub _update_child {
 
 sub status_string {
 	# POSIX: "[%d]%c %s %s\n", <job-number>, <current>, <status>, <job-name>
-	my ($self, $status) = @_;
+	my $self = shift;
 
 	my $pref = '';
 	if ($$self{id}) {
@@ -607,7 +614,7 @@ sub status_string {
 			($self eq $$self{boss}{jobs}[-2]) ? '- ' : '  ' );
 	}
 
-	$status ||=
+	my $status ||=
 		$$self{stopped}    ? 'Stopped'    :
 		$$self{terminated} ? 'Terminated' :
 		$$self{completed}  ? 'Done'       : 'Running' ;
@@ -630,7 +637,7 @@ sub round_up { $_->round_up() for @{$_[0]->{jobs}} }
 
 sub run {
 	my $self = shift;
-	my $block = $self->{tree}[0];
+	my $block = $self->{procs}[0];
 	$$self{shell}{fg_job} = $self;
 
 	my $saveint = $SIG{INT};
@@ -666,65 +673,6 @@ sub put_fg { error q#Can't put builtin in the foreground# }
 
 sub completed { $_[0]->{completed} }
 
-=cut
-
-package Zoidberg::Job::meta;
-
-use strict;
-use vars qw/$AUTOLOAD/;
-use Zoidberg::Utils;
-
-# sign: XF ==> Xargs Forward
-#       XB <== Xargs Backwards
-
-our @ISA = qw/Zoidberg::Job/;
-
-sub run {
-	my $self = shift;
-	todo "Fancy background job" if $self->{bg};
-	my ($pipe, $sign, @args);
-	while (
-		scalar(@{$self->{tree}}) and
-		($pipe, $sign) = $self->_next_statement($self->{tree})
-	) {
-		todo "Backward argument redirection" if $sign eq 'XB';
-		@args = $self->exec_job($pipe);
-	}
-}
-
-sub _next_statement {
-	my ($self, $ref) = @_;
-	my @r;
-	return undef unless scalar(@$ref);
-	while (
-		scalar(@$ref) &&
-		! grep {$_ eq $ref->[0]} qw/XF XB/
-	) { push @r, shift @$ref }
-	my $sign = scalar(@$ref) ? shift(@$ref) : '' ;
-	return \@r, $sign;
-}
-
-sub exec_job {
-	my ($self, $pipe) = shift;
-	$self->{jobs} ||= [];
-	Zoidberg::Job->exec(
-		tree => $pipe,
-		zoid => $self->{shell},
-		jobs => $self->{jobs},
-	);
-}
-
-sub put_bg { error q#Can't put builtin in the background# }
-sub put_fg { error q#Can't put builtin in the foreground# }
-
-sub completed {
-	my $self = shift;
-	# ! jobs_left ||
-	! grep {!$_->completed} @{$self->{jobs}};
-}
-
-=cut
-
 1;
 
 __END__
@@ -735,11 +683,13 @@ Zoidberg::Contractor - Module to manage jobs
 
 =head1 SYNOPSIS
 
-TODO
+	use Zoidberg::Contractor;
+	my $c = Zoidberg::Contractor->new();
+	
+	$c->shell_list( [qw(cat ./log)], '|', [qw(grep -i error)] );
 
 =head1 DESCRIPTION
 
-This module is not intended for external use ... yet.
 Zoidberg inherits from this module, it manages jobs.
 
 It uses Zoidberg::StringParser and Zoidberg::Eval.
@@ -761,6 +711,6 @@ Raoul Zwart, E<lt>rlzwart@cpan.orgE<gt>
 Copyright 2003 by Jaap Karssenberg
 
 This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself. 
+it under the same terms as Perl itself.
 
 =cut

@@ -1,6 +1,6 @@
 package Zoidberg::PluginHash;
 
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 use strict;
 use Zoidberg::Utils qw/:default read_file merge_hash list_dir/;
@@ -144,9 +144,11 @@ sub load {
 			settings => $self->[2]->{settings},
 			config => $self->[2]->{settings}{$zoidname},
 		};
+		debug "Loaded stub plugin $zoidname";
 		return $self->[0]{$zoidname};
 	}
 
+	debug "Going to load plugin $zoidname of class $class";
 	eval "require $class" and eval {
 		if ($class->isa('Zoidberg::Fish')) {
 			$self->[0]{$zoidname} = $class->new($self->[2], $zoidname);
@@ -161,7 +163,10 @@ sub load {
 		$self->DELETE($zoidname);
 		return undef;
 	}
-	else { return $self->[0]{$zoidname} }
+	else {
+		debug "Loaded plugin $zoidname";
+		return $self->[0]{$zoidname};
+	}
 }
 
 sub round_up {

@@ -1,5 +1,25 @@
 Revision history for Zoidberg - a modular perl shell
 <http://zoidberg.sourceforge.net>
+ 
+     Mon May 24
+        - Added another interface between Intel and ReadLine
+
+     Fri May 21
+        - Fixed bug in Intel code for shell object
+	- Added "beat" broadcast event for async events
+
+     Wed May 19
+        - Made elaborate changes in the execution order of lists of commands.
+	Job control now effectively suspends the whole list rather then one 
+	process and step over it
+
+     Wed Apr 14
+        - Added Zoidberg::Shell::scalar to make the Z:Shell AUTOLOAD function
+	work more DWIM'ish; it isn't perfect but it is pure perl.
+
+0.51 Thu Apr 08 2004
+	The 0.50 got "nuked" due to problems with the install scripts, so lets
+	try again.
 
 0.50 Mon Apr 05 2004
         'this that time of the year again, time for a release
@@ -8,8 +28,7 @@ Revision history for Zoidberg - a modular perl shell
         - Added the notify_verbose setting after trying tcsh(1)
 
      Fri Mar 26
-        Still on IRIX
-        - Changed $ENV{ZOIDREF} to $Zoidberg::CURRENT because of problems on irix :(
+        - Changed $ENV{ZOIDREF} to $Zoidberg::CURRENT
 	- Changed history to Log and made it compat with ReadLine
 
      Wed Mar 24

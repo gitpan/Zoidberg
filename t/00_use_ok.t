@@ -1,4 +1,5 @@
-use Test::More tests => 16;
+use Test::More tests => 17;
+use_ok('Bundle::Zoiderg');
 use_ok('Zoidberg');
 use_ok('Zoidberg::Contractor');
 use_ok('Zoidberg::DispatchTable');

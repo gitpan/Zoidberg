@@ -1,6 +1,6 @@
 package Zoidberg::Fish::ReadLine;
 
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 use strict;
 use vars qw/$AUTOLOAD $PS1 $PS2/;
@@ -10,9 +10,9 @@ use Zoidberg::Utils qw/:error message debug/; # don't import output cause RL:Z h
 
 our @ISA = qw/Zoidberg::Fish/;
 
-eval 'use Env::PS1 qw/$PS1 $PS2/; 1'
-	or eval 'use Env qw/$PS1 $PS2/; 1'
-		or ( our ($PS1, $PS2) = ("zoid-$Zoidberg::VERSION> ", "> ") );
+eval 'use Env::PS1 qw/$PS1 $PS2 $RPS1/; 1'
+	or eval 'use Env qw/$PS1 $PS2 $RPS1/; 1'
+		or ( our ($PS1, $PS2, $RPS1) = ("zoid-$Zoidberg::VERSION> ", "> ", undef) );
 
 sub init {
 	my $self = shift;
@@ -26,10 +26,13 @@ sub init {
 			$self->_init('zoid');
 			@$self{'rl', 'rl_z'} = ($self, 1);
 			$$self{default_mode} = __PACKAGE__;
-			$$self{config}{PS2} = $PS2;
+			$$self{config}{PS2} = \$PS2;
+			$$self{config}{RPS1} = \$RPS1;
 			# FIXME support RL:Z shell() option
 		}
-		else { debug $@ }
+		else {
+			debug $@;
+		}
 	}
 
 	unless ($$self{rl_z}) { # load other RL
@@ -50,13 +53,13 @@ sub init {
 	}
 
 	## completion
-	$$self{rl}->Attribs->{completion_function} =
-		sub { return $self->call('completion_function', @_) };
+	my $compl = $$self{rl_z} ? 'complete' : 'completion_function' ;
+	$$self{rl}->Attribs->{completion_function} = sub { return $self->call($compl, @_) };
 }
 
 sub wrap_rl {
 	my ($self, $prompt, $preput) = @_;
-	$prompt = $PS1 unless length $prompt;
+	$prompt = $$self{rl_z} ? \$PS1 : $PS1 unless $prompt;
 	my $line;
 	{
 		local $SIG{TSTP} = 'DEFAULT' unless $$self{parent}{settings}{login};
@@ -64,6 +67,11 @@ sub wrap_rl {
 	}
 	# TODO continue() support
 	return $line;
+}
+
+sub beat {
+	$_[0]{parent}->reap_jobs() if $_[0]{settings}{notify};
+	$_[0]->broadcast('beat');
 }
 
 sub AUTOLOAD {

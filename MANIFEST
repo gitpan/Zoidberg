@@ -3,6 +3,7 @@ b/Config.PL
 b/man2html.PL
 b/MyBuilder.pm
 b/Requires.pd
+b/Strip.PL
 b/test.PL
 b/zoid.PL
 bin/AppRun
@@ -13,6 +14,7 @@ Changes
 configure
 doc/index.html
 etc/zoidrc
+lib/Bundle/Zoidberg.pm
 lib/Zoidberg.pm
 lib/Zoidberg/Contractor.pm
 lib/Zoidberg/DispatchTable.pm

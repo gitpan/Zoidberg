@@ -30,15 +30,17 @@ sub MyInit {
 		my $s = $$self{properties}{install_sets}{$k};
 
 		my ($vol, $dir) = File::Spec->splitpath($$s{bin}, 1);
-		$$s{etc} = File::Spec->catpath($vol,
-			File::Spec->catdir('', 'etc') );
-
 		my @dirs = File::Spec->splitdir($dir);
 		pop @dirs; # lose /bin/
 		$$s{share} = File::Spec->catpath($vol,
 			File::Spec->catdir(@dirs, qw/share zoid/) );
 		$$s{doc} = File::Spec->catpath($vol,
 			File::Spec->catdir(@dirs, qw/doc zoid/) );
+		$$s{etc} = File::Spec->catpath($vol,
+			File::Spec->catdir(@dirs, 'etc') ); # try relative etc
+		$$s{etc} = File::Spec->catpath($vol,
+			File::Spec->catdir('', 'etc') ) unless -d $$s{etc}; # else /etc
+
 	}
 }
 
@@ -67,6 +69,8 @@ sub process_MyPre_files {
 sub process_MyPost_files {
 	my $self = shift;
 	$self->run_perl_script( File::Spec->catfile('b', 'Config.PL') ); # not using up2date due to dynamic config
+	$self->run_perl_script( File::Spec->catfile('b', 'Strip.PL') )
+		if $self->{args}{strip};
 }
 
 # my actions
@@ -138,7 +142,7 @@ MyBuilder
 
 =head1 DESCRIPTION
 
-Class with some custom stuff to overloaded L<Method::Build>
+Class with some custom stuff to overloaded L<Module::Build>
 for building Zoidberg.
 
 =head1 ACTIONS

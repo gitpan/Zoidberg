@@ -1,6 +1,6 @@
 package Zoidberg::Utils::FileSystem;
 
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 use strict;
 #use File::Spec;

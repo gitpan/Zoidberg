@@ -1,4 +1,4 @@
- Zoidberg - a modular perl shell, version 0.51
+ Zoidberg - a modular perl shell, version 0.52
 ===============================================
 
   http://zoidberg.sourceforge.net
@@ -22,13 +22,14 @@ INSTALLATION
   On most clean systems you will need to install:
     Module::Build
     Exporter::Tidy
-    Env::PS1
+    Storable
 
   The following are also recommended:
+    Env::PS1
     Term::ReadKey
     Term::ReadLine::Zoid
 
-  To install the package untar it, change dir and type:
+  To install the package untar it, change to the new dir and type:
     > perl Build.PL
     > ./Build
     > ./Build test

@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 our $LONG_VERSION =
 "Zoidberg $VERSION
 
@@ -119,6 +119,10 @@ sub new {
 
 sub import { bug "You should use Zoidberg::Shell to import from" if @_ > 1 }
 
+# hooks overloading Contracter
+*pre_job = \&parse_block;
+*post_job = \&broadcast;
+
 # ############ #
 # Main routine #
 # ############ #
@@ -128,7 +132,7 @@ sub main_loop {
 
 	$$self{_continue} = 1;
 	while ($$self{_continue}) {
-		$self->reap_jobs() if @{$$self{jobs}};
+		$self->reap_jobs();
 		$self->broadcast('prompt');
 		my $cmd = eval { $$self{events}{readline}->() };
 		if ($@) {
@@ -137,7 +141,7 @@ sub main_loop {
 			sleep 1; # infinite loop protection
 		}
 		else {
-			$self->reap_jobs() if @{$$self{jobs}};
+			$self->reap_jobs();
 			$self->exit() unless defined $cmd || $$self{settings}{ignoreeof};
 			last unless $$self{_continue};
 			$self->broadcast('cmd', $cmd);
@@ -182,14 +186,15 @@ sub shell_string {
 	return complain $e if $e;
 	# TODO pull code here
 	debug 'block list: ', \@list;
-	return $self->shell_list($meta, @list); # calling contractor
+	$$self{fg_job} ||= $self;
+	return $$self{fg_job}->shell_list($meta, @list); # calling a contractor
 }
 
 sub parse_block  { 
 	# call as late as possible before execution
 	# bit is "pretend bit" (also known as "Intel bit")
 	# $queue is unshift only, no shift - else you can fuck up logic list
-	my ($self, $block, $queue, $bit) = @_;
+	my ($self, $block, $queue, $bit) = @_; # queu isn't no more - extra meta instead me thinks
 	my ($meta, @words) = ({pretend => $bit});
 
 	# decipher block
@@ -300,7 +305,8 @@ sub parse_macros {
 		if (! @words and $$meta{env}) { # special case
 			@words = ('export', map $_.'='.$$meta{env}{$_}, keys %{$$meta{env}});
 			$$meta{string} = '';
-			# FIXME FIXME more systematic way to do this
+			delete $$meta{start};
+			delete $$meta{env}; # duplicate would make var local
 		}
 	}
 
@@ -454,6 +460,7 @@ sub _stdin { # stub STDIN input
 
 sub broadcast { # eval to be sure we return
 	my ($self, $event) = (shift(), shift());
+	$event ||= 'envupdate'; # generic heartbeat
 	return unless exists $self->{events}{$event};
 	debug "Broadcasting event: $event";
 	for my $sub (_stack($$self{events}, $event)) {

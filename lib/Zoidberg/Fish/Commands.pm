@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 use strict;
 use Cwd;
@@ -61,10 +61,10 @@ sub set {
 		shift;
 		$sw = $1;
 		my %args = ( # quoted is yet unsupported
-			#a => 'allexport',	
+			#a => 'allexport',
 			b => 'notify',
 			#C => 'noclobber',	e => 'errexit',
-			f => 'noglob',		#m => 'monitor',	
+			f => 'noglob',		#m => 'monitor',
 			#n => 'noexec',		u => 'nounset',
 			v => 'verbose',		#x => 'xtrace',
 		);
@@ -73,7 +73,7 @@ sub set {
 		elsif ($args{$2}) { $opt = $args{$2} }
 		else { error "Switch $sw not (yet?) supported." }
 	}
-	else { 
+	else {
 		$opt = shift;
 		$sw = '-';
 		if ($opt =~ m/^(.+?)=(.*)$/) { ($opt, $val) = ($1, $2) }

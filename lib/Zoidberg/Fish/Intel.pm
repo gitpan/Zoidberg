@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.51';
+our $VERSION = '0.52';
 
 use strict;
 use vars qw/$DEVNULL/;
@@ -18,7 +18,7 @@ sub init {
 sub completion_function {
 	my ($self, $word, $buffer, $start) = @_;
 	debug "\ncomplete for predefined word '$word' starting at $start";
-	my ($m, @c) = $self->complete($buffer, $start + length($word), undef, $word);
+	my ($m, @c) = $self->complete($word, $buffer, $start);
 	my $diff = $start - $$m{start}; # their word isn't ours
 	return if $diff < 0; # you never know
 	$diff -= length substr $$m{prefix}, 0, $diff, '';
@@ -35,7 +35,8 @@ sub completion_function {
 }
 
 sub complete {
-	my ($self, $buffer, $cursor, undef) = @_; # undef reserved for tab number
+	my ($self, $word, $buffer, $start) = @_;
+	my $cursor = $start + length $word;
 
 	# fetch block
 	$buffer = substr $buffer, 0, $cursor;
@@ -123,7 +124,9 @@ sub do {
 		my $sub = 'i_'.lc($try);
 		@re = $self->$sub($block);
 	}
-	else { debug $try.': no such expansion available' }
+	else {
+		debug $try.': no such expansion available';
+	}
 
 	if (defined $re[0]) { ($block, @try) = (@re, @try) }
 	else { return @try ? $self->do($block, @try) : $block } # recurs
@@ -143,15 +146,16 @@ sub i_perl { return ($_[1], qw/_zoid env_vars dirs_n_files/) }
 sub i__zoid {
 	my ($self, $block) = @_;
 
-	return undef if $block->[0]{opts} =~ /z/; # FIXME FIXME will fail when defalut opts are used
+	return undef if $block->[0]{opts} =~ /z/; # FIXME will fail when default opts are used
 	return undef unless
-		$block->[-1] =~ /( (?:->|\xA3) (?:\S+->)* (?:[\[\{].*?[\]\}])* )(\S*)$/x;
-	my ($pref, $arg) = ($1, qr/^\Q$2\E/);
+		$block->[-1] =~ /^( (?:\$shell)? ( (?:->|->|\xA3) (?:\S+->)* (?:[\[\{].*?[\]\}])* )) (\S*)$/x;
+	my ($pref, $code, $arg) = ($1, $2, qr/^\Q$3\E/);
 
-	my $code = "\$self->{parent}".$pref;
+	$code = '$self->{parent}' . $code;
 	$code =~ s/\xA3/->/;
 	$code =~ s/->$//;
 	my $ding = eval($code);
+	debug "$ding resulted from code: $code";
 	my $type = ref $ding;
 	if ($@ || ! $type) {
 		$$block[0]{message} = $@ if $@;
@@ -166,9 +170,10 @@ sub i__zoid {
 	else { # $ding is object
 		if ( $type eq ref $$self{parent} and ! $$self{parent}{settings}{naked_zoid} ) {
 			# only display clothes
-			push @poss, grep m/$arg/, @{$$self{parent}->list_vars};
-			push @poss, grep m/$arg/, @{$$self{parent}->list_clothes};
-			push @poss, grep m/$arg/, @{$$self{parent}->list_objects};
+			debug 'show zoid clothed';
+			push @poss, grep m/$arg/, @{ $$self{parent}->list_vars    };
+			push @poss, grep m/$arg/, @{ $$self{parent}->list_clothes };
+			push @poss, grep m/$arg/, @{ $$self{parent}->list_objects };
 			$block->[0]{postf} = '->';
 		}
 		else {
@@ -193,6 +198,7 @@ sub i__zoid {
 			}
 		}
 	}
+
 	@poss = grep {$_ !~ /^\{?_/} @poss
 		if $$self{parent}{settings}{hide_private_method} && $arg !~ /_/;
 	$block->[0]{poss} = \@poss;

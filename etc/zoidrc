@@ -56,8 +56,8 @@ alias( {
 	),
 } );
 
-### set default settings
-# set( );
+### default settings
+set('notify', 'notify_verbose');
 
 ### OS dependent stuff
 if ($^O eq 'linux' and $ENV{CLICOLOR}) { # _GNU_/Linux rigth ?
