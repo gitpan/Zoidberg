@@ -1,0 +1,164 @@
+TODO-list for Zoidberg -- a modular perl shell
+<http://zoidberg.sourceforge.net>
+
+Disclaimer: some of this might be in dutch
+
+**************
+**** BUGS ****
+**************
+
+bug in script- or pipes-gram
+ { print "dus" } | cat | perl -p -e "s/u/p/  "
+ { print "dus" } | cat | perl -p -e "s/u/p/"
+
+color in parent->print nog wat verfijnen
+
+"ls ~/*" doesnt work -- a DIR context in intel
+pdparse kan nog niet met loopjes omgaan ...
+
+commands snappen exec_error en exec_topic nog niet altijd
+
+intel zoid snapt pound_sign nog niet
+intel heeft nog een boel TODO tags
+
+load buffer from file not debug
+	it will erase your history
+
+tabexp gaat nog nie helemaal goed als de regel over de scherm breedte heen komt
+	dit is verwant aan printen tijdens heartbeat van buffer ....
+		dat is weer verwant aan meerdere buffers (?)
+
+Warning: prerequisite Pod::Tree::HTML 1.08 not found. -- temporary fixed
+
+******************************
+**** wanted modifications ****
+******************************
+
+commands intel verfijnen -- meteen usage fixe in 1 hash
+
+plain output format for non-interactive modus
+
+config soms reffen naar $ENV
+
+Buffer
+	plugable char tables in Buffer
+	Buffer meer modusses geven (vi-style)
+	heartbeat uit buffer
+	save-buffer en k_editor: context->fileextensie
+
+Commands->usage
+FILE context afsplitsen van SYSTEM context voor tab_exp
+	-- handig voor save file .. ZoidParse doet dit nu zelf ... is vunzig
+
+flush cache event
+
+*************************
+**** wanted features ****
+*************************
+
+<TAB><TAB> => I feel lucky
+bell-style => print "\a"
+
+_alias
+
+magick char afvangen voor contexten die er niets mee kunnen
+
+config-/user- profiles
+	"source" profile for compat for .zs files
+
+how about handlers voor dingen als files, dirs, urls etc.
+
+meer intel in grammar om perl te onderscheiden van files etc.
+
+subs in "->" namespace
+
+context
+	aparte context config hash
+	strict context bit
+		strict perl bit
+	recursive context met q.*//
+
+fluff:
+	-Dvar=value als -e export var = value
+	-s  Command input is taken from the standard input -- voor pipes etc
+	--rcfile oid
+	--Mmodule
+
+Buffer
+	active modus switch in buffer => 'perl' afvangen in buffer en stdin vervangen door multi line modus
+		{ + BROKEN => multi line
+		\\\s*$ => multi line
+	auto indent
+
+cpan.pl die Depends.pd parsed (onafhankelijk van pdparse.pm !!)
+plaatjes in share/doc/zoid html :) i like colors
+
+Kirl
+
+***************
+**** Notes ****
+***************
+
+take a look at man tcsh
+
+take a look at Psh::OS::Unix
+
+take a look at error.pm (en fatal.pm ?)
+
+build-ins van bash checken voor kritieke dingen
+
+before releasing:
+	update Changes
+	update README
+	cleanup TODO
+	check stubs in Zoidberg.pm
+	update pod - both in modules and help files
+	check all Makefile.PL
+	check $VERSION in all modules
+	check Depends.pd
+	check $DEVEL in zoidberg.pm
+	remove Makefile.old
+	remove -fr CVS
+	remove unused and cvs-only modules from tree
+	remove scripts from tree
+	!!!  look for .# files !!!
+
+
+****************
+**** Vision ****
+****************
+
+modular
+repeat after me MODULAR
+events zijn goed
+
+dingen als tab expansion zijn plugins
+dingen als monitor en een extra infobar ook
+zelfs netwerk moet een simpele plugin zijn
+zelfs pipes en jobs moeten plugin zijn -- zij het dat hier aanpassingen voor gedaan mogen worden
+history idem
+/mesg: ingebakken msn/icq functionaliteit?
+MOTZ::audio
+
+## Zoidberg Documentation
+
+  # Contents
+
+  0 Introduction
+  1 Release notes (oid)
+  2 Tour
+  3 Common configuration variables
+  4 Default syntax
+    4.1 Commands
+    4.2 Aliases
+    4.3 Perl
+    4.4 Methods
+    4.5 Pipes
+  5 Use of objects
+    5.1 Standard objects
+    5.2 Custom objects
+  6 Jobs and Screens
+  7 Communication
+  8 FAQ
+  9 Disclaimer and Copyright
+
