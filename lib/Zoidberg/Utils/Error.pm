@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils::Error;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 use UNIVERSAL qw/isa can/;

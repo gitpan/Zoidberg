@@ -27,37 +27,36 @@ elsif ($$opts{version}) {
 		for qw/Zoidberg::Shell CPAN/;
 	exit;
 }
-elsif (@$args) { # handle arguments
+elsif (@$args) { # handle arguments non-interactively
 	CPAN::Shell->install(@$args);
 	exit;
 }
 # else start an interactive shell
 
 # the mode string we need below
+# it consists of the name of the module that handles the commands
+# followed by '->' to designate that commands should be called as methods
+# instead of functions
 my $mode = 'CPAN::Shell->';
 
 # create shell object -- see man Zoidberg::Shell
 $shell = Zoidberg::Shell->new(
 	# provide non-default settings
 	settings => {
-		# don't use zoid's rcfiles
-		norc => 1,
-		# set alternate history file
-		Log => {
-			logfile => $ENV{HOME}.'/.example_cpan.pl_history',
-		},
-		# redirect all commands to the CPAN::Shell class
-		mode => $mode,
+		norc => 1,      # don't use zoid's rcfiles
+		mode => $mode,  # redirect all commands to the CPAN::Shell class
 	},
 	# set aliases for our cpan mode
 	aliases => {
 		'mode_'.$mode => {
-			'?'    => 'h',     # normally '?' would be considered a glob
+			'?'    => 'h',     # else '?' will be considered a glob
 			'q'    => 'quit',  # alias to an alias
 			'quit' => '!exit', # '!exit' is 'exit' in the default mode
 		},
 	},
 );
+# note that the logfile is based on the program name
+# see if this script is 'cpan.pl' the logfile will be ~/.cpan.pl.log.yaml
 
 # use a custom prompt,
 # hope you have Term::ReadLine::Zoid and Env::PS1
@@ -89,7 +88,8 @@ with a custom Zoidberg shell. The code is the documentation.
 B<This script is for the sake of demonstration only>;
 if you want to use CPAN from within a Zoidberg shell use the
 CPAN plugin, which provides better tab completion. To enter
-the cpan shell from zoid type: C<mode cpan>.
+the cpan shell from zoid just type C<mode cpan>, use C<mode ->
+to return to the default mode.
 
 =head1 AUTHOR
 

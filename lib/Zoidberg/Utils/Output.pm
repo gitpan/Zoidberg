@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils::Output;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 use Data::Dumper;
@@ -80,7 +80,7 @@ sub typed_output {
 
 	$dinge[-1] .= "\n" unless ref $dinge[-1];
 	for (@dinge) {
-		$_ = $_->scalar() if ref($_) eq 'Zoidberg::Shell::scalar';
+		$_ = $_->scalar() if ref($_) eq 'Zoidberg::Utils::Output::Scalar';
 		unless (ref $_) { print $_ }
 		elsif (ref($_) eq 'ARRAY' and ! grep { ref($_) } @$_) { output_list(@$_) }
 		elsif (ref($_) eq 'Zoidberg::Utils::Error') {
@@ -161,6 +161,34 @@ sub output_sql { # kan vast schoner
 	else { for (@records) { print "[\n  ".join(",\n  ", @{$_})."\n]\n"; } } # vertical lay-out
 	return 1;
 }
+
+package Zoidberg::Utils::Output::Scalar;
+
+use overload
+	'""'   => \&scalar,
+	'bool' => \&error,
+	'@{}'  => \&array,
+	fallback => 'TRUE';
+
+sub new    { bless \[@_[1,2,3]], $_[0] }
+
+sub error  { my $s = ${ shift() }; $$s[0] }
+
+sub scalar {
+	my $s = ${ shift() };
+	$$s[1] = join "\n", @{$$s[2]} if ! defined $$s[1] and $$s[2];
+	return $$s[1];
+}
+
+sub array {
+	my $s = ${ shift() };
+	if (! defined $$s[2]) {
+		$$s[2] = (ref($$s[1]) eq 'ARRAY') ?  $$s[1]  :
+			  ref($$s[1])             ? [$$s[1]] : [ split /\n/, $$s[1] ];
+	}
+	return $$s[2];
+}
+
 
 1;
 

@@ -1,10 +1,9 @@
 package Zoidberg::PluginHash;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 use Zoidberg::Utils qw/:default read_file merge_hash list_dir/;
-use Zoidberg::DispatchTable qw/wipe/;
 use UNIVERSAL qw/isa/;
 
 # $self->[0] = plugin objects hash
@@ -110,7 +109,7 @@ sub DELETE { # leaves config intact
 	my ($self, $key) = @_;
 	$$self[0]{$key}->round_up() if isa $self->[0]{$key}, 'Zoidberg::Fish';
 	delete $$self[0]{$key};
-	wipe($$self[2]{$_}, $key) for qw/events commands/;
+	$$self[2]{$_}->wipe($key) for qw/events commands/; # wipe DispatchTable stacks
 	$$self[2]->broadcast('unplug_'.$key);
 	return $$self[1]{$key};
 }

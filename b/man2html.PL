@@ -13,6 +13,7 @@ chdir 'blib' || die $!;
 
 htmllify('man1/', 'doc/man1/');
 htmllify('lib/', 'doc/man3/');
+htmllify('doc/examples/', 'doc/examples/');
 
 for (
 	map( "doc/man1/$_", get_files('doc/man1/') ),
@@ -41,7 +42,7 @@ make_index(
 	['man3', 'Section 3 - module documentation'],
 );
 
-chdir '../..';
+chdir '../../';
 
 ## various subroutines ##
 
@@ -139,7 +140,7 @@ sub get_desc {
 sub get_files {
 	my $dir = shift;
 	opendir DIR, $dir || die "could not open dir $dir";
-	my @f = sort grep {$_ !~ /^\.\.?$/} readdir DIR;
+	my @f = sort grep {$_ !~ /^\./} readdir DIR;
 	closedir DIR;
 	return @f;
 }

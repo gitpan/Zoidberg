@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 use AutoLoader 'AUTOLOAD';
@@ -98,7 +98,7 @@ sub cd { # TODO [-L|-P] see man 1 bash
 		elsif ($dir !~ m#^\.{0,2}/#) {
 			for (@CDPATH) {
 				next unless $done = chdir path("$_/$dir");
-				message "$_/$dir" if $verbose;
+				message "$_/$dir"; # verbose
 				last;
 			}
 		}
@@ -657,7 +657,7 @@ sub type_command {
 	my $context = uc $$block[0]{context};
 	if (!$context or $context eq 'CMD') {
 		return 'system' unless exists $$self{shell}{commands}{$cmd[0]};
-		my $tag = Zoidberg::DispatchTable::tag($$self{shell}{commands}, $cmd[0]);
+		my $tag = $$self{shell}{commands}->tag($cmd[0]);
 		return 'builtin' unless $tag;
 		my $file = tied( %{$$self{shell}{objects}} )->[1]{$tag}{module};
 		return 'builtin', $tag, $file;

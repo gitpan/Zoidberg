@@ -1,6 +1,7 @@
 
 use Zoidberg;
 use Zoidberg::StringParser;
+use Zoidberg::DispatchTable;
 
 require Test::More;
 
@@ -88,6 +89,7 @@ print "# 3 grammars and parse_words\n";
 { # $Zoidberg::StringParser::DEBUG++;
 	no warnings; # yeah yeah, somethings are undefined 
 	my $z = bless { stringparser => $parser }, 'Zoidberg';
+	$$z{parser} = Zoidberg::DispatchTable->new($z);
 	my $meta = { map {($_ => 1)} @Zoidberg::_parser_settings };
 	for my $data (@test_data3) {
 		my ($block) = $parser->split('script_gram', $data->[0]);

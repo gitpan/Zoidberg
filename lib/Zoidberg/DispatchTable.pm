@@ -1,6 +1,6 @@
 package Zoidberg::DispatchTable;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 use Zoidberg::Utils qw/debug bug error/;
@@ -20,9 +20,12 @@ our $ERROR_CALLER = 1;
 # keys are kept in order to avoid inconsistencies
 # for example when iterating trough {parser}
 
-# ############# #
-# Tie interface #
-# ############# #
+sub new { # create a blessed AND tie'ed hash
+	my $class = shift;
+	my %hash;
+	tie %hash, $class, @_;
+	bless \%hash, $class;
+}
 
 sub TIEHASH  {
 	my $class = shift;
@@ -62,6 +65,11 @@ sub STORE {
 	push @{$self->[0]{$key}}, $value;
 	push @{$self->[1]{$key}}, $tag;
 	push @{$self->[4]}, $key;
+}
+
+sub add {
+	my $self = tied %{ shift() };
+	$self->STORE(@_);
 }
 
 sub FETCH {
@@ -126,6 +134,11 @@ sub DELETE { # doesn't really delete, merely pops
 	return $re;
 }
 
+sub pop {
+	my $self = tied %{ shift() };
+	$self->DELETE(@_);
+}
+
 sub CLEAR    { 
 	%{$_[0][0]} = ();
 	%{$_[0][1]} = ();
@@ -151,13 +164,9 @@ sub NEXTKEY  {
 	else { return $self->[4][$$self[5]++] } # for $key (keys %table)
 }
 
-# ################# #
-# Exported routines #
-# ################# #
-
 sub stack {
-	my ($table, $key, $use_tag) = @_;
-	my $self = tied %$table;
+	my $self = tied %{ shift() };
+	my ($key, $use_tag) = @_;
 	return () unless exists $$self[0]{$key};
 	for (@{$self->[0]{$key}}) { $_ = $self->convert($_) unless ref $_ }
 	return map [ $$self[0]{$key}[$_], $$self[1]{$key}[$_] ], (0..$#{$$self[0]{$key}})
@@ -166,22 +175,22 @@ sub stack {
 }
 
 sub tag {
-	my ($table, $key) = @_;
-	my $self = tied %$table;
+	my $self = tied %{ shift() };
+	my $key = shift;
 	return undef unless exists $$self[1]{$key};
 	return $$self[1]{$key}[-1];
 }
 
 sub tags {
-	my ($table, $key) = @_;
-	my $self = tied %$table;
+	my $self = tied %{ shift() };
+	my $key = shift;
 	return undef unless exists $$self[1]{$key};
 	return @{$self->[1]{$key}};
 }
 
 sub wipe {
-	my ($table, $tag, @keys) = @_;
-	my $self = tied %$table;
+	my $self = tied %{ shift() };
+	my ($tag, @keys) = @_;
 	@keys = keys %{$self->[0]} unless scalar @keys;
 	my %old;
 	for my $key (@keys) {
@@ -214,18 +223,18 @@ Zoidberg::DispatchTable - Class to tie dispatch tables
 
 	use Zoidberg::DispatchTable;
 
-	my %table;
-	tie %table, q{Zoidberg::DispatchTable},
-		$self, { cd => '->Commands->cd' };
+	my $table = Zoidberg::DispatchTable->new(
+		$self, { cd => '->Commands->cd' }
+	);
 
 	# The same as $self->parent->{objects}{Commands}->cd('..') if
 	# a module can('parent'), else the same as $self->Commands->cd('..')
-	$table{cd}->('..');
+	$$table{cd}->('..');
 
-	$table{ls} = q{ls('-al')}
+	$$table{ls} = q{ls('-al')}
 
 	# The same as $self->ls('-al', '/data')
-	$table{ls}->('/data');
+	$$table{ls}->('/data');
 
 =head1 DESCRIPTION
 
@@ -273,6 +282,10 @@ I< This modules doesn't check for security issues, it just runs arbitrary code. 
 This module can export the methods C<wipe>, C<stack> and C<tags>.
 
 =over 4
+
+=item add
+
+=item pop
 
 =item C<wipe(\%table, $tag, @keys)>
 

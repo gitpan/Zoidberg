@@ -16,15 +16,19 @@ Disclaimer: some of this might be in dutch
 
 * Source scripts can pollute each others namespace. In theory 'do filename' should create a clean namespace 'main' for each script, but do to a bug in perl versions older then 5.8.1 we can't use this construct. Thus all scripts are in the namespace 'Main' that isn't cleaned. ( Also in some versions of perl the do() namespace seems to cause exporter problems )
 
-* When you use a built-in command as a perl-routine, the capturing of STDOUT doesn't work. (If you use the 'output' routine capturing does work)
+* When you use a built-in command as a perl-routine, the capturing of STDOUT doesn't work. (If you use the 'output' routine capturing does work fine)
 
 * When using `zoid -e` or `zoid -c` job control works only half of the time
 
 * Some versions of perl (5.6.x) cause pretty nasty bugs with deep autovivication in DispatchTable. Worked around be always checking exists() first.
 
+* Logging is delayed till after the command is done, ergo if the command crashes the shell/terminal it isn't logged
+
 == Parsing
 
 * perl code containing stuff like q/}/ can make StringParser trow an error because StringParser doesn't recognise q// as quoting.
+
+* shell quoting is much like perl quoting but not entirely, this can be confusing
 
 == Term-ReadLine-Zoid
 

@@ -1,6 +1,6 @@
 package Bundle::Zoidberg;
 
-our $VERSION = 0.06;
+our $VERSION = 0.07;
 
 __END__
 
@@ -23,7 +23,7 @@ Env::PS1 0.05 - fancy prompt
 
 Term::ReadLine::Zoid 0.07 - input module
 
-Zoidberg 0.92 - the shell itself
+Zoidberg 0.93 - the shell itself
 
 =head1 AUTHOR
 

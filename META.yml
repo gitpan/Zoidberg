@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name: Zoidberg
-version: 0.92
+version: 0.93
 author:
   - Jaap Karssenberg <pardus@cpan.org>
 abstract: A modular perl shell
@@ -27,17 +27,17 @@ dynamic_config: 1
 provides:
   Bundle::Zoidberg:
     file: lib/Bundle/Zoidberg.pm
-    version: 0.06
+    version: 0.07
   Zoidberg:
     file: lib/Zoidberg.pm
-    version: 0.92
+    version: 0.93
   Zoidberg::Contractor:
     file: lib/Zoidberg/Contractor.pm
   Zoidberg::DispatchTable:
     file: lib/Zoidberg/DispatchTable.pm
   Zoidberg::Eval:
     file: lib/Zoidberg.pm
-    version: 0.92
+    version: 0.93
   Zoidberg::Fish:
     file: lib/Zoidberg/Fish.pm
   Zoidberg::Fish::Commands:
@@ -56,12 +56,10 @@ provides:
     file: lib/Zoidberg/PluginHash.pm
   Zoidberg::SettingsHash:
     file: lib/Zoidberg.pm
-    version: 0.92
+    version: 0.93
   Zoidberg::Shell:
     file: lib/Zoidberg/Shell.pm
   Zoidberg::Shell::JobsArray:
-    file: lib/Zoidberg/Shell.pm
-  Zoidberg::Shell::scalar:
     file: lib/Zoidberg/Shell.pm
   Zoidberg::StringParser:
     file: lib/Zoidberg/StringParser.pm
@@ -75,5 +73,7 @@ provides:
   Zoidberg::Utils::GetOpt:
     file: lib/Zoidberg/Utils/GetOpt.pm
   Zoidberg::Utils::Output:
+    file: lib/Zoidberg/Utils/Output.pm
+  Zoidberg::Utils::Output::Scalar:
     file: lib/Zoidberg/Utils/Output.pm
 generated_by: Module::Build version 0.2604

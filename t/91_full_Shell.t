@@ -7,7 +7,7 @@ use Zoidberg::Shell;
 
 $ENV{PWD} = cwd();
 
-print "1..17\n";
+print "1..20\n";
 
 unlink 'test12~~' or warn 'could not remove test12~~' if -e 'test12~~';
 
@@ -58,6 +58,17 @@ $shell->shell('set perl/namespace=Zoidberg::Eval');
 }
 
 # TODO test also source-filtering
+
+$shell->{settings}{voidbraces} = 0;
+my $i = 18;
+for (
+	['{foo}', '{foo}'],
+	['\\{foo\\}', '{foo}'],
+	['pre{foo,bar}post', 'prefoopost prebarpost'],
+) {
+	my $test = $shell->echo($$_[0]);
+	ok( "$test" eq $$_[1]."\n", $i++.' - braces expansion' );
+}
 
 $shell->round_up;
 

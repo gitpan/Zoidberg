@@ -2,8 +2,8 @@
 	module  => 'Zoidberg::Fish::Commands',
 	events  => { loadrc => 'plug' }, # allready using AutoLoader
 	aliases => {
-		back => 'cd(q/-1/)',
-		forw => 'cd(q/+1/)',
+		back => 'cd -1',
+		forw => 'cd +1',
 	},
 	export  => [qw/
 		cd pwd

@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 our $LONG_VERSION = "Zoidberg $VERSION
 
 Copyright (c) 2002 - 2004 Jaap G Karssenberg. All rights reserved.
@@ -24,7 +24,7 @@ require Zoidberg::Shell;
 require Zoidberg::PluginHash;
 require Zoidberg::StringParser;
 
-use Zoidberg::DispatchTable _prefix => 'dispatch_', 'stack';
+use Zoidberg::DispatchTable;
 use Zoidberg::Utils
 	qw/:error :output :fs read_data_file merge_hash regex_glob getopt/;
 
@@ -155,14 +155,14 @@ our %_grammars = ( # default grammar
 			}
 		},
 	},
-	expand_braces_gram => {
-		tokens => {
-			'{' => {
-				token => 'BRACE',
-				tokens => { '}' => '_CUT' },
-			},
-		},
-	},
+#	expand_braces_gram => {
+#		tokens => {
+#			'{' => {
+#				token => 'BRACE',
+#				tokens => { '}' => '_CUT' },
+#			},
+#		},
+#	},
 );
 
 =item C<new(\%attr)>
@@ -200,25 +200,23 @@ sub new { # FIXME maybe rename this to init ?
 	$$self{settings} = \%set;
 
 	## commands
-	my %commands;
-	tie %commands, 'Zoidberg::DispatchTable', $self, {
-		reload	 => '->reload',
-		exit	 => '->exit',
-		plug	 => '->plug',
-		unplug	 => '->unplug',
-		mode	 => '->mode',
-		readline => "->stdin('zoid-$VERSION\$ ')",
-		readmore => "->stdin('> ')",
-		builtin  => '->builtin',
-		command	 => '->command',
-		( %{$$self{commands}} )
-	};
-	$$self{commands} = \%commands;
+	$$self{commands} = Zoidberg::DispatchTable->new(
+		$self, {
+			reload	 => '->reload',
+			exit	 => '->exit',
+			plug	 => '->plug',
+			unplug	 => '->unplug',
+			mode	 => '->mode',
+			readline => "->stdin('zoid-$VERSION\$ ')",
+			readmore => "->stdin('> ')",
+			builtin  => '->builtin',
+			command	 => '->command',
+			( %{$$self{commands}} )
+		}
+	);
 
 	## events
-	my %events;
-	tie %events, 'Zoidberg::DispatchTable', $self, $$self{events};
-	$$self{events} = \%events;
+	$$self{events} = Zoidberg::DispatchTable->new($self, $$self{events});
 	$$self{events}{envupdate} = sub {
 		my $pwd = Cwd::cwd();
 		return if $pwd eq $ENV{PWD};
@@ -228,9 +226,7 @@ sub new { # FIXME maybe rename this to init ?
 	};
 
 	## parser
-	my %parser;
-	tie %parser, 'Zoidberg::DispatchTable', $self, $$self{parser};
-	$$self{parser} = \%parser;
+	$$self{parser} = Zoidberg::DispatchTable->new($self, $$self{parser});
 
 	## stringparser 
 	$$self{grammars} ||= \%_grammars;
@@ -326,7 +322,10 @@ sub main_loop {
 		else {
 			$self->reap_jobs();
 
-			unless (defined $cmd || $$self{_settings}{ignoreeof}) { $self->exit() }
+			unless (defined $cmd || $$self{_settings}{ignoreeof}) {
+				debug 'readline returned undef .. exiting';
+				$self->exit();
+			}
 			else { $$self{_warned_bout_jobs} = 0 }
 
 			last unless $$self{_continue};
@@ -376,6 +375,21 @@ sub shell_string {
 	$$self{fg_job}->shell_list($meta, @list); # calling a contractor
 }
 
+sub prepare_block {
+	my ($self, $block) = @_;
+	my $t = ref $block;
+	if ($t eq 'SCALAR') { $block = [{env => {pwd => $ENV{PWD}}}, $$block] }
+	elsif ($t eq 'ARRAY') {
+		if (ref($$block[0]) eq 'HASH') { $$block[0]{env}{pwd} ||= $ENV{PWD} }
+		else { unshift @$block, {env => {pwd => $ENV{PWD}}} }
+	}
+	else {
+		bug $t ? "prepare_block can't handle type $t"
+		       : "block ain't a ref !??" ;
+	}
+	return $block;
+}
+
 sub parse_block { # call as late as possible before execution
  	# FIXME can this be more optimised for builtin() call ?
 	my $self = shift;
@@ -423,7 +437,7 @@ sub parse_block { # call as late as possible before execution
 	$$meta{no_mode}++ if $words[0] eq 'mode'; # explicitly after alias expansion .. ! is before alias expansion
 
 	# check custom filters
-	for my $sub (dispatch_stack($$self{parser}, 'filter')) {
+	for my $sub ($$self{parser}->stack('filter')) {
 		my $r = $sub->([$meta, @words]);
 		($meta, @words) = @$r if $r; # skip on undef
 	}
@@ -469,7 +483,7 @@ sub parse_block { # call as late as possible before execution
 	# check custom contexts
 	unless ($$meta{context}) {
 		debug 'trying custom contexts';
-		for my $pair (dispatch_stack($$self{parser}, 'word_list', 'TAGS')) {
+		for my $pair ($$self{parser}->stack('word_list', 'TAGS')) {
 			my $r = $$pair[0]->([$meta, @words]);
 			unless ($r) { next }
 			elsif (ref $r) { ($meta , @words) = @$r }
@@ -530,7 +544,7 @@ sub parse_env {
 
 	# parse environment
 	if ($$meta{parse_env}) {
-		while ($words[0] =~ /^(\w[\w\-]*)=(.*)/) {
+		while ($words[0] =~ /^(\w[\w\-]*)=(.*)/s) {
 			$$meta{compl} = shift @words;
 			$$meta{env}{$1} = $2
 		}
@@ -661,7 +675,7 @@ sub parse_words { # expand words etc.
 	my ($self, $block) = @_;
 
 	# custom stack
-	for (dispatch_stack($$self{parser}, 'word_expansion')) {
+	for ($$self{parser}->stack('word_expansion')) {
 		my $re = $_->($block);
 		$block = $re if $re;
 	}
@@ -669,12 +683,12 @@ sub parse_words { # expand words etc.
 	# default expansions
 	# expand_comm resets zoidcmd, all other stuff is left for appliction level re-parsing
 	@$block = $self->$_(@$block)
-		for grep $$block[0]{$_}, qw/expand_comm expand_param expand_path/;
+		for grep $$block[0]{$_}, qw/expand_param expand_comm expand_path/;
 
 	# remove quote
 	my ($meta, @words) = @$block;
 	for (@words) {
-		if (/^([\/\w]+=)?(['"])(.*)\2$/) {
+		if (/^([\/\w]+=)?(['"])(.*)\2$/s) {
 		       	# quote removal and escape removal within quotes
 			$_ = $1.$3;
 			if ($2 eq '\'') { $_ =~ s/\\([\\'])/$1/ge }
@@ -714,51 +728,15 @@ sub expand_braces {
 
 =cut
 
-sub expand_comm {
-	my ($self, $meta, @words) = @_;
-	my @re;
-	my $m = {capture => 1, env => $$meta{env}};
-	for (@words) {
-		if (/^([\/\w]+=)?'.*'$/) {
-			push @re, $_;
-		}
-		elsif (/^\@\((.*?)\)$/) {
-			debug "\@() subz: $1";
-			push @re, map {chomp; $_} $self->shell_string($m, $1);
-		}
-		else {
-			my @parts = $$self{stringparser}->split('expand_comm_gram', $_);
-			error $$self{stringparser}{broken} if $$self{stringparser}{broken};
-			# FIXME let stringparser do the error throwing ?
-			unless (@parts > 1) {
-				push @re, $_;
-				next;
-			}
-			for (0 .. $#parts) {
-				if ($parts[$_] eq 'COMM') {
-					$parts[$_] = [ $self->shell_string($m, ${delete $parts[$_+1]}) ];
-					if ($_ < $#parts-1 and ${$parts[$_+2]} =~ s/^\[(\d*)\]//) {
-						$parts[$_] = $parts[$_][$1];
-						chomp $parts[$_];
-					}
-				}
-				elsif (ref $parts[$_]) { $parts[$_] = ${$parts[$_]} }
-			}
-			push @re, join '', map {ref($_) ? (@$_) : $_} @parts;
-		}
-	}
-	$$meta{env}{ZOIDCMD} = $$meta{zoidcmd} = join ' ', @re;
-	return $meta, @re;
-}
-
 sub expand_param {
+	# make sure $() and @() remain untouched ... `` are considered quotes
+	no strict 'refs';
 	my ($self, $meta, @words) = @_;
 	my ($e);
 	
 	my $class = $$self{_settings}{perl}{namespace};
 	for (@words) { # substitute vars
-		no strict 'refs';
-		next if /^([\/\w]+=)?'.*'$/; # skip quoted words
+		next if /^([\/\w]+=)?'.*'$/s; # skip quoted words
 		s{(?<!\\)\$\?}{ ref($$self{error}) ? $$self{error}{exit_status} : $$self{error} ? 1 : 0 }ge;
 		s{ (?<!\\) \$ (?: \{ (.*?) \} | ([\w-]+) ) (?: \[(-?\d+)\] )? }{
 			my ($w, $i) = ($1 || $2, $3);
@@ -797,17 +775,59 @@ sub expand_param {
 	return ($meta, @words);
 }
 
+sub expand_comm {
+	my ($self, $meta, @words) = @_;
+	my @re;
+	my $m = {capture => 1, env => $$meta{env}};
+	for (@words) {
+		if (/^([\/\w]+=)?'.*'$/s) {
+			push @re, $_;
+		}
+		elsif (/^\@\((.*?)\)$/s) {
+			debug "\@() subz: $1";
+			push @re, map {chomp; $_} $self->shell($m, $1);
+		}
+		else {
+			my $quote = $1 if s/^(")(.*)\1$/$2/s;
+			my @parts = $$self{stringparser}->split('expand_comm_gram', $_);
+			error $$self{stringparser}{broken} if $$self{stringparser}{broken};
+			# FIXME let stringparser do the error throwing ?
+			unless (@parts > 1) {
+				push @re, $quote ? $quote.$_.$quote : $_;
+				next;
+			}
+			for (0 .. $#parts) {
+				if ($parts[$_] eq 'COMM') {
+					debug '$() subz: '.$parts[$_+1];
+					$parts[$_] = $self->shell($m, ${delete $parts[$_+1]});
+					if ($_ < $#parts-1 and ${$parts[$_+2]} =~ s/^\[(\d*)\]//) {
+						$parts[$_] = $parts[$_][$1];
+						chomp $parts[$_];
+					}
+					else { $parts[$_] = "$parts[$_]" } # just to be sure bout overload
+				}
+				elsif (ref $parts[$_]) { $parts[$_] = ${$parts[$_]} }
+			}
+			my $word = join '', @parts; # map {ref($_) ? (@$_) : $_} @parts;
+			$word =~ s/\n+$//; # posix says so
+			if ($quote) { push @re, $quote.$word.$quote }
+			else { push @re, $$self{stringparser}->split('word_gram', $word) }
+		}
+	}
+	$$meta{env}{ZOIDCMD} = $$meta{zoidcmd} = join ' ', @re;
+	return $meta, @re;
+}
+
 # See File::Glob for explanation of behaviour
 our $_GLOB_OPTS = File::Glob::GLOB_TILDE() | File::Glob::GLOB_QUOTE() | File::Glob::GLOB_BRACE();
-#$_GLOB_OPTS |= File::Glob::GLOB_NOCASE()
-#	if $^O =~ /^(?:MSWin32|VMS|os2|dos|riscos|MacOS|darwin)$/; # logic borrowed from File::Glob
-# FIXME make the above a setting
 our $_NC_GLOB_OPTS = $_GLOB_OPTS | File::Glob::GLOB_NOCHECK();
 
 sub expand_path { # path expansion
+	# FIXME add 'failglob' setting (useful in scripts)
 	my ($self, $meta, @files) = @_;
 	return $meta, @files if $$self{_settings}{noglob};
-	my $opts = $$self{_settings}{allow_null_glob_expansion} ? $_GLOB_OPTS : $_NC_GLOB_OPTS;
+	my $opts = $$self{_settings}{nullglob} ? $_GLOB_OPTS : $_NC_GLOB_OPTS;
+	$opts |= File::Glob::GLOB_NOCASE() if $$self{_settings}{nocaseglob};
 	return $meta, map {
 		if (/^([\/\w]+=)?(['"])/) { $_ } # quoted
 		elsif (/^m\{(.*)\}([imsx]*)$/) { # regex globs
@@ -816,6 +836,9 @@ sub expand_path { # path expansion
 			else { $_ =~ s/\\\\|\\(.)/$1||'\\'/eg; $_ }
 		}
 		elsif (/^~|[*?\[\]{}]/) { # normal globs
+			# TODO: {x..y} brace expansion
+			$_ =~ s#(\\\\)|(?<!\\){([^,{}]*)(?<!\\)}#$1?$1:"\\{$2\\}"#ge
+				unless $$self{_settings}{voidbraces}; # brace pre-parsing
 			my @r = File::Glob::doglob($_, $opts);
 			debug "glob: $_ ==> ".join(', ', @r);
 			($_ !~ /^-/) ? (grep {$_ !~ /^-/} @r) : (@r);
@@ -1089,7 +1112,7 @@ sub broadcast { # eval to be sure we return
 	my ($self, $event) = (shift(), shift());
 	return unless exists $self->{events}{$event};
 	debug "Broadcasting event: $event";
-	for my $sub (dispatch_stack($$self{events}, $event)) {
+	for my $sub ($$self{events}->stack($event)) {
 		eval { $sub->($event, @_) };
 		complain("$sub died on event $event ($@)") if $@;
 	}
@@ -1189,6 +1212,11 @@ sub STORE {
 	1;
 }
 
+#sub set_default {
+#	my ($self, $key, @list) = @_;
+#	$$self[0]{_SettingsHash_def}{$key} = \@list;
+#}
+
 sub DELETE {
 	my ($self, $key) = @_;
 	my $val = delete $$self[0]{$key};
@@ -1198,7 +1226,16 @@ sub DELETE {
 
 sub CLEAR { $_[0]->DELETE($_) for keys %{$_[0][0]} }
 
-sub FETCH { $_[0][0]{$_[1]} }
+sub FETCH {
+	return $_[0][0]{$_[1]}
+#		unless !defined $_[0][0]{$_[1]}
+#		and exists $_[0][0]{_SettingsHash_def}{$_[1]};
+	# check for default (environment) values
+#	for my $def (@{$_[0][0]{_SettingsHash_def}{$_[1]}}) {
+#		$def = $ENV{$1} if $def =~ /^\$(.*)/;
+#		return $def if defined $def;
+#	}
+}
 
 sub EXISTS { exists $_[0][0]{$_[1]} }
 

@@ -1,6 +1,6 @@
 package Zoidberg::Fish::ReadLine;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 use vars qw/$AUTOLOAD $PS1 $PS2/;
@@ -216,8 +216,6 @@ The version of the application.
 =back
 
 =head1 COMMANDS
-
-TODO document all
 
 =over 4
 

@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Log;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 use AutoLoader 'AUTOLOAD';
@@ -241,7 +241,9 @@ Unless this config is set no commands are recorded.
 
 =item logfile
 
-File to store the history.
+File to store the history. Defaults to "~/.%s.log.yaml" where '%s' is
+replaced with the program name. Hence the default for B<zoid> is
+F<~/.zoid.log.yaml>.
 
 =item maxlines
 
@@ -265,23 +267,41 @@ history arrays for these types are completely managed by this module.
 
 =over 4
 
-=item fc [-r][-e editor] [first[last]]
+=item fc [-r][-e editor] [I<first> [I<last>]]
 
 =item fc -l [-nr] [I<first> [I<last>]]
 
 =item fc -s [I<old>=I<new>] [I<first> [I<last>]]
 
-TODO this command doesn't work yet !
+"Fix command", this builtin allows you to edit and re-execute commands
+from the history. I<first> and I<last> are either command numbers or strings
+matching the beginning of a command; a negative number is used to designate
+commands by counting back from the current one. Use the '-l' option to list
+the commands in the history, and the '-n' switch to surpress the command
+numbers in the listing.The '-r' switch reverses the order of the commands.
+The '-s' switch re-executes the commands without editing. 
+
+I<first> and I<last> default to '-16' and '-1' when the '-l' option is given.
+Otherwise I<first> defaults to '-1' and I<last> defaults to I<first>.
 
 Note that the selection of the editor is not POSIX compliant
 but follows bash, if no editor is given using the '-e' option
 the environment variables 'FCEDIT' and 'EDITOR' are both checked,
 if neither is set, B<vi> is used.
 ( According to POSIX we should use 'ed' by default and probably 
-ignore the 'EDITOR' varaiable. )
+ignore the 'EDITOR' varaiable, but I don't think that is "What You Want" )
 
 Following B<zsh> setting the editor to '-' is identical with using
 the I<-s> switch.
+
+Also note that B<fc> removes itself from the history and adds the resulting
+command instead.
+
+Typically B<r> is aliased to 'fc -s' so B<r> will re-execute the last
+command, optionally followed by a substitution and/or a string to match
+the begin of the command.
+
+TODO: regex/glob substitution for '-s' switch; now only does string substitution.
 
 =cut
 
@@ -291,6 +311,7 @@ sub fc {
 	unshift @$args, grep /^[+-]\d+$/, @{$$opt{_opts}} if exists $$opt{_opts};
 	my @replace = split('=', shift(@$args), 2) if $$args[0] =~ /=/;
 	error 'to many arguments' if @$args > 2;
+	my ($first, $last) = @$args;
 
 	# get selection
 	if (!$first) { ($first,$last) = $$opt{list} ? (-16, -1) : (-1, -1) }
@@ -301,11 +322,13 @@ sub fc {
 	return $$self{shell}->builtin('history', @hist_opts, $first, $last) if $$opt{list};
 
 	# get/edit commands
-	my $cmd = join "\n", @{ $$self{shell}->builtin('history', @hist_opts, $first, $last) };
-	debug $cmd;
+	my $cmd = join "\n", 
+		@{ $$self{shell}->builtin('history', @hist_opts, $first, $last) };
+	$cmd =~ s{\Q$replace[0]\E}{$replace[1]}g if @replace;
 	my $editor = $$opt{editor} || $ENV{FCEDIT} || $ENV{EDITOR} || 'vi';
 	unless ($$opt{'-s'} or $editor eq '-') {
 		# edit history - editor behaviour consistent with T:RL:Z
+		debug "going to edit: << '...'\n$cmd\n...\nwith: $editor";
 		eval 'require File::Temp' || error 'need File::Temp from CPAN';
 		my ($fh, $file) = File::Temp::tempfile(
 			'Zoid_fc_XXXXX', DIR => File::Spec->tmpdir );
@@ -318,6 +341,7 @@ sub fc {
 		close TMP;
 		unlink $file;
 	}
+	else { debug "going to execute without editing: << '...'\n$cmd\n..." }
 
 	# execute commands
 	$$self{shell}->shell($cmd) if length $cmd;
@@ -341,7 +365,7 @@ reference instead of a string when using the perl interface.
 
 Note that unlike B<fc> the B<history> command is not specified by posix and
 the implementation varies widely for different shells. In zoid, B<fc> is build on
-top of B<history>, so options for B<history> are chosen consistently with b<fc>.
+top of B<history>, so options for B<history> are chosen consistently with B<fc>.
 
 =item log I<string> I<type>
 

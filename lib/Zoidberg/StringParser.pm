@@ -2,7 +2,7 @@ package Zoidberg::StringParser;
 
 # Hic sunt leones.
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 no warnings; # can't stand the nagging
@@ -60,12 +60,8 @@ sub split {
 #	use Data::Dumper; print STDERR Dumper $gram, $expr, $types;
 
 	my $string;
-	if (ref $input) {
-		error 'StringParser can\'t handle input type'.ref($input)
-			unless ref($input) eq 'ARRAY';
-		$string = shift @$input;
-	}
-	else { ($string, $input) = ($input, []) }
+	if (ref($input) eq 'ARRAY') { $string = shift @$input }
+	else { ($string, $input) = ("$input", []) } # quotes in case of overload
 
 	return unless length $string or @$input;
 

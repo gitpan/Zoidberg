@@ -76,15 +76,24 @@ More advanced settings can be found in L<zoiddevel>.
 
 =over 4
 
-=item allow_null_glob_expansion
+=item noglob
+
+Disable path expansion for shell-like syntax.
+
+=item nocaseglob
+
+When set makes globs case insensitive.
+
+=item nullglob
 
 It allows to have wildcard patterns that expand into an empty list.
 The default behavior is to leave the pattern unchanged  
 when it is syntactically incorrect, or when the list of matching pathnames is empty.
 
-=item noglob
+=item voidbraces
 
-Disable path expansion for shell-like syntax.
+Do brace expansion posix compliant instead of bash compatible. This means
+that braces will be removed even if there is just one word between them.
 
 =item hide_private_method
 
@@ -377,6 +386,6 @@ prevent globs from accidentally adding switches to a command.
 
 =head1 SEE ALSO
 
-L<perl>(1), L<zoiddevel>(1), L<zoidfaq>(1),
+L<zoidbuiltins>(1), L<zoiddevel>(1), L<zoidfaq>(1), L<perl>(1), 
 L<http://zoidberg.sourceforge.net>
 

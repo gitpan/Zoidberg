@@ -1,6 +1,6 @@
 package Zoidberg::Contractor;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 use POSIX ();
@@ -112,6 +112,7 @@ sub shell_list {
 	return unless @list;
 
 	my @re;
+	for (@list) { $_ = $$self{shell}->prepare_block($_) if ref $_ }
 	PARSE_LIST:
 	return unless @list;
 	if (ref $list[0]) {
@@ -191,10 +192,10 @@ sub reap_jobs {
 
 sub reinc_job { # reincarnate
 	my ($self, $job) = @_;
-	debug "job \%$$job{id} reincarnates";
+	debug "job \%$$job{id} reincarnates (error: $$job{error})";
 	my @b = $self->_logic($$job{error}, @{$$job{tree}});
-	return unless @b;
 	$$job{tree} = [];
+	return unless @b;
 	debug @b. ' blocks left';
 	$self->shell_list({ bg => $$job{bg}, id => $$job{id}, capture => $$job{capture} }, @b);
 }
@@ -369,7 +370,8 @@ sub new { # @_ should at least contain 'boss' and either 'proc' or 'tree'
 	my $pipe = @{$$self{procs}} > 1;
 	$$self{string}  ||= ($pipe ? '|' : '') . $$self{procs}[-1][0]{string};
 	$$self{zoidcmd} ||= $$self{procs}[-1][0]{zoidcmd};
-
+	$$self{pwd} ||= $$self{procs}[0][0]{env}{pwd} || $ENV{PWD};
+	
 	my $meta = $$self{procs}[0][0];
 	unless ($pipe || ( defined($$meta{fork_job}) ? $$meta{fork_job} : 0 ) || $$self{bg}) {
 		bless $self, 'Zoidberg::Job::builtin'
@@ -384,7 +386,6 @@ sub exec {
 	my $self = shift;
 	if (ref $_[0]) { %$self = (%$self, %{$_[0]}) }
 
-	$$self{pwd} = $ENV{PWD};
 	message $self->status_string('Running') if $$self{prepare};
 	$$self{new} = 0;
 
@@ -392,21 +393,10 @@ sub exec {
 	local $ENV{ZOIDREF} = "$$self{shell}";
 
 	my @re = eval { $self->_run };
-
-	# bitmasks for return status of system commands
-	# exit_value  = $? >> 8;
-	# signal_num  = $? & 127; 
-	# dumped_core = $? & 128;
-	if ($@ || $$self{exit_status}) { # something went wrong
+	if ($$self{error}) { $$self{shell}{error} = $$self{error} }
+	elsif ($@) {
+		complain;
 		my $error = ref($@) ? $@ : bless { string => ($@ || 'Error') }, 'Zoidberg::Utils::Error';
-		if ($@) { complain }
-		else { $$error{silent}++ }  # we trust processes returning an exit status to complain themselfs
-		unless(defined $$error{exit_status}) { # maybe $@ allready contained one
-			$$error{exit_status} = $$self{exit_status} >> 8; # only keep application specific bits
-			my $signal = $$self{exit_status} & 127;
-			$$error{signal} = $$self{_sighash}{$signal} if $signal;
-			$$error{core_dump} = $$self{core_dump};
-		}
 		$error->PROPAGATE(); # just for the record
 		$$self{error} = $$self{shell}{error} = $error;
 	}
@@ -556,6 +546,14 @@ sub _run_child { # called in child process
 sub _set_env {
 	my ($self, $block) = @_;
 
+	# check the pwd we want
+	my $pwd = $$block[0]{env}{pwd};
+	if ($pwd and $pwd ne $ENV{PWD}) {
+		debug "Changing pwd to: $pwd";
+		chdir $pwd or error "Could not change dir to: $pwd";
+		$$self{pwd} = $pwd;
+	}
+
 	# variables
 	my @save_env;
 	while (my ($env, $val) = each %{$$block[0]{env}}) {
@@ -611,6 +609,10 @@ sub _restore_env {
 		POSIX::close($_->[0]);
 	}
 
+	if (my ($PWD) = grep {$$_[0] eq 'PWD'} @$save_env) {
+		debug "Changing pwd back to: $$PWD[1]";
+		chdir $$PWD[1] or error "Could not change dir to: $$PWD[1]";
+	}
 	$ENV{$$_[0]} = $$_[1] for @$save_env;
 }
 
@@ -746,8 +748,23 @@ sub _update_child {
 			$$child[0]{completed} = 1;
 			if ($pid == $$self{procs}[-1][0]{pid}) { # the end of the line ..
 				$$self{exit_status} = $status;
-				$$self{terminated}++ if $status & 127; # was terminated by a signal
-				$$self{core_dump}++  if $status & 128;
+				if ($status) { # parse error codes
+					# bitmasks for return status of system commands
+					# exit_value  = $? >> 8;
+					# signal_num  = $? & 127; 
+					# dumped_core = $? & 128;
+					my $signal = $status & 127;
+					$$self{terminated}++ if $signal; # was terminated by a signal
+					$$self{core_dump}++  if $status & 128;
+					$$self{error} = bless {
+						silent => 1,
+						string => $status >> 8,
+						exit_value => $status > 8,
+						core_dump => $$self{core_dump},
+						( $signal ? (signal => $$self{_sighash}{$signal}) : () ),
+					}, 'Zoidberg::Utils::Error';
+					$$self{shell}{error} = $$self{error} unless $$self{bg};
+				}
 				unless ($self->completed) { # kill the pipeline
 					local $SIG{PIPE} = 'IGNORE'; # just to be sure
 					$self->kill(SIGPIPE);

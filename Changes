@@ -1,7 +1,35 @@
  Revision history for Zoidberg - a modular perl shell 
 ======================================================
 
-0.92 Tue Dec  7
+0.93 Fri Jan 21 2004
+	Bugfix release
+	- Made brace expansion more bash compatible, set 'voidbraces'
+	for the old behaviour
+	- Renamed the 'allow_null_glob_expansion' to 'nullglob'
+	- Added the 'nocaseglob' setting
+	- Fixed a serious bug in the logic operator evaluation
+
+     Thu Jan 13
+	- Added examples/Menu.pl
+	- Made background and delayed jobs remember their PWD and make sure
+	they are their when executing
+	- Added a 'die_silently' option for the shell() and builtin() routines
+
+     Wed Jan 12
+	- Refs to hashes tie'ed with DispatchTable are now also bless'ed to
+	allow for an object interface. Added an 'add' and a 'pop' method as
+	aliases for STORE and DELETE.
+	- Added examples/word_expansion.pl and updated some related docs
+
+     Mon Jan 10
+	- Fixed a bug for using builtins in a command expansion
+	- Fixed word splitting for command expansion
+	- Fixed quote removal for multiline "words"
+
+     Wed Jan  5 2005
+	- Fixed two bugs in the 'fc' builtin and added doc for it
+
+0.92 Tue Dec  7 2004
 	Releasing quickly due to the bug in the 'export' builtin, also packaging working
 	'--help' and '--usage' switched for builtins and working history commands.
 	- Fixed 't/31_ZoidbergError.t', it seems overload.pm prevented 'is_deeply()'

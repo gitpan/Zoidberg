@@ -1,7 +1,7 @@
 
 use strict;
 
-print "1..22\n";
+print "1..28\n";
 
 chdir './blib';
 
@@ -30,17 +30,21 @@ print ZOID "echo 'ok' 10 - quote removal\n"; # 10
 print ZOID "echo \"\$OK\" 11 - parameter expansion between double quotes\n"; # 11
 print ZOID "echo ok 12 - redirection 2> test12~ 1>&2; cat test12~\n"; # 12
 print ZOID "TEST='ok 13 - local environment' { print(\$TEST, \"\\n\") }\n"; # 13
-print ZOID "false && echo 'not ok 14 - logic 2' || echo 'ok 14 - logic 2'\n"; #14
-print ZOID "      && echo 'ok 15 - empty command'\n"; # 15
-print ZOID "(false || false) || echo 'ok 16 - subshell 1'\n"; # 16
-print ZOID "(true  || false) && echo 'ok 17 - subshell 2'\n"; # 17
-print ZOID "print '#', <*>, qq#\\n# && print qq#ok 18 - globs aint redirections\\n#\n"; # 18
-#print ZOID "echo ok 19 - some quoting >> quote\\ \\'n\\ test; cat 'quote \\'n test'\n"; # 19
-print ZOID "echo ok 19 - skipped\n";
-print ZOID
-	'{ for (qw/20 a b 21 c d 22/) { print "$_\n" } } | {/\d/}g | {chomp; $_ = "ok $_ - switches $_\n"}p',
-	"\n"; # 20..22
-#print ZOID "test 23 - next after pipeline\n"; # 23
+print ZOID "false && echo 'not ok 14 - logic 2' || echo 'ok 14 - logic 1'\n"; #14
+print ZOID "./false && echo 'not ok 15 - logic 1' || echo 'ok 15 - logic 2'\n"; #15
+print ZOID "      && echo 'ok 16 - empty command'\n"; # 16
+print ZOID "(false || false) || echo 'ok 17 - subshell 1'\n"; # 17
+print ZOID "(./false || ./false) || echo 'ok 18 - subshell 2'\n"; # 18
+print ZOID "(true  || false) && echo 'ok 19 - subshell 3'\n"; # 19
+print ZOID "(./true  || ./false) && echo 'ok 20 - subshell 4'\n"; # 20
+print ZOID "print '#', <*>, qq#\\n# && print qq#ok 21 - globs aint redirections\\n#\n"; # 21
+print ZOID "echo ok 22 - some quoting > quote\\ \\'n\\ test~; cat 'quote \\'n test~'\n"; # 22
+print ZOID "echo ok 23 - backticks > backticks_test~; echo \$(cat backticks_test~)\n"; # 23
+print ZOID "echo ok 24 - builtin backticks > backticks_test~; echo `builtin_cat backticks_test~`\n"; # 24
+print ZOID "echo 'ok 25 - builtin backticks 1' > backticks_test~; echo `builtin_cat_1 backticks_test~`\n"; # 25
+print ZOID '{ for (qw/26 a b 27 c d 28/) { print "$_\n" } } | {/\d/}g | {chomp; $_ = "ok $_ - switches $_\n"}p',
+	"\n"; # 26..28
+#print ZOID "test 29 - next after pipeline\n"; # 29
 
 # TODO much more tests :)
 

@@ -154,6 +154,7 @@ package. Visit the web page to submit bug reports or mail the author.
 
 L<perl>(1),
 L<zoiduser>(1),
+L<zoidbuiltins>(1),
 L<zoiddevel>(1),
 L<zoidfaq>(1),
 L<Zoidberg>(3),

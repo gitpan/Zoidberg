@@ -12,9 +12,11 @@ BUGS
 Build.PL
 Changes
 configure
+doc/examples/cpan.pl
+doc/examples/Menu.pl
+doc/examples/word_expansion.pl
 doc/index.html
 etc/zoidrc
-examples/cpan.pl
 lib/Bundle/Zoidberg.pm
 lib/Zoidberg.pm
 lib/Zoidberg/Contractor.pm
@@ -34,6 +36,7 @@ lib/Zoidberg/Utils/GetOpt.pm
 lib/Zoidberg/Utils/Output.pm
 Makefile.PL
 man1/zoid.pod
+man1/zoidbuiltins.pod
 man1/zoiddevel.pod
 man1/zoidfaq.pod
 man1/zoiduser.pod

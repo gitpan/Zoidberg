@@ -8,7 +8,9 @@ $shell = Zoidberg::Shell->current(); # get object
 message(
 "--[ This is the Zoidberg shell ]--[ Version $Zoidberg::VERSION ]--
 ### This is a development version, consider it unstable" );
-$shell->{events}{exit} = sub { message("--[ CU ]--[ Please report all bugs ]--") };
+$shell->{events}->add( 'exit',
+	sub { message("--[ CU ]--[ Please report all bugs ]--") }
+);
 
 ### set environment
 # Default prompt
@@ -28,6 +30,7 @@ defined $ENV{$$_[0]} or $ENV{$$_[0]} = $$_[1] for
 	[ CLICOLOR => 1      ];
 
 # some glue for the Gentoo distrobution
+# we need a *real* bash mode to do this the right way
 if (
 	-e '/etc/profile.env' and
 	open EXP, '/etc/profile.env'
@@ -77,6 +80,9 @@ push @{ $$shell{settings}{perl}{keywords} }, qw/p pp x/;
 
 ### default settings
 set('notify', 'notify_verbose');
+set('nocaseglob')
+	if $^O =~ /^(?:MSWin32|VMS|os2|dos|riscos|MacOS|darwin)$/;
+	# logic borrowed from File::Glob
 
 ### OS dependent stuff
 if ($^O eq 'linux' and $ENV{CLICOLOR}) { # _GNU_/Linux rigth ?

@@ -75,7 +75,11 @@ sub process_MyPost_files {
 
 # my actions
 
-sub ACTION_htmldocs { $_[0]->run_perl_script( File::Spec->catfile('b', 'man2html.PL') ) }
+sub ACTION_htmldocs {
+	my $self = shift;
+	$self->depends_on('build');
+	$self->run_perl_script( File::Spec->catfile('b', 'man2html.PL') );
+}
 
 sub ACTION_appdir {
 	my $self = shift;

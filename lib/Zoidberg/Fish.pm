@@ -1,6 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 use Zoidberg::Utils 'error';
@@ -88,8 +88,8 @@ sub shell  { $_[0]{shell}  }
 
 =item C<plug()>
 
-A stub doing absolutely nothing,
-once it is called from a dispatch table the plugin is loaded anyway.
+A stub doing absolutely nothing, but by calling it from
+a dispatch table the plugin is loaded.
 
 =item C<unplug()>
 
@@ -146,7 +146,11 @@ of all routines belonging to this plugin.
 
 =item C<add_expansion(regex_ref => sub { ... })>
 
+TODO
+
 =item C<wipe_expansions()>
+
+TODO
 
 =cut
 

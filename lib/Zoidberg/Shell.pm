@@ -1,6 +1,6 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -57,34 +57,47 @@ sub AUTOLOAD {
 
 sub shell { # FIXME FIXME should not return after ^Z
 	my $self = &_self;
+	my $meta = (ref($_[0]) eq 'HASH') ? shift : {};
 	my $pipe = ($_[0] =~ /^-\||\|-$/) ? shift : undef ;
 	todo 'pipeline syntax' if $pipe;
 	my $save_error = $$self{error};
 	$$self{fg_job} ||= $self;
-	my $c = defined wantarray;
+	$$meta{capture} = defined(wantarray()) ? 1 : 0;
+	local $$self{_settings}{output}{error} = 'mute'
+		if delete $$meta{die_silently};
 	my @re;
-	if (grep {ref $_} @_) { @re = $$self{fg_job}->shell_list( {capture => $c}, @_ ) }
-	elsif (@_ > 1)        { @re = $$self{fg_job}->shell_list( {capture => $c}, \@_) }
-	else                  { @re = $self->shell_string( {capture => $c}, @_ ) }
+	if (grep {ref $_} @_) { @re = $$self{fg_job}->shell_list($meta, @_) }
+	elsif (@_ > 1)        { @re = $$self{fg_job}->shell_list($meta, \@_) }
+	else                  { @re = $self->shell_string($meta, @_) }
 	$@ = $$self{error};
 	$$self{error} = $save_error;
 	_return($@, @re);
 }
 
 sub _return { # fairly complex output logic :S
+	# the heuristic is that list context is the fastest .. can this be optimised further ?
 	my $error = shift() ? 0 : 1;
-	unless (@_) { return Zoidberg::Shell::scalar->new('', $error) }
-	elsif ($_[0] =~ /\n$/) { # system command output
-		return wantarray ? (return map {chomp; $_} @_) :
-			Zoidberg::Shell::scalar->new( join('', @_), $error ) ;
+	unless (@_) { return Zoidberg::Utils::Output::Scalar->new($error, '') }
+	elsif (! grep ref($_), @_) { # only string - probably system command output
+		return wantarray ? (return map {chomp; length($_) ? split(/\n/, $_) : $_} @_) :
+			Zoidberg::Utils::Output::Scalar->new($error, join('', @_)) ;
 	}
-	elsif (wantarray) { # mimicking output formatting a bit
+	elsif (wantarray) { # try to do the same list heuristics as utils::output
 		return map {
 			(ref($_) eq 'ARRAY' and ! grep ref($_), @$_) ? (@$_) : $_
 		} @_;
 	}
-	else { # keep as is for later processing
-		return Zoidberg::Shell::scalar->new((@_ == 1) ? shift : \@_, $error );
+	else { # one or more refs in @_
+		if (@_ == 1) { # must be ref
+			return( (ref($_[0]) eq 'ARRAY' and ! grep ref($_), @{$_[0]})
+				? Zoidberg::Utils::Output::Scalar->new($error, undef, shift())
+				: Zoidberg::Utils::Output::Scalar->new($error, shift())        ) ;
+		}
+		else { # mixed data - hope we get it right
+			return Zoidberg::Utils::Output::Scalar->new($error, undef, [ map {
+				(ref($_) eq 'ARRAY' and ! grep ref($_), @$_) ? (@$_) : $_
+			} @_ ] ) ;
+		}
 	}
 }
 
@@ -101,10 +114,13 @@ sub command {
 sub _shell_cmd {
 	my $type = shift;
 	my $self = &_self;
+	my $meta = (ref($_[0]) eq 'HASH') ? shift : {};
+	$$meta{capture} = defined wantarray;
+	local $$self{_settings}{output}{error} = 'mute'
+		if delete $$meta{die_silently};
 	my $save_error = $$self{error};
 	$$self{fg_job} ||= $self;
-	my $c = defined wantarray;
-	my @re = $$self{fg_job}->shell_job( {capture => $c},
+	my @re = $$self{fg_job}->shell_job( $meta,
 		[{context => 'CMD', cmdtype => $type}, @_] );
 	$@ = $$self{error};
 	$$self{error} = $save_error;
@@ -187,29 +203,6 @@ sub source {
 }
 
 sub job { $Zoidberg::CURRENT->job_by_spec(pop @_) }
-
-package Zoidberg::Shell::scalar;
-
-use overload
-	'""'   => \&scalar,
-	'bool' => \&error,
-	'@{}'  => \&array,
-	fallback => 'TRUE';
-
-sub new    { bless \[@_[1,2]], $_[0]      }
-
-sub scalar { my $s = ${ shift() }; $$s[0] }
-
-sub error  { my $s = ${ shift() }; $$s[1] }
-
-sub array {
-	my $s = ${ shift() };
-	unless (ref $$s[0]) {
-		$$s[2] ||= [ split /\n/, $$s[0] ]; # returning $$s[2]
-	}
-	elsif (ref($$s[0]) eq 'ARRAY') { $$s[0] }
-	else { [$$s[0]] }
-}
 
 package Zoidberg::Shell::JobsArray;
 

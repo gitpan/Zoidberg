@@ -1,13 +1,12 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 use strict;
 use vars qw/$DEVNULL/;
 use AutoLoader 'AUTOLOAD';
 use Zoidberg::Fish;
 use Zoidberg::Utils qw/:default path list_path list_dir/;
-use Zoidberg::DispatchTable _prefix => '_', 'stack';
 
 our @ISA = qw/Zoidberg::Fish/;
 
@@ -209,7 +208,7 @@ sub i__words { # to expand the first word
 
 	my @blocks = ($self->i_dirs_n_files($block, 'x'));
 	my @alt;
-	for (_stack($$self{shell}{parser}, 'word_list')) {
+	for ($$self{shell}{parser}->stack('word_list')) {
 		my @re = $_->($block);
 		unless (@re) { next }
 		elsif (ref $re[0]) {

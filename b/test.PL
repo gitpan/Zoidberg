@@ -13,7 +13,15 @@ for (
 	[
 		$b->localize_file_path('blib/echo'),
 		qq{#!$perl\nprint join(q/ /, \@ARGV), "\\n";\n}
-	]
+	],
+	[
+		$b->localize_file_path('blib/false'),
+		qq{#!$perl\nexit 1;\n}
+	],
+	[
+		$b->localize_file_path('blib/true'),
+		qq{#!$perl\nexit 0;\n}
+	],
 ) {
 	open FILE, ">$$_[0]" || die "Could not write to file: $$_[0]";
 	print FILE $$_[1];
