@@ -1,0 +1,101 @@
+ Zoidberg - a modular perl shell, version 0.1c
+===============================================
+
+** Laziness, Impatience, Hubris ! **
+
+ http://zoidberg.sourceforge.net
+
+  Zoidberg provides a shell written in perl, configured in 
+  perl and operated in perl. It is intended as a login shell
+  and developement environment. Most likely you'll have to
+  be a perl programmer to enjoy this.
+
+ Features include:
+        runs perl from shell prompt (duh!)
+        config in perl code
+        perl codable prompt
+        perl codable key bindings
+        runtime loadable modules
+        regex tab expansion (this is not a bug !)
+        tab expansion through your perl data structure
+        tab expansion for methods of loaded modules
+                use this shell as your debug environment :)
+        multi line editing
+        help system
+        pipes
+
+ planned:
+        jobs
+        screen
+        inter user communication
+        wrappers for several CPAN modules like mailbox
+
+INSTALLATION
+  
+  To use Zoidberg you most likely want both the package of
+  perl modules (Zoidberg) and the package of program files
+  (ProgramFiles). This last package provides you with a default
+  config and a runnable script.
+  The modules also are available on CPAN.
+
+ To install the perl modules type:
+
+   > perl Makefile.PL
+   > make
+   > make test
+   > make install
+
+ To install the perl modules from CPAN try:
+
+   > perl -MCPAN -e 'install Zoidberg'
+
+ To install the program files just run install.pl .
+
+DEPENDENCIES
+
+  First of all you need perl <www.perl.com>,
+  it is very likely this is allready on your system.
+  Zoidberg is tested for perl version  5.8.0 and 5.6.1 .
+
+  Most likely the Zoidberg shell won't function properly
+  on any other platform then GNU/Linux.
+  It is not (yet) (really) POSIX compliant.
+
+  It is adviced to installes all Zoidberg modules, although
+  most are removable, it will be less fun.
+
+    Allways necessary are:
+       Zoidberg
+       Zoidberg::PdParse
+       Zoidberg::StringParse
+
+    The following contain core functionality:
+       Zoidberg::Buffer
+       Zoidberg::Intel
+       Zoidberg::Prompt
+       Zoidberg::Commands
+       Zoidberg::History
+
+  Modules which are not in the Zoidberg package but are needed to install
+  Zoidberg are listed in the Depends.pd file -- these modules are available
+  from CPAN <http://cpan.org>.
+
+BUGS
+
+  Since we are still in alpha/development fase there will be a lot of bugs.
+
+  Please report bugs through the bug tracker on the sourceforge project page
+  <www.sourceforge.net/projects/zoidberg>.
+
+AUTHORS
+
+  Jaap Karssenberg || Pardus [Larus] <j.g.karssenberg@student.utwente.nl>
+  R.L. Zwart, <carlos@caremail.nl>
+
+COPYRIGHT AND LICENCE
+
+  Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
+  This program is free software; you can redistribute it and/or
+  modify it under the same terms as Perl.
+
+  See <http://www.perl.com/language/misc/Artistic.html>

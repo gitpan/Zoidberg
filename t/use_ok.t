@@ -1,0 +1,17 @@
+use Test::More tests => 16;
+use_ok('Zoidberg');
+use_ok('Zoidberg::Buffer');
+use_ok('Zoidberg::Commands');
+use_ok('Zoidberg::Fish');
+use_ok('Zoidberg::Help');
+use_ok('Zoidberg::Hermes');
+use_ok('Zoidberg::History');
+use_ok('Zoidberg::Intel');
+use_ok('Zoidberg::MOTZ');
+use_ok('Zoidberg::Monitor');
+use_ok('Zoidberg::PdParse');
+use_ok('Zoidberg::Prompt');
+use_ok('Zoidberg::Sepository');
+use_ok('Zoidberg::StringParse');
+use_ok('Zoidberg::StringParse::Syntax');
+use_ok('Zoidberg::ZoidParse');
