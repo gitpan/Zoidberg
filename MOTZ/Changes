@@ -1,6 +1,0 @@
-Revision history for Perl extension Zoidberg::MOTZ.
-
-0.01  Thu Sep 26 21:10:41 2002
-	- original version; created by h2xs 1.22 with options
-		-A -X -n Zoidberg::MOTZ
-

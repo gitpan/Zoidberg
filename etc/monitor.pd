@@ -1,0 +1,17 @@
+$VAR1 =
+{
+	'precmd' => {
+	    'loadavg' => {
+            condition   => q|eval{[split//,IO::File->new("/proc/loadavg")->getline]->[0]=~/^[1-9]/}|,
+	        action      => q|$self->parent->print("CPU RUNNING HOT !!!",'message')|,
+	    },
+	    'motz' => {
+	        condition   => q|int(rand 6) ? 0: 1|,
+	        action      => q|$_[0]->parent->motz->fortune|,
+	    },
+	    'mail' => {
+	        condition   => q|my$t=[stat('/var/spool/mail/'.getlogin())]->[9];my$r;if($t!=$self->{lmst}){$r=1}else{$r=0};$self->{lmst}=$t;$r|,
+	        action      => q|$self->print("You've got mail!")|,
+	    },
+	}
+}

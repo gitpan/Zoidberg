@@ -1,6 +1,0 @@
-Revision history for Perl extension Zoidberg::Help.
-
-0.01  Sun Sep 29 00:16:12 2002
-	- original version; created by h2xs 1.22 with options
-		-AX -n Zoidberg::Help
-

@@ -1,6 +1,0 @@
-Revision history for Perl extension Zoidberg::Hermes.
-
-0.01  Sat Nov  2 22:52:59 2002
-	- original version; created by h2xs 1.22 with options
-		-AX -n Zoidberg::Hermes
-

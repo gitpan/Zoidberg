@@ -1,0 +1,32 @@
+#this file can use a $prefix and a $conf_dir
+$VAR1 = {
+	'print' => {
+		'colors' => {
+			'warning' => 'yellow',
+			'error' => 'red',
+			'debug' => 'green',
+			'sql-data' => 'yellow',
+		},
+		'mark_up' => ['warning', 'error', 'debug'],
+	},
+	'init_objects' => {
+		#zoidname 	=> [$class, ($init_args || $new_args), $code]
+		'Buffer'	=> ['Zoidberg::Buffer'],
+		'Intel' 	=> ['Zoidberg::Intel'],
+		'Prompt'	=> ['Zoidberg::Prompt'],
+		'Commands'	=> ['Zoidberg::Commands'],
+		'History'	=> ['Zoidberg::History'],
+		'MOTZ'   	=> ['Zoidberg::MOTZ'],
+		'Test'		=> ['Zoidberg::Test'],
+		'Monitor'	=> ['Zoidberg::Monitor'],
+#		'Safe'		=> ['Safe', '', '$self->{objects}{$zoidname}->reval("no strict");'],
+		'Help'		=> ['Zoidberg::Help'],
+		'Hermes'	=> ['Zoidberg::Hermes'],
+		'Trog'		=> ['Zoidberg::Trog'],
+		'Sepository'	=> ['Zoidberg::Sepository'],
+	},
+	'show_naked_zoid' => 0,
+	'cache_time' => 300, # time in seconds -- 5min
+	'no_regex' => 0,
+	'strict_regex' => 0,
+}

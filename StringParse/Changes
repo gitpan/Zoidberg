@@ -1,6 +1,0 @@
-Revision history for Perl extension Zoidberg::StringParse.
-
-0.01  Sat Nov  2 19:50:25 2002
-	- original version; created by h2xs 1.22 with options
-		-AX -n Zoidberg::StringParse
-
