@@ -10,16 +10,22 @@ Disclaimer: some of this might be in dutch
 ----
 
 * Pipeline from STDIN problem, see t/90_full.t
-When zoid runs in non-interactive mode and gets its commands from
-STDIN, it can happen that when a command is a pipeline some child processes keep listening to the parents STDIN after they should have been terminated.
+When zoid runs in non-interactive mode and gets its commands from STDIN, it can
+happen that when a command is a pipeline some child processes keep listening to
+the parents STDIN after they should have been terminated.
 
-* perl code containing stuff like q/}/ can make StringParser trow an error because StringParser doesn't recognise q// as quoting.
+* perl code containing stuff like q/}/ can make StringParser trow an error
+because StringParser doesn't recognise q// as quoting.
 
 * Source scripts can pollute each others namespace.
-In theory 'do filename' should create a clean namespace 'main' for each script, but do to a bug in perl versions older then 5.8.1 we can't use this construct. Thus all scripts are in the namespace 'Main' that isn't cleaned.
+In theory 'do filename' should create a clean namespace 'main' for each script,
+but do to a bug in perl versions older then 5.8.1 we can't use this construct.
+Thus all scripts are in the namespace 'Main' that isn't cleaned.
 
 * A literal '\n' vanishes after re-reading history
 
 * The Buffer tends to overwrite the last line if it didn't end with a "\n"
 
-* When you use a built-in command as a perl-routine, the capturing of STDOUT doesn't work
+* When you use a built-in command as a perl-routine, the capturing of STDOUT
+doesn't work
+

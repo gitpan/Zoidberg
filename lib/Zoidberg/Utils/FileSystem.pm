@@ -1,6 +1,6 @@
 package Zoidberg::Utils::FileSystem;
 
-our $VERSION = '0.54';
+our $VERSION = '0.55';
 
 use strict;
 #use File::Spec;
@@ -9,7 +9,7 @@ use Env qw/@PATH/;
 use File::Spec; # TODO make more use of this lib
 use Zoidberg::Utils::Output qw/debug message/;
 use Exporter::Tidy 
-	default => [qw/abs_path list_path list_dir unique_file/],
+	default => [qw/abs_path list_path list_dir unique_file regex_glob/],
 	engine  => [qw/index_path wipe_cache read_cache save_cache/];
 
 our $cache = { VERSION => $VERSION };
@@ -139,6 +139,28 @@ sub _shift_file {
         if ( !$file || ref $file) { die 'Got no valid filename.' }
         $dump_file = $file; # memorise it
 	return $file;
+}
+
+## Regex glob ##
+
+sub regex_glob {
+	my ($glob, $opt) = @_;
+	my @regex = $Zoidberg::CURRENT->{stringparser}->split(qr#/#, $glob);
+	return _regex_glob_recurs(\@regex, '.', $opt);
+}
+
+sub _regex_glob_recurs {
+	my ($regexps, $dir, $opt) = @_;
+	my $regexp = shift @$regexps;
+	$regexp = "(?$opt:".$regexp.')' if $opt;
+	debug "globbing for dir '$dir', regexp '$regexp', opt '$opt'\n";
+	opendir DIR, $dir;
+	my @matches = @$regexps
+		? ( map  { _regex_glob_recurs([@$regexps], $dir.'/'.$_, $opt) }
+		    grep { -d $_ and $_ !~ /^\.{1,2}$/ and m/$regexp/ } readdir DIR )
+		: ( map "$dir/$_", grep { $_ !~ /^\.{1,2}$/ and m/$regexp/ } readdir DIR ) ;
+	closedir DIR;
+	return @matches;
 }
 
 1;

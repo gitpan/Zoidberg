@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils;
 
-our $VERSION = '0.54';
+our $VERSION = '0.55';
 
 use strict;
 use vars '$AUTOLOAD';
@@ -21,7 +21,7 @@ my %tags = (
 	error	=> [qw/error bug todo complain/],
 	other	=> [qw/setting read_data_file read_file merge_hash/],
 
-	_fs	=> [qw/abs_path list_path list_dir unique_file/],
+	_fs	=> [qw/abs_path list_path list_dir unique_file regex_glob/],
 	_output	=> [qw/output message debug complain typed_output/],
 	_cluster => {
 		fs_engine => [qw/Zoidberg::Utils::FileSystem _prefix f_ :engine/],

@@ -82,6 +82,18 @@ Well, if it _is_ a bug then probably it's a bug in perl, not in zoid.
 Most notoriously if you use globs in perl code, perl 5.8.0 can segfault;
 upgrading to perl 5.8.2 fixes this problem.
 
+
+=head2 Development
+
+=head3 How do I get Zoid to cooperate with a gui toolkit like Tk ?
+
+To my understanding the only thing needed to cooperate with any gui
+toolkit is a "heartbeat" event to update the gui. If you use our
+Term::ReadLine::Zoid library zoid will give you an event called "beat".
+Try something like:
+
+ $shell->{events}{beat} = \&update_gui;
+
 =head1 SEE ALSO
 
 L<perl(1)>, L<http://zoidberg.sourceforge.net>

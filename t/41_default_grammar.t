@@ -1,4 +1,5 @@
 
+use Zoidberg;
 use Zoidberg::Utils qw/read_file/;
 use Zoidberg::StringParser;
 
@@ -44,24 +45,22 @@ my @test_data1 = (
 );
 
 my @test_data2 = (
-	[
-		qq#ls -al ../dus \n#,
-		[qw#ls -al ../dus#],
-		'simple statement'
-	],
-	[
-		qq#ls -al "./ dus  " ../hmm\n#,
-		[qw/ls -al/, '"./ dus  "', '../hmm'],
-		'another statement'
-	],
-	[
-		q#alias du=du\ -k#,
-		['alias', 'du=du -k'],
-		'escape whitespace'
-	],
+	[ qq#ls -al ../dus \n#,			[qw#ls -al ../dus#],			'simple statement'  ],
+	[ qq#ls -al "./ dus  " ../hmm\n#,	[qw/ls -al/, '"./ dus  "', '../hmm'],	'another statement' ],
+	[ q#alias du=du\ -k#, 			['alias', 'du=du -k'],			'escape whitespace' ],
 );
 
-import Test::More tests => scalar(@test_data1) + scalar(@test_data2) + 1;
+my @test_data3 = (
+	[ q#echo \\\\#,		['echo', '\\'],		'escape throughput'   ],
+	[ q#echo '\\\\'#,	['echo', '\\\\'],	'escape throughput 1' ],
+	[ q#echo {foo,bar}#,	[qw/echo foo bar/],	'GLOB_BRACE'          ],
+	[ q#echo \{foo,bar}#,	['echo', '{foo,bar}'],	'GLOB_QUOTE'          ],
+);
+
+import Test::More tests =>
+	  scalar(@test_data1)
+	+ scalar(@test_data2)
+	+ scalar(@test_data3) + 1;
 
 my $collection = read_file('./share/data/grammar.pl');
 my $parser = Zoidberg::StringParser->new($collection->{_base_gram}, $collection);
@@ -76,8 +75,21 @@ for my $data (@test_data1) {
 print "# word grammar\n";
 
 for my $data (@test_data2) {
-        my @blocks = $parser->split('word_gram', $data->[0]);
-        is_deeply(\@blocks, $data->[1], $data->[2]);
+        my @words = $parser->split('word_gram', $data->[0]);
+        is_deeply(\@words, $data->[1], $data->[2]);
+}
+
+print "# both grammars and parse_words\n";
+
+{
+	no warnings; # yeah yeah, somethings are undefined 
+	my $z = bless {}, 'Zoidberg';
+	for my $data (@test_data3) {
+		my ($block) = $parser->split('script_gram', $data->[0]);
+		my @words = $parser->split('word_gram', $$block);
+		(undef, @words) = @{ $z->parse_words([{}, @words]) };
+		is_deeply(\@words, $data->[1], $data->[2]);
+	}
 }
 
 print "# rest\n";

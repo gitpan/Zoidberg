@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name: Zoidberg
-version: 0.54
+version: 0.55
 author: Jaap Karssenberg <pardus@cpan.org>
 abstract: a modular perl shell
 license: perl
@@ -29,10 +29,10 @@ dynamic_config: {}
 provides:
   Bundle::Zoidberg:
     file: lib/Bundle/Zoidberg.pm
-    version: 0.01
+    version: 0.02
   Zoidberg:
     file: lib/Zoidberg.pm
-    version: 0.54
+    version: 0.55
   Zoidberg::Contractor:
     file: lib/Zoidberg/Contractor.pm
   Zoidberg::DispatchTable:
@@ -58,6 +58,8 @@ provides:
   Zoidberg::PluginHash:
     file: lib/Zoidberg/PluginHash.pm
   Zoidberg::Shell:
+    file: lib/Zoidberg/Shell.pm
+  Zoidberg::Shell::JobsArray:
     file: lib/Zoidberg/Shell.pm
   Zoidberg::Shell::scalar:
     file: lib/Zoidberg/Shell.pm

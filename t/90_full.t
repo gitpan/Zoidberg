@@ -8,6 +8,8 @@ $ENV{OK8} = 'ok 8';
 $ENV{OK} = 'ok';
 $ENV{ARRAY} = join ':', qw/f00 ok b4r/;
 
+$SIG{PIPE} = 'IGNORE';
+
 $|++;
 my $zoid = 
 	'| blib/script/zoid '
@@ -31,6 +33,7 @@ print ZOID "false && echo 'not ok 14 - logic 2' || echo 'ok 14 - logic 2'\n"; #1
 print ZOID
 	'{ for (qw/15 a 16 b 17 c/) { print "$_\n" } } | {/\d/}g | {chomp; $_ = "ok $_ - switches $_\n"}p',
 	"\n"; # 15..17
+#print ZOID 'echo ok 18 - bg process &'; # 18
 
 #print ZOID "test 18 - rcfile with alias\n"; # 18
 # FIXME FIXME FIXME - this should work

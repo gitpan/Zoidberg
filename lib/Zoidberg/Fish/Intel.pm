@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.54';
+our $VERSION = '0.55';
 
 use strict;
 use vars qw/$DEVNULL/;
@@ -383,10 +383,6 @@ This module is a Zoidberg plugin, see Zoidberg::Fish for details.
 
 This class provides intelligence for tab-expansion
 and similar functions. It is very dynamic structured.
-
-=head2 EXPORT
-
-None by default.
 
 =head1 METHODS
 

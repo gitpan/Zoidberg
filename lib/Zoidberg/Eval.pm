@@ -1,13 +1,13 @@
 package Zoidberg::Eval;
 
-our $VERSION = '0.54';
+our $VERSION = '0.55';
 
 use strict;
 use vars qw/$AUTOLOAD/;
 
 use Data::Dumper;
 use Zoidberg::Shell qw/:all/;
-use Zoidberg::Utils qw/:error :output :fs/;
+use Zoidberg::Utils qw/:error :output :fs regex_glob/;
 require Env;
 
 $| = 1;
@@ -135,7 +135,7 @@ sub _dezoidify {
 			my ($s, $v) = ($1, $2);
 			if (
 				$block =~ /^::/
-				or grep {$v eq $_} qw/_ ARGV ENV SIG INC/
+				or grep {$v eq $_} qw/_ ARGV ENV SIG INC JOBS/
 				or ( $v =~ /[a-z]/ and ! exists $ENV{$v} )
 			) { $n_code .= $s.$v.$block} # reserved or non-env var
 			elsif ($s eq '@' or $block =~ /^\[/) { # array

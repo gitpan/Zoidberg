@@ -1,6 +1,8 @@
 
 package Zoidberg::Fish::Help;
 
+our $VERSION = '0.55';
+
 use strict;
 use Zoidberg::Utils;
 use base 'Zoidberg::Fish';
@@ -101,23 +103,16 @@ __END__
 
 =head1 NAME
 
-... - simple module
+Zoidberg::Fish::Help - help system for Zoidberg
 
 =head1 SYNOPSIS
 
-simple code example
-
-	use Simple::Module;
-
-	my $smod = Simple::Module->new
+This module is a Zoidberg plugin, see Zoidberg::Fish for details.
 
 =head1 DESCRIPTION
 
-descriptve text
-
-=head1 EXPORT
-
-None by default.
+This module provides a 'help' command that can provide an inside
+what a shell command is/does.
 
 =head1 COMMANDS
 
@@ -133,13 +128,13 @@ Prints help output on a I<subject> or a (built-in) I<command>.
 
 Jaap Karssenberg (Pardus) E<lt>pardus@cpan.orgE<gt>
 
-Copyright (c) 2003 Jaap G Karssenberg. All rights reserved.
+Copyright (c) 2004 Jaap G Karssenberg. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Zoidberg>
+L<Zoidberg>, L<Zoidberg::Fish>
 
 =cut
 

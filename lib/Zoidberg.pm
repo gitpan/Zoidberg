@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.54';
+our $VERSION = '0.55';
 our $LONG_VERSION =
 "Zoidberg $VERSION
 
@@ -26,7 +26,7 @@ require Zoidberg::StringParser;
 
 use Zoidberg::DispatchTable _prefix => '_', 'stack';
 use Zoidberg::Utils
-	qw/:error :output :fs :fs_engine read_data_file merge_hash/;
+	qw/:error :output :fs :fs_engine read_data_file merge_hash regex_glob/;
 #use Zoidberg::IPC;
 
 our @ISA = qw/Zoidberg::Contractor Zoidberg::Shell/;
@@ -142,18 +142,20 @@ sub main_loop {
 		}
 		else {
 			$self->reap_jobs();
-			$self->exit() unless defined $cmd || $$self{settings}{ignoreeof};
+
+			unless (defined $cmd || $$self{settings}{ignoreeof}) { $self->exit() }
+			else { $$self{_warned_bout_jobs} = 0 }
+
 			last unless $$self{_continue};
-			$self->broadcast('cmd', $cmd);
-			print STDERR $cmd if $$self{settings}{verbose}; # posix spec
-			$self->shell_string($cmd);
+
+			if (length $cmd) {
+				$self->broadcast('cmd', $cmd);
+				print STDERR $cmd if $$self{settings}{verbose}; # posix spec - FIXME doesn't echo "readmore" lines
+				$self->shell_string($cmd);
+			}
 		}
 	}
 }
-
-### Backward compatible temporary code ###
-
-sub print { bug 'deprecated method, use Zoidberg::Utils qw/:output/' }
 
 # #################### #
 # information routines #
@@ -181,10 +183,27 @@ sub shell_string {
 			undef $meta;
 	}
 	local $CURRENT = $self;
-	@list = $$self{stringparser}->split('script_gram', @list);
-	my $e = $$self{stringparser}->error;
-	return complain $e if $e;
-	# TODO pull code here
+	PARSE_STRING: {
+		local $$self{stringparser}{settings}{allow_broken} = 1; # FIXME StringParser should have local settings
+		@list = grep {defined $_} $$self{stringparser}->split('script_gram', @list);
+		my $e = $$self{stringparser}->error;
+		return complain $e if $e;
+	}
+	my $b = $$self{stringparser}{broken} ? 1
+		: (@list and ! ref $list[-1] and $list[-1] !~ /^EO/) ? 2 : 0 ;
+	if ($b and ! $$self{settings}{interactive}) { # FIXME should be STDIN on non interactive
+		error qq#Operator at end of input# if $b == 2;
+		my $gram = $$self{stringparser}{broken}[1];
+		error qq#Unmatched $$gram{_open}[1] at end of input: $$gram{_open}[0]#;
+	}
+	elsif ($b) {
+		@list = eval { $$self{events}{readmore}->() };
+		if ($@) {
+			complain "\nInput routine died.\n$@";
+			return;
+		}
+		goto PARSE_STRING;
+	}
 	debug 'block list: ', \@list;
 	$$self{fg_job} ||= $self;
 	return $$self{fg_job}->shell_list($meta, @list); # calling a contractor
@@ -293,16 +312,21 @@ sub parse_macros {
 	# parse environment
 	unless ( $$self{settings}{_no_env} ) {
 		while ($words[0] =~ /^(\w[\w\-]*)=(.*)/) {
-			push @{$$meta{start}}, shift @words;
 			$$meta{start} ||= [];
-			my (undef, @w) = @{ $self->parse_words([{}, $2]) };
-			$$meta{env}{$1} = join ':', @w;
+			push @{$$meta{start}}, shift @words;
+			$$meta{env}{$1} = $2
 		}
 		if (! @words and $$meta{env}) { # special case
 			@words = ('export', map $_.'='.$$meta{env}{$_}, keys %{$$meta{env}});
 			$$meta{string} = '';
 			delete $$meta{start};
 			delete $$meta{env}; # duplicate would make var local
+		}
+		elsif ($$meta{env}) {
+			for (keys %{$$meta{env}}) {
+				my (undef, @w) = @{ $self->parse_words([{}, $$meta{env}{$_}]) };
+				$$meta{env}{$_} = join ':', @w;
+			}
 		}
 	}
 
@@ -348,14 +372,22 @@ sub _do_aliases { # recursive sub (aliases are 3 way recursive, 2 ways are in th
 	debug "$words[0] is aliased to: $string";
 	shift @words;
 
-	$string =~ s#(?<!\\)(?:\$_\[(\d+)\]|\@_)#
-		if ($1) { delete $words[$1] }
-		else {
-			my $s = join ' ', @words;
-			@words = ();
-			$s;
-		}
-	#ge; # variable substitution in the macro
+=cut
+
+# saving code for later usage in pipelines
+# this is not the right place for it
+
+	{ # variable substitution in the macro
+		local @_ = @words;
+		my $n = ( $string =~ s# (?<!\\) (?: \$_\[(\d+)\] | \@_(\[.*?\])? ) #
+			if ($1) { $words[$1] }
+			elsif ($2) { eval "join ' ', \@_[$2]" }
+			else { join ' ', @words }
+		#xge );
+		@words = () if $n;
+	}
+
+=cut
 
 	my @as = @{$$meta{alias_stack}}; # force copy
 	my @l = map {
@@ -384,25 +416,30 @@ sub parse_words { # expand words etc.
 
 sub _expand_param { # FIXME @_ implementation
 	my ($self, $meta, @words) = @_;
-	for (@words) {
+	my ($e);
+	
+	for (@words) { # substitute vars
 		next if /^(\w+=)?'.*'$/; # skip quoted words
 		s{ (?<!\\) \$ (?: \{ (.*?) \} | (\w+) ) (?: \[(-?\d+)\] )? }{
 			my ($w, $i) = ($1 || $2, $3);
-			error "no advanced expansion for \$\{$w\}" if $w =~ /\W/;
+			$e ||= "no advanced expansion for \$\{$w\}" if $w =~ /\W/;
 			$w = 	($w eq '_') ? $$self{topic} :
 				(exists $$meta{env}{$w}) ? $$meta{env}{$w}  : $ENV{$w};
 			$i ? (split /:/, $w)[$i] : $w;
-		}exg; # substitute vars
+		}exg;
 	}
+
 	@words = map { # substitute arrays
 		if (m/^ \@ (?: \{ (.*?) \} | (\w+) ) $/x) {
 			my $w = $1 || $2;
-			error "no advanced expansion for \@\{$w\}" if $w =~ /\W/;
+			$e ||= "no advanced expansion for \@\{$w\}" if $w =~ /\W/;
+			$e ||= '@_ is reserved for future syntax usage, try @{_}' if $2 eq '_';
 			$w = (exists $$meta{env}{$w}) ? $$meta{env}{$w}  : $ENV{$w};
 			split /:/, $w;
 		}
 		else { $_ }
 	} @words;
+	error $e if $e; # "Attempt to free unreferenced scalar" when dying inside the map !?
 	return ($meta, @words);
 }
 
@@ -417,22 +454,29 @@ sub _command_subst {
 }
 
 # See File::Glob for explanation of behaviour
-our $_GLOB_OPTS = File::Glob::GLOB_TILDE() | File::Glob::GLOB_BRACE() ;
+our $_GLOB_OPTS = File::Glob::GLOB_TILDE() | File::Glob::GLOB_BRACE() | File::Glob::GLOB_QUOTE();
 our $_NC_GLOB_OPTS = $_GLOB_OPTS | File::Glob::GLOB_NOCHECK();
 
 sub _expand_path { # path expansion
+	no warnings; # $1 is somtimes undefined
 	my ($self, $meta, @files) = @_;
 	return $meta, map { /^(\w+=)?(['"])(.*)\2$/ ? $1.$3 : $_ } @files
 		if $$self{settings}{noglob}; # remove escapes
 	my $opts = $$self{settings}{allow_null_glob_expansion} ? $_GLOB_OPTS : $_NC_GLOB_OPTS;
 	return $meta, map {
 		if (/^(\w+=)?(['"])(.*)\2$/) { $1.$3 } # remove escapes
-		else { # substitute globs
+		elsif (/^m\{(.*)\}([imsx]*)$/) {
+			my @r = regex_glob($1, $2);
+			if (@r) { @r }
+			else { $_ =~ s/\\\\|\\(.)/$1||'\\'/eg; $_ }
+		}
+		elsif (/^~|[*?\[\]{}]/) { # substitute globs
 			my @r = File::Glob::bsd_glob($_, $opts);
 			debug "glob: $_ ==> ".join(', ', @r);
 			($_ !~ /^-/) ? (grep {$_ !~ /^-/} @r) : (@r);
 			# protect against implict switches as file names
 		}
+		else { $_ =~ s/\\\\|\\(.)/$1||'\\'/eg; $_ }
 	} @files ;
 }
 

@@ -1,6 +1,6 @@
 package Zoidberg::Fish::ReadLine;
 
-our $VERSION = '0.54';
+our $VERSION = '0.55';
 
 use strict;
 use vars qw/$AUTOLOAD $PS1 $PS2/;
@@ -58,15 +58,25 @@ sub init {
 }
 
 sub wrap_rl {
-	my ($self, $prompt, $preput) = @_;
+	my ($self, $prompt, $preput, $cont) = @_;
 	$prompt = $$self{rl_z} ? \$PS1 : $PS1 unless $prompt;
 	my $line;
 	{
 		local $SIG{TSTP} = 'DEFAULT' unless $$self{parent}{settings}{login};
 		$line = $$self{rl}->readline($prompt, $preput);
 	}
-	# TODO continue() support
+	$$self{last_line} = $line;
 	return $line;
+}
+
+sub wrap_rl_more {
+	my ($self, $prompt, $preput) = @_;
+	if ($$self{rl_z}) { return $self->continue() }
+	else {
+		my $line = $$self{last_line} . $self->wrap_rl($prompt, $preput);
+		$$self{last_line} = $line;
+		return $line;
+	}
 }
 
 sub beat {

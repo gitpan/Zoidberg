@@ -87,7 +87,7 @@ for (
 	],
 	[
 		['simple', 'dit is een escaped \| pipe, en dit een escape \\\\ dus, "dit \\\\ trouwens ook"'],
-		[\'dit is een escaped | pipe, en dit een escape \\ dus, "dit \\ trouwens ook"'],
+		[\'dit is een escaped | pipe, en dit een escape \\\\ dus, "dit \\\\ trouwens ook"'],
 		'escape removal and escaping'
 	],
 ) {

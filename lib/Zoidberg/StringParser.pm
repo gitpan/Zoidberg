@@ -196,7 +196,7 @@ sub fetch { $_[0]->[1]{$_[1]} }
 
 package Zoidberg::StringParser;
 
-our $VERSION = '0.54';
+our $VERSION = '0.55';
 
 use strict;
 no warnings; # can't stand the nagging
@@ -277,22 +277,21 @@ sub get { # get next block
 		$block .= $1 if length $1;
 		$sign = $2;
 
-		debug "block: ==>$block<== token: ==>$sign<==";
+		my $i = 0;
+		($_ eq $2) ? last : $i++ for ($3, $4, $5);
+		$type = $gram{_elements}[$i];
+
+		debug "block: ==>$block<== token: ==>$sign<== type: $type";
 
 		if ($1 =~ /$gram{s_esc}$/) { # escaped token
-			$block =~ s/$gram{s_esc}$// unless $gram{no_esc_rm};
+			$block =~ s/$gram{s_esc}$// if $type eq 'tokens' and ! $gram{no_esc_rm};
 			$block .= $sign;
 			next;
 		}
 
 		last unless length($sign) || length($self->{string}); # catch the \z
 
-		my $i = 0;
-		($_ eq $2) ? last : $i++ for ($3, $4, $5);
-		$type = $gram{_elements}[$i];
-		debug "type: $type";
-
-		if ($type eq 'd_esc') { $block .= $gram{no_esc_rm} ? $sign  : $gram{esc} }
+		if ($type eq 'd_esc') { $block .= $sign }
 		elsif ($type eq 'tokens') {
 			if (empty_stack(\%gram)) { $token = $gram{tokens}->fetch($sign) }
 			else { # shouldn't we use _POP here ?

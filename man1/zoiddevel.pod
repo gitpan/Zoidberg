@@ -73,22 +73,27 @@ FIXME explanation
 
        start
          |
-         |        incomplete input - readmore
-         |        .----------------+----------------------.
-         |        |                A                      |
-         |        V                |                      |
-         V        string           |           tree       |
+         |      incomplete input - readmore
+         |    .--------------------.
+         |    |                    |
+         |    |                    |
+         V    V   string           |           tree
    input loop     -------->  parse string      ------>  execute tree
-   Z:main_loop()             Z:shell_string()    ,--->  Z:C:shell_list()
-   readline                                      |        | 
-         A                                       |        | logic chunk
-         |                                       |        V
-  new    |                                next   |     Z:parse_block()
-  input  |                                chunk  |     (per block)
+   Z:main_loop()             Z:shell_string()           Z:C:shell_list()
+   readline                                               |
+         A                                   reincarnate  |
+         |                                       ,------> |
+  new    |                           next chunk  |        |
+  input  |                           of blocks   |        | logic chunk
          |                                       |        |
          |                                       |        V
          '---------------------------------------+---  execute job
                                                        Z:J:exec()
+                                                          
+                                     Z:Eval   <----->     A
+                                                          |
+                                                          V
+                                                    Z:parse_block()
   Z:   = Zoidberg::
   Z:C: = Zoidberg::Contractor::
   Z:J: = Zoidberg::Job::
@@ -135,9 +140,9 @@ This part describes the form of a parse tree as used between the various Zoidber
 	[{context => 'CMD'}, qw/cd ../],
 	'AND',
 	[{context => 'SH'}, qw/ls -al/],
-	'EOS',	# End Of Statement
+	'EOS',    # End Of Statement
 	[{context => 'SH'}, qw{cp dus ~/tmp/}],
-	'BGS'	# BackGround Statement
+	'EOS_BG'  # background statement
  ]
   
  # FIXME an example with redirections

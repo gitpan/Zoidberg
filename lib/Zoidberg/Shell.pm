@@ -1,14 +1,18 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.54';
+our $VERSION = '0.55';
 
 use strict;
 use vars qw/$AUTOLOAD/;
 use Zoidberg::Utils qw/:error :output abs_path/;
 use Exporter::Tidy
 	default	=> [qw/AUTOLOAD shell/],
+	jobs    => [qw/job @JOBS/],
 	other	=> [qw/alias unalias set setting source/];
 use UNIVERSAL qw/isa/;
+
+our @JOBS;
+tie @JOBS, 'Zoidberg::Shell::JobsArray';
 
 sub new { return $Zoidberg::CURRENT }
 
@@ -107,6 +111,8 @@ sub source {
 	}
 }
 
+sub job { $Zoidberg::CURRENT->job_by_spec(pop @_) }
+
 package Zoidberg::Shell::scalar;
 
 use overload
@@ -114,6 +120,45 @@ use overload
 	'bool' => sub { $_[0][1] };
 
 sub new { bless [@_[1,2]], $_[0] }
+
+package Zoidberg::Shell::JobsArray;
+
+sub TIEARRAY { bless \$Zoidberg::Shell::VERSION, shift } # what else is there to bless ?
+
+sub FETCH { $_[1] ? $Zoidberg::CURRENT->job_by_id($_[1]) : $$Zoidberg::CURRENT{fg_job} }
+
+sub STORE { die "Can't overwrite jobs, try 'push'\n" } # STORE has no meaning for this thing
+
+sub DELETE {
+	my $j = $Zoidberg::CURRENT->job_by_id($_[1]);
+	return unless $j;
+	$j->kill(undef, 'WIPE');
+}
+
+sub POP {
+	my $last_id;
+	$$_{id} > $last_id and $last_id = $$_{id}
+		for @{$Zoidberg::CURRENT->{jobs}};
+	$_[0]->DELETE($last_id);
+}
+
+sub SHIFT { $_[0]->DELETE(1) }
+
+sub PUSH {
+	ref($_[1])
+		? $Zoidberg::CURRENT->shell_list(   {prepare => 1}, $_[1] )
+		: $Zoidberg::CURRENT->shell_string( {prepare => 1}, $_[1] ) ;
+}
+
+sub UNSHIFT { die "Can't overwrite jobs, try 'push'\n" }
+
+sub FETCHSIZE { 1 + scalar @{ $Zoidberg::CURRENT->{jobs} } }
+
+sub EXISTS { $Zoidberg::CURRENT->job_by_id($_[1]) }
+
+sub CLEAR { $_->kill(undef, 'WIPE') for @{$Zoidberg::CURRENT->{jobs}} }
+
+sub SPLICE { die "Can't overwrite jobs, try 'delete' or 'push'\n" }
 
 1;
 
@@ -138,7 +183,7 @@ Zoidberg::Shell - a scripting interface to the Zoidberg shell
 	# Create an alias
 	$shell->alias({'ls' => 'ls --color=auto'});
 	
-	# since we use Exporter::Tidy you can also do this:
+	# since we use Exporter::Tidy you can also do things like this:
 	use Zoidberg::Shell _prefix => 'zoid_', qw/shell alias unalias/;
 	zoid_alias({'perlfunc' => 'perldoc -Uf'});
 
@@ -155,12 +200,17 @@ Only the subs C<AUTOLOAD> and C<shell> are exported by default.
 C<AUTOLOAD> works more or less like the one from F<Shell.pm> by Larry Wall, but it 
 includes zoid's builtin functions and commands (also it just prints output to stdout see TODO).
 
-All other methods except C<new> and C<system> can be exported on demand. 
+All other methods except C<new> and C<system> can be exported on demand.
 Be aware of the fact that methods like C<alias> can mask "plugin defined builtins" 
 with the same name, but with an other interface. This can be confusing but the idea is that
 methods in this package have a scripting interface, while the like named builtins have
-a commandline interface. The reason the C<system> can't be exported is because it would mask the 
+a commandline interface.
+
+The reason the C<system> can't be exported is because it would mask the 
 perl function C<system>, also this method is only included so zoid's DispatchTable's can use it.
+
+Also you can import an C<@JOBS> from this module. The ':jobs' tag gives you both C<@JOBS>
+and the C<job()> method.
 
 =head1 METHODS
 
@@ -240,6 +290,12 @@ Run another perl script, possibly also interfacing with zoid.
 
 FIXME more documentation on zoid's source scripts
 
+=item C<job($spec)>
+
+Used to fetch a job object by its spec, for example:
+
+	$shell->job('%-')->kill(); # kill the previous job
+
 =item C<AUTOLOAD>
 
 All calls that get autoloaded are passed directly to the C<shell()> method.
@@ -249,9 +305,11 @@ This allows you to use nice syntax like :
 
 =back
 
-=head1 TODO
+=head1 JOBS
 
-Currently stdout isn't captured if wantarray in shell()
+FIXME splain @JOBS
+
+=head1 TODO
 
 An interface to create background jobs
 

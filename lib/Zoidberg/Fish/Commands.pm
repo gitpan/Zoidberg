@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.54';
+our $VERSION = '0.55';
 
 use strict;
 use AutoLoader 'AUTOLOAD';
@@ -553,7 +553,7 @@ List current jobs.
 sub jobs {
 	my $self = shift;
 	my $j = @_ ? \@_ : $$self{parent}->{jobs};
-	output $_->status_string for sort {$$a{id} <=> $$b{id}} @$j;
+	output $_->status_string() for sort {$$a{id} <=> $$b{id}} @$j;
 }
 
 =item bg I<job_spec>
@@ -569,7 +569,7 @@ sub bg {
 	my $j = $$self{parent}->job_by_spec($id)
 		or error 'No such job'.($id ? ": $id" : '');
 	debug "putting bg: $$j{id} == $j";
-	$j->put_bg;
+	$j->bg;
 }
 
 =item fg I<job_spec>
@@ -585,7 +585,7 @@ sub fg {
 	my $j = $$self{parent}->job_by_spec($id)
 		or error 'No such job'.($id ? ": $id" : '');
 	debug "putting fg: $$j{id} == $j";
-	$j->put_fg;
+	$j->fg;
 }
 
 =item wait
@@ -598,12 +598,15 @@ sub wait { todo }
 
 =item kill -l
 
-=item kill [-s I<sigspec>|-n I<signum>|I<-sigspec>] [I<pid>|I<job__pec>]
+=item kill [-w | -s I<sigspec>|-n I<signum>|I<-sigspec>] [I<pid>|I<job__pec>]
 
 Sends a signal to a process or a process group.
 By default the "TERM" signal is used.
 
 The '-l' option list all possible signals.
+
+The -w or --wipe option is zoidberg specific. It not only kills the job, but also
+wipes the list that would be executed after the job ends.
 
 =cut
 
@@ -621,7 +624,7 @@ The '-l' option list all possible signals.
 
 sub kill {
 	my $self = shift;
-	error "usage:  kill [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspec]"
+	error "usage:  kill [-w] [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspec]"
 		unless defined $_[0];
 	if ($_[0] eq '-l') { # list sigs
 		shift;
@@ -629,6 +632,12 @@ sub kill {
 		my @k = @_ ? (grep exists $sh{$_}, @_) : (keys %sh);
 		output [ map {sprintf '%2i) %s', $_, $sh{$_}} sort {$a <=> $b} @k ];
 		return;
+	}
+
+	my $wipe;
+	if ($_[0] eq '-w' or $_[0] eq '--wipe') { # wipe list
+		shift;
+		$wipe = 1;
 	}
 
 	my $sig = '15'; # sigterm, the default
@@ -645,8 +654,9 @@ sub kill {
 
 	for (@_) {
 		if (/^\%/) {
-			my $j = $$self{parent}->job_by_spec($_);
-			CORE::kill($sig, -$j->{pgid});
+			my $j = $$self{parent}->job_by_spec($_)
+				or error "$_: no such job";
+			$j->kill($sig, $wipe);
 		}
 		else { CORE::kill($sig, $_) }
 	}

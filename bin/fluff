@@ -14,7 +14,7 @@
 
 use strict;
 use Cwd qw/cwd/;
-our $VERSION = '0.54';
+our $VERSION = '0.55';
 
 my @inc = (); # You can list custom includes here
 

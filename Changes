@@ -1,7 +1,19 @@
 Revision history for Zoidberg - a modular perl shell
 <http://zoidberg.sourceforge.net>
 
-0.54 Tue Jun 29
+     Sun Jul  4
+        - Added a tied @JOBS for a perlish job-/list-control interface
+
+     Fri Jul  2
+        - Revised the parsing of escapes a bit
+	- Added regex globs
+
+     Thu Jul  1
+        - Removed positional parameters from alias expansion,
+	reserving @_ for future use
+	- Made Zoidberg switch to multiline editing mode automaticly
+
+0.54 Tue Jun 29 2004
 	Enough new stuff for a release and some cute bug fixes.
 	Hope it will do better then the last two.
 	- Fixed some bugs with regard to tab-expansion and quoting
@@ -24,8 +36,9 @@ Revision history for Zoidberg - a modular perl shell
 	- Z:Fish::Commands now uses AutoLoader
 
      Wed Jun 16
-        - Made aliases work more like macros, they can now contain logic and
+	- Made aliases work more like macros, they can now contain logic and
 	positional parameters
+		     
 
 0.53 Thu May 27 2004
      Oops, another "nuked" release :( Got a typo in the test script.
