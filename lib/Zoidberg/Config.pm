@@ -31,6 +31,14 @@ By default C<%ZoidConf> is exported.
 
 =over 4
 
+=item C<file($file)>
+
+FIXME
+
+=item C<readfile($file)>
+
+FIXME
+
 =item C<output()>
 
 Print current configuration to STDOUT.
@@ -64,16 +72,14 @@ L<perl>, L<Zoidberg>, L<http://zoidberg.sourceforge.net>
 package Zoidberg::Config;
 
 use strict;
+use Carp;
 use Exporter;
 use Zoidberg::PdParse;
 
-our $VERSION = '0.3b';
+our $VERSION = '0.3c';
 
 our @ISA = qw/Exporter/;
 our @EXPORT = qw/%ZoidConf/;
-
-our @user_info = getpwuid($>);
-# ($name, $passwd, $uid, $gid, $quota, $comment, $gcos, $dir, $shell)
 
 our %ZoidConf = eval '('.join( ', ', (<DATA>) ).')';
 die $@ if $@;
@@ -120,24 +126,38 @@ sub output {
 	}
 }
 
+sub file {
+	my $file = shift;
+	my $path = shift || 'data_dirs';
+	$file = $ZoidConf{$file} if ($file !~ /\//) && (exists $ZoidConf{$file});
+	return $file if $file =~ /\//;
+	for (split /:/, $ZoidConf{$path}) {
+		return $_.'/'.$file if -f $_.'/'.$file
+	}
+	return undef;
+}
+
 sub readfile {
 	my $file = shift;
-	my $pre_eval = qq/ my \$prefix = '$ZoidConf{prefix}'; my \$conf_dir = '$ZoidConf{config_dir}'; /;
+	croak 'readfile needs an argument' unless $file;
+	$file = file($file) unless $file =~ /\//;
+	croak 'Can\'t find that file' unless defined $file;
 	if ($file =~ /\.(pd)$/i) { 
-		my $r = pd_read($file, $pre_eval);
-		die "Could not read config from file: $file\n" unless defined $r;
+		my $r = pd_read($file);
+		croak "Could not read config from file: $file" unless defined $r;
 		return $r;
 	}
-	elsif ($file =~ /\.(yaml)$/i) { die qq/TODO yaml config file support\n/ }
-	else { die qq/Unkown file type: "$file"\n/ }
+	elsif ($file =~ /\.(yaml)$/i) { croak qq/TODO yaml config file support\n/ }
+	else { croak qq/Unkown file type: "$file"\n/ }
 }
 
 1;
 
 __DATA__
 'prefix'	=> '/usr/local/'
-'config_dir'	=> $user_info[7].'/.zoid/'
-'plugins_dir'	=> $user_info[7].'/.zoid/plugins/'
+'data_dirs'	=> "$ENV{HOME}/.zoid/"
+'plugin_dirs'	=> "$ENV{HOME}/.zoid/plugins/"
 'settings_file'	=> 'settings.pd'
 'grammar_file'	=> 'grammar.pd'
-'file_cache'	=> 'var/file_cache'
+'var_dir'	=> "$ENV{HOME}/.zoid/var/"
+'rcfiles'	=> "/etc/zoidrc:$ENV{HOME}/.zoidrc"

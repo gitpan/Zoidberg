@@ -1,6 +1,26 @@
 Revision history for Zoidberg -- a modular perl shell
 <http://zoidberg.sourceforge.net>
 
+0.3c Fr Jul 18 2003
+	Minor release, some bugfixes, we wanted to have the latest
+	version available for YAPC::Europe.
+
+     Tu Jul 14 2003
+	- added support for rcfiles
+	- added some command line switches
+	- made Zoidberg::Config values potentially search paths
+
+     Su Jul 13 2003
+	- rewrote Zoidberg::Shell, initial version works
+	- changed the Eval AUTOLOAD function, eval now uses the 
+	one from Zoidberg::Shell
+	- Added a test (t/90_full.t) running a complete zoid 
+	in non-interactive mode :)
+
+     Th Jul 10 2003
+	- updated most documentation
+	- removed deprecated plugin docs
+
 0.3b Mo Jul 07 2003
 	Basicly a bugfix release, but also two features restored.
 
@@ -12,7 +32,7 @@ Revision history for Zoidberg -- a modular perl shell
 	- A critical bug was fixed in the execution of logic lists.
 
      Fr Jul 04 2003
-	- Fixed a bug so now the parser silently ignores empty blocks, this 
+	- Fixed a bug so now the parser silently ignores empty blocks, this
 	shows for example after a '&' or ';' command delimiter.
 	- Carl0s fixed a bug in the job control code which caused a lot of
 	zombie processes.

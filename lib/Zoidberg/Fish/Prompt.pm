@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Prompt;
 
-our $VERSION = '0.3b';
+our $VERSION = '0.3c';
 
 use strict;
 
@@ -11,7 +11,7 @@ use base 'Zoidberg::Fish';
 
 sub init {
 	my $self = shift;
-    $self->{lookup} = pd_read($self->{config}{file});
+    $self->{lookup} = Zoidberg::Config::readfile($self->{config}{file});
     $self->{children} = [];
     $self->append(@{dclone($self->{config}{prompt})});
 }
@@ -92,6 +92,8 @@ sub init {
             $self->{meta}=shift@{$meta};
             if ($self->{meta}{color}) { $self->color($self->{meta}{color}) }
             if ($self->{meta}{maxlen}) { $self->{max_length} = $self->{meta}{maxlen} } else { $self->{max_length} = $self->{parent}{config}{max_length} }
+            if (exists $self->{meta}{cache}) { $self->{cache_time} = $self->{meta}{cache} }
+            else { $self->{cache_time} = 10 } # in seconds
         }
     }
     $self->stringify;
@@ -182,6 +184,12 @@ sub stringify {
 sub _stringify {
     my $self = shift;
     my $string;
+    if ($self->{cache_time}>0 and defined $self->{laststring}) {
+        if ($self->{cache_time}+$self->{_cachet}>time) {
+            return $self->{laststring};
+        }
+        else { $self->{_cachet} = time }
+    }
     if ($self->isCode) { $string = $self->cont->($self) }
     elsif (!ref($self->cont)) { $string = $self->cont }
     $string = $self->expandVars($string);

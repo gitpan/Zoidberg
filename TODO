@@ -19,7 +19,7 @@ Done    * Changes goed bijwerken (andere metafiles checken)
 Done    * debug cpan install			Wed May 7
      -- v0.3a release
 Done    * stringparse fixen			Wed Jun 4
-        * meer opties in fluff implementeren
+part.   * meer opties in fluff implementeren
      -- v0.3b release
         * Zoidberg::Output
 Done		* ook error output		Jun 19
@@ -27,7 +27,7 @@ Done		* ook error output		Jun 19
                 * debug modes etc. goed zetten (use $DEBUG)
 		- RFC: should this include input as well ??? (of course renaming to Zoidberg::IO )
         * plugins opschonen
-        * Zoidberg::IPC
+part.   * Zoidberg::IPC
 		* simpele YAML voor ipc --> portability & security, echt yaml module nog te log
                 * In principe alleen commando's (both shell and subroutine ->syntax)
                 * Doch wel een eval_perl commando
@@ -37,8 +37,8 @@ Done		* ook error output		Jun 19
                 * transperante events lib
                 * denk aan curses based plugins
                 * denk ala FileRoutines
-        * Zoidberg::Shell afmaken
-                * ipv Zoidberg::Eval::_Self een $ENV{something} gebruiken
+part.	* Zoidberg::Shell afmaken
+Done            * ipv Zoidberg::Eval::_Self een $ENV{something} gebruiken
         * ~/.zoid/cmd ( is deze nog nodig met ipc ? - misschien eerder een .zoid/auto ? )
      -- 1.0_rc1 release -- beta test fase (geen '_' voor CPAN !)
         * docs afwerken
@@ -57,7 +57,7 @@ Done		* ook error output		Jun 19
         * Input methode pluggable maken - niet alleen Buffer moduses doch ook niet-buffer moduses
                 * IPC
                 * Curses based plugins
-                * source scripts
+Done            * source scripts
         * Help plugin module repareren
 		* also search for ~/.zoid/plugins/zoidname/*.pod !
         * CPAN plugin
@@ -69,6 +69,13 @@ Done		* ook error output		Jun 19
 
 
 __DEVEL__
+
+modular,
+ repeat after me: MODULAR
+
+events are good
+plugins are good
+load modules _only_ when needed
 
 use default cpan modules, do not use exotic modules
 	A default module will be used by extension programs
@@ -126,43 +133,14 @@ What about redirections for block contexts ?
 
 __WANTED_FEATURES__
 
-<!!>
-redirections alleen naar files -- voor andere contxts work around
-	parent->print wordt parent->output
 
 als input van pipe pound_ voor while STDIN do ...
 	tevens in shell block $\w => ENV pound\w => eigen namespace
 
-als output naar pipe doet parent->print bufferen en dinge doorgeven.
-
-</!!>
-
 <TAB><TAB> => I feel lucky
 bell-style => sub { print "\a" }
 
-alias command
-
-how about handlers voor dingen als files, dirs, urls etc.
-	as plugin - rox plugin as proof of concept
-
-subs in "->" namespace (?)
-
-history:
-	entries taggen zodat er meer histories in 1 object met 1 file hange
-	~/.zoid/var/log 
-	-->timestamp [tag.subtag] data\n<--
-
 config:
-	Zoidbegr::Config - legt alles vast
-		gram-file (RO)
-		rc file
-		logout file
-		huidige settings 
-	plugin_conf
-		per plugin file in dir
-
-	bitje to suppress inlog scripts
-
 	ENV:
 		PATH
 			be aware of '.' and '' in path ...
@@ -180,41 +158,14 @@ config:
 		
 		http://asis.web.cern.ch/asis/products/GNU.SYS/bash-2.05/bashref_5.html
 
-	alias should be bash compat
+rcfiles :
+	$ENV{ENV} to supply alternative rcfiles
+	make it possible to set a "logout" event
 
-fluff:
-	--login
-	--noprofile
-	""When  bash is invoked as an interactive login shell, or as a non-inter-
-       active shell with the --login option, it first reads and executes  com-
-       mands  from  the file /etc/profile, if that file exists.  After reading
-       that file, it looks for ~/.bash_profile, ~/.bash_login, and ~/.profile,
-       in  that order, and reads and executes commands from the first one that
-       exists and is readable.  The --noprofile option may be  used  when  the
-       shell is started to inhibit this behavior.
-
-       When  a  login  shell  exits, bash reads and executes commands from the
-       file ~/.bash_logout, if it exists.
-
-       When an interactive shell that is not a login shell  is  started,  bash
-       reads  and executes commands from ~/.bashrc, if that file exists.  This
-       may be inhibited by using the --norc option.  The --rcfile file  option
-       will  force  bash  to  read  and  execute commands from file instead of
-       ~/.bashrc.
-
-       When bash is started non-interactively, to  run  a  shell  script,  for
-       example, it looks for the variable BASH_ENV in the environment, expands
-       its value if it appears there, and uses the expanded value as the  name
-       of  a  file to read and execute.  Bash behaves as if the following com-
-       mand were executed:
-              if [ -n "$BASH_ENV" ]; then . "$BASH_ENV"; fi
-       but the value of the PATH variable is not used to search for  the  file
-       name.""
-
+fluff :
 	-Dvar=value als -e export var = value
-	-s  Command input is taken from the standard input -- voor pipes etc
-	--rcfile oid
 	--Mmodule
+	debug swith
 
 Buffer
 	nano keybindings implementen in Buffer::Fish
@@ -225,22 +176,11 @@ Buffer
 	check posix stnd. voor default vi-like behauviour
 
 api:
-	eenduidige fish api
-
-	Zoidberg::Shell:
-	apart object om source files .pl te maken
-		=> geen default profile nodig
-		(source ne execute)
-
-	api over socket voor child processes
+	make Zoidberg::Shell parent class for Fish
 
 rest:
-	Zoidberg::StringFormat -- Thijs working on this
-		interpolate vars voor prompt en info en etc
-		zie color bug
-	wordt Zoidberg::Ouptut
-
-	seperate release voor Makefile.pm -- met een skel dir
+	Zoidberg::Output
+	FormattedString to replace Prompt
 	
 
 __RELEASE__
@@ -268,15 +208,6 @@ release procedure:
 
 	announce on freshmeat
 	announce on zoidberg-devel
-
-__VISION__
-
-modular,
- repeat after me: MODULAR
-
-events are good
-plugins are good
-load modules _only_ when needed
 
 __DOCS__
 
@@ -415,104 +346,10 @@ Subject: What "dot" files do the various shells use?
 >From: tmb@idiap.ch (Thomas M. Breuel)
 Date: Wed, 28 Oct 92 03:30:36 +0100
 
-5.6)  What "dot" files do the various shells use?
-
-      Although this may not be a complete listing, this provides the
-      majority of information.
-
-      csh
-          Some versions have system-wide .cshrc and .login files.  Every
-          version puts them in different places.
-
-          Start-up (in this order):
-              .cshrc   - always; unless the -f option is used.
-              .login   - login shells.
-
-          Upon termination:
-              .logout  - login shells.
-
-          Others:
-              .history - saves the history (based on $savehist).
-
-      tcsh
-          Start-up (in this order):
-              /etc/csh.cshrc - always.
-              /etc/csh.login - login shells.
-              .tcshrc        - always.
-              .cshrc         - if no .tcshrc was present.
-              .login         - login shells
-
-          Upon termination:
-              .logout        - login shells.
-
-          Others:
-              .history       - saves the history (based on $savehist).
-              .cshdirs       - saves the directory stack.
-
-      sh
-          Start-up (in this order):
-              /etc/profile - login shells.
-              .profile     - login shells.
-
-          Upon termination:
-              any command (or script) specified using the command:
-                 trap "command" 0
-
-      ksh
-          Start-up (in this order):
-              /etc/profile - login shells.
-              .profile     - login shells; unless the -p option is used.
-              $ENV         - always, if it is set; unless the -p option is used.
-			  /etc/suid_profile - when the -p option is used.
-
-          Upon termination:
-              any command (or script) specified using the command:
-                 trap "command" 0
-
-      bash
-          Start-up (in this order):
-              /etc/profile  - login shells.
-              .bash_profile - login shells.
-              .profile      - login if no .bash_profile is present.
-              .bashrc       - interactive non-login shells.
-              $ENV          - always, if it is set.
-
-          Upon termination:
-              .bash_logout  - login shells.
-
-          Others:
-              .inputrc      - Readline initialization.
-
-      zsh
-          Start-up (in this order):
-              .zshenv   - always, unless -f is specified.
-              .zprofile - login shells.
-              .zshrc    - interactive shells, unless -f is specified.
-              .zlogin   - login shells.
-
-          Upon termination:
-              .zlogout  - login shells.
-
-      rc
-          Start-up:
-              .rcrc - login shells
-
-I suggest for zoid 
-	(/etc/profile once Shell::POSIX works)
-	/etc/zoidrc(.pl) - system wide stuff- always unless some option
-	.zoidrc(.pl) - always unless some option
-		No need for a logout script, the rc script could define a event for that
-	($ENV{ENV} - see POSIX - (wait for Shell::POSIX ?))
-
-also use 
-	.zoid_log <== .zoid/var/hist.log
-	/var/cache/zoid/file_cache <== .zoid/var/file_cache
-	delete .zoid/lib as default -- make this a compile option
-	data files zoeken in ~/.zoid || /usr/(local)?/share/zoid
-
 __CHECK CPAN__
 
 Class::AutoUse -- load on use to speed things up
 Autoloader -- cut large command libs in pieces
 Exporter::Tidy -- said to be faster then Exporter vanilla
 File::... -- for our fileutils lib
+	File-chdir-0.05

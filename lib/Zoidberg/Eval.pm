@@ -1,6 +1,6 @@
 package Zoidberg::Eval;
 
-our $VERSION = '0.3b';
+our $VERSION = '0.3c';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -9,12 +9,11 @@ use Data::Dumper;
 use File::Glob ':glob';
 use Zoidberg::Error;
 use Zoidberg::FileRoutines qw/:exec_scope is_exec_in_path/;
-use Zoidberg::Shell qw/:exec_scope/;
+use Zoidberg::Shell;
 
-our %_REFS;
-our @PATH;
+our @ISA = qw/Zoidberg::Shell/;
+our %_REFS; # stores refs to objects of this class for ipc use
 our $DEBUG = 0;
-export(\@PATH => 'PATH');
 
 $| = 1;
 
@@ -24,6 +23,7 @@ sub _new {
 	$self->{zoid} = shift; # this will be $self for eval blocks
 	bless $self, $class;
 	$_REFS{$self} = $self;
+	$ENV{ZOIDREF} = $self unless defined $ENV{ZOIDREF};
 	return $self;
 }
 
@@ -32,7 +32,7 @@ sub _eval_block {
 	my $meta = shift @{$block};
 	my $context = $meta->{context};
 	
-	my $orig_ref = $ENV{ZOIDREF};
+	my $save_ref = $ENV{ZOIDREF};
 	$ENV{ZOIDREF} = $self;
 
 	eval {
@@ -45,7 +45,7 @@ sub _eval_block {
 		else { error qq/No handler defined for context $context\n/ }
 	};
 	
-	$ENV{ZOIDREF} = $orig_ref if defined $orig_ref;
+	$ENV{ZOIDREF} = $save_ref;
 	die if $@;
 }
 
@@ -68,16 +68,8 @@ So the setting allow_null_glob_expansion should switch of GLOB_NOCHECK
 
 sub _do_sh {
 	my ($self, $block, $meta) = @_;
-	my @r;
+	my @r = $self->_expand_path(@{$block});
 
-	# path expansion
-	unless ($self->{zoid}{settings}{noglob}) {
-		my $glob_opts = GLOB_MARK|GLOB_TILDE|GLOB_BRACE|GLOB_QUOTE;
-		$glob_opts |= GLOB_NOCHECK unless $self->{zoid}{settings}{allow_null_glob_expansion};
-		@r = map { /^['"](.*)['"]$/s ? $1 : bsd_glob($_, $glob_opts) } @{$block} ;
-	}
-	else { @r = map { /^['"](.*)['"]$/s ? $1 : $_ } @{$block} }
-	
 	print "debug: going to exec : ", Dumper \@r if $DEBUG;
 
 	_check_exec($r[0]) unless $meta->{_is_checked};
@@ -85,6 +77,17 @@ sub _do_sh {
 	$self->{zoid}{_} = $r[-1]; # useless in fork (?)
 	if ($self->{zoid}->{round_up}) { system(@r); }
 	else { exec {$r[0]} @r; }
+}
+
+sub _expand_path { # path expansion
+	my ($self, @files) = @_;
+	unless ($self->{zoid}{settings}{noglob}) {
+		my $glob_opts = GLOB_MARK|GLOB_TILDE|GLOB_BRACE|GLOB_QUOTE;
+		$glob_opts |= GLOB_NOCHECK unless $self->{zoid}{settings}{allow_null_glob_expansion};
+		@files = map { /^['"](.*)['"]$/s ? $1 : bsd_glob($_, $glob_opts) } @files ;
+	}
+	else { @files = map { /^['"](.*)['"]$/s ? $1 : $_ } @files }
+	return @files;
 }
 
 sub _check_exec {
@@ -120,7 +123,7 @@ sub _do_perl {
         die if $@; # should we check $! / $? / $^E here ?
 
         $self->{_} = $_;
-	print "\n"; # ugly hack
+	print "\n" if $self->{settings}{interactive}; # ugly hack
 }
 
 sub _interpolate_magic_char {
@@ -176,45 +179,8 @@ sub _parse_opts { # parse switches
 	elsif ($opts =~ m/p/) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n\tprint \$_\n}"; }
 	elsif ($opts =~ m/n/) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n}"; }
 
-#	if ($opts =~ m/b(\d+)/) {
-#		$string = qq{ \$self->print(
-#	Benchmark::timestr(Benchmark::timethis($1, sub{
-#		$string
-#	},'','none'))) };
-#	}
-
 	return $string;
 }
-
-sub AUTOLOAD {
-	## Code inspired by Shell.pm -- but rewrote it
-	
-	my $self;
-	if (ref($_[0]) eq 'Zoidberg::Eval') { $self = shift }
-	else { $self = $ENV{ZOIDREF} }
-
-	my @args = @_;
-	my $cmd = (split/::/,$AUTOLOAD)[-1];
-
-	return undef if $cmd eq 'DESTROY';
-	print "debug: autoload got command: $cmd\n" if $DEBUG;
-
-	if ($self->_is_cmd($cmd)) { $self->_do_cmd([$cmd, @args]) }
-	else { # system
-		_check_exec($cmd);
-		open CMD, '-|', $cmd, @_;
-		my @ret = (<CMD>);
-		close CMD;
-		error {silent => 1}, $? if $?;
-		if (wantarray) { return map {chomp; $_} @ret; }
-		else { return join('',@ret); }
-	}
-}
-
-1;
-
-__END__
-
 
 =head1 NAME
 

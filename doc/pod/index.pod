@@ -31,7 +31,6 @@ I<Be aware: work in progres.>
 =begin text
 
  * user
- * plugins
  * devel
 
 =end text
@@ -40,7 +39,6 @@ I<Be aware: work in progres.>
 
 <ul>
 <li><a href='./user/index.html'>User manual</a></li>
-<li><a href='./plugins/index.html'>Plugin documentation</a></li>
 <li><a href='./devel/index.html'>Developer manual</a></li>
 </ul>
 
@@ -48,12 +46,12 @@ I<Be aware: work in progres.>
 
 =head2 Man pages
 
-I<The man pages are not installed as html by default, to install them use C<make --man2html>.>
+I<The man pages are not installed as html by default, to install them use C<perl Makefile.PL --man2html>.>
 
 =begin html
 
 <ul>
-<li><a href='./man1/'>man 1 - User commands</a></li>
+<li><a href='./man1/zoid.html'>zoid(1) - the frontend script for the Zoidberg shell</a></li>
 <li><a href='./man3pm/'>man 3pm - Perl modules</a></li>
 </ul>
 

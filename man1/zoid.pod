@@ -6,12 +6,6 @@ zoid - a modular perl shell
 
 zoid [options] [-] [files]
 
-If no options or files are given the Zoidberg shell is started in interactive
-mode. Given files are evaluated as source scripts, contents of these
-files are I<NOT> handled the same way as commands entered in interactive mode.
-If STDIN is a pipeline input I<will> be evalluated the same as when
-entered interactively. 
-
 =head1 DESCRIPTION
 
 Zoidberg provides a modular Perl shell written, configured, and operated entirely
@@ -22,7 +16,15 @@ scope of your commandline. Although Zoidberg does not do the language
 interpreting itself -- it uses perl to do this -- it supplies powerfull language
 extensions aimed at creating an easy to use interface.
 
-FIXME more technical description (above is just the freshmeat text)
+By default zoid runs an interactive commandline when both STDIN and STDOUT
+are terminal devices, or reads from STDIN till End Of Line and execute each 
+line like it was entered interactively. 
+When an I<action> is specified by one of the commandline options this will 
+suppress the default behaviour and exit after executing that action.
+If any file names are given, these will be interpreted as source scripts and 
+suppress default behaviour. 
+Be aware that these source scripts are expected to be Perl scripts and are
+B<NOT> interpreted or executed the same way as normal input.
 
 =head1 OPTIONS
 
@@ -55,9 +57,27 @@ C<@INC>.
 Start an interactive shell. This is the default if no other options are
 supplied.
 
-=item B<-l>, B<--list-conf>
+=item B<-l>, B<--login>
 
-List general configuration of the installation.
+Force login behaviour, this will reset your current working directory.
+This variable is also available to plugins and scripts, which might act on it.
+
+=item B<-s>, B<--stdin>
+
+read input from stdin. This is the default if no other options are supplied and 
+neither stdin or stdout are terminal devices.
+
+=item B<-r> I<file>, B<--rcfile>=I<file>
+
+Use an alternative rcfile.
+
+=item B<--norc>
+
+Skip all rcfiles.
+
+=item B<-C>, B<--config>
+
+Print a list of configuration variable of this installation and exit.
 
 =item B<-V>, B<--version>
 
@@ -76,13 +96,17 @@ FIXME
 =head1 DIAGNOSTICS
 
 Error messages may be issued either by B<perl> or by one any of the
-modules in use. B<zoid> itself will only complain when the commandline
-options are wrong. If a fatal error occurs B<zoid> will return a
-non-zero exit status.
+modules in use. The B<zoid> utility itself will only complain when the commandline
+options are wrong. If the error was thrown by one of the core modules, the error 
+message will either start with the module name or the name of the command that went wrong.
+
+FIXME what about debugging and more verbose errors ?
+
+See also L<splain(1)>.
 
 =head1 RESTRICTIONS
 
-Source files and command input are I<NOT> interpreted in the same way.
+Source files and command input are I<NOT> interpreted the same way.
 
 Use B<-e> or B<-c>, do not mix them.
 
@@ -96,8 +120,8 @@ E<lt>pardus@users.sf.netE<gt>.
 =head1 DOCUMENTATION
 
 More elaborate documentation on the Zoidberg shell can be found online at
-L<http://zoidberg.sourceforge.net/doc> or on your local system,
-by default it could be found in F</usr/local/doc/zoid/>. In interactive mode
+L<http://zoidberg.sourceforge.net/doc> or on your local system, probably in
+F</usr/doc/zoid/> or in F</usr/local/doc/zoid/>. In interactive mode
 C<help> should be available by entering the command C<help>.
 
 =head1 SEE ALSO

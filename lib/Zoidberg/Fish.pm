@@ -1,8 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.3b';
-
-#use Zoidberg::Fish::Crab;
+our $VERSION = '0.3c';
 
 sub new {
     my $class = shift;
@@ -91,7 +89,7 @@ sub unregister_all_events {
 ### command logic ####
 ######################
 
-# TODO implement a hash of commands in parent, access through interface here
+# TODO interface access to command dispatch table here
 
 #####################
 #### other stuff ####

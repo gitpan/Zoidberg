@@ -1,4 +1,4 @@
-=head1 Synopsis
+=head1 DESCRIPTION
 
 The general structure of the Zoidberg shell has three kinds of 
 objects: the engine, the plugins and libraries.
@@ -9,9 +9,9 @@ objects: the engine, the plugins and libraries.
 
 =over 4
 
-=item * Zoidberg:	Main object
+=item * Zoidberg:	Main object, event and plugin management
 
-=item * ZoidParse:	Job control & some POSIX stuff
+=item * ZoidParse:	Parsing, Job control & POSIX stuff
 
 =item * Eval:		Namespace for command execution
 
@@ -25,13 +25,17 @@ objects: the engine, the plugins and libraries.
 
 =item * StringParse:	Simple syntax parser
 
-=item * StringFormat:	Output formatting (under development )
+=item * Error:		Object Oriented error handling
+
+=item * DistpatchTable:	enforces zoid's dispatch style
 
 =back
 
 =item Plugins
 
 =over 4
+
+=item * Fish:		Base class for plugins
 
 =item * Core objects:	Provides default interface.
 
@@ -41,12 +45,12 @@ objects: the engine, the plugins and libraries.
 
 =back
 
-=head1 Sheme
+=head2 Sheme
 
-                 StringPars
-                     |          libraries and Zoidberg::Config
-                  ZoidParse     can be used by any component
-                     |          for they ain't object oriented
+                 StringParse
+                     |
+                  ZoidParse
+                     |
                      |
                      |
  zoid       ____  Zoidberg _____ Eval
@@ -61,7 +65,7 @@ objects: the engine, the plugins and libraries.
  
  *) These are partially shared with the plugins
 
-=head1 Engine
+=head1 ENGINE
 
 =head2 Configuration
 
@@ -71,11 +75,11 @@ TODO
 
 TODO
 
-=head1 Libraries
+=head1 LIBRARIES
 
 TODO
 
-=head1 Plugins
+=head1 PLUGINS
 
 TODO
 

@@ -1,4 +1,4 @@
- Zoidberg - a modular perl shell, version 0.3b
+ Zoidberg - a modular perl shell, version 0.3c
 ===============================================
 
 ** Laziness, Impatience, Hubris ! **
@@ -15,10 +15,10 @@
     - runs perl code from shell prompt (duh!)
     - sh like evaluation of system executables
     - extendible and configable syntax
-#   - comes with a SQL syntax plugin (DBI)
+    - comes with a SQL syntax plugin (DBI) ( temporarily broken )
     - perl codable config
     - runtime (re-)loadable modules
-#   - tab expansion through your perl data structure and objects
+    - tab expansion through your perl data structure and objects
     - event based plugin engine
     - support for pipelines
     - support for job control
@@ -28,8 +28,6 @@
  planned:
     - screen like functionality
     - glue for other (non-perl) languages
-
- ( '#' means "temporarily borken" )
 
 BUGS AND LIMITATIONS
 

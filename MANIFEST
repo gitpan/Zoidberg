@@ -33,10 +33,10 @@ lib/Exporter/Inheritor.pm
 inc/Devel/GetSymbols.pm
 man1/zoid.pod
 bin/fluff
+etc/zoidrc
 share/pixmaps/zoid16.png
 share/pixmaps/zoid32.png
 share/pixmaps/zoid64.png
-share/skel/.first_time
 share/skel/char-table.pd
 share/skel/settings.pd
 share/skel/grammar.pd
@@ -48,13 +48,10 @@ share/skel/plugins/Commands.pd
 share/skel/plugins/History.pd
 share/skel/plugins/Buffer.pd
 share/AppInfo.xml
-doc/pod/plugins/Commands.pod
 doc/pod/user/Configuration.pod
 doc/pod/user/Syntax.pod
-doc/pod/user/Zoidscript.pod
 doc/pod/user/index.pod
 doc/pod/user/Settings.pod
-doc/pod/plugins/index.pod
 doc/pod/devel/ParseTree.pod
 doc/pod/devel/Structure.pod
 doc/pod/devel/index.pod
@@ -85,4 +82,5 @@ t/30_dispatchtable.t
 t/31_ZoidbergError.t
 t/40_StringParse_simple.t
 t/41_default_grammar.t
-t/50_shell.t
+t/90_full.t
+t/zoidrc

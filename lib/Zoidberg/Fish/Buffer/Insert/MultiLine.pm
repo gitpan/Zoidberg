@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer::Insert::MultiLine;
 
-our $VERSION = '0.3b';
+our $VERSION = '0.3c';
 
 use strict;
 use base 'Zoidberg::Fish::Buffer::Insert';

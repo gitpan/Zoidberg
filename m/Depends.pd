@@ -1,6 +1,5 @@
 $VAR1 = {
   'core' => {
-    'YAML' => '0.35',
     'Storable' => '2.04',
     'Term::ANSIScreen' => '1.40',
     'Config' => 0,
@@ -13,7 +12,6 @@ $VAR1 = {
     'vars' => '1.01',
     'Tie::Hash' => '1.00',
     'strict' => '1.02',
-    'IO::Socket' => '1.27',
     'File::Spec' => '0.83',
     'POSIX' => '1.05',
     'File::Glob' => '1.01',

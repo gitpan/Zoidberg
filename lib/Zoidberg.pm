@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.3b';
+our $VERSION = '0.3c';
 our $LONG_VERSION =
 "Zoidberg $VERSION
 
@@ -28,7 +28,7 @@ use Zoidberg::PdParse;
 use Zoidberg::FileRoutines qw/:engine get_dir/;
 use Zoidberg::DispatchTable;
 use Zoidberg::Error;
-use Zoidberg::IPC;
+#use Zoidberg::IPC;
 
 use base 'Zoidberg::ZoidParse';
 
@@ -71,18 +71,19 @@ sub init {
 	Zoidberg::ZoidParse::init($self);
 
 	# TODO hide more functions in Zoidberg::Config (for example defaults etc.)
-	$self->{settings} = pd_merge($self->{settings}, Zoidberg::Config::readfile( $ZoidConf{settings_file} ) );
+	$self->{settings} = pd_merge($self->{settings}, Zoidberg::Config::readfile('settings_file') );
 
 	# init various objects:
 	$self->rehash_plugins;
 	foreach my $plug (@{$self->{settings}{init_plugins}}) { 
 		$self->init_object($plug) || $self->print("Could not initialize plugin '$plug'", 'error'); 
 	}
-#	$self->{ipc} = Zoidberg::IPC->new($self);
+#    $self->{ipc} = Zoidberg::IPC->new($self);
 #    $self->{ipc}->init;
+
 	# init self
-	my $file_cache = $ZoidConf{config_dir}.'/'.$ZoidConf{file_cache} ; # hack -- FIXME unless /^\//
-	if ($file_cache && -s $file_cache) { f_read_cache($file_cache) } # FIXME -- what if this only gives the dir name ..
+	my $file_cache = $ZoidConf{var_dir}.'/file_cache' ;
+	if (-s $file_cache) { f_read_cache($file_cache) }
 	else {
 		$self->print("Initializing PATH cache.", 'message');
 		&f_index_path;
@@ -167,7 +168,6 @@ sub list_vars { return [map {'{'.$_.'}'} sort keys %{$_[0]->{vars}}]; }
 
 sub print {	# TODO term->no_color bitje s{\e.*?m}{}g
 	my $self = shift;
-	#if ($self->{caller_pid}) { return $self->IPC->_call_method("$self->{caller_pid}:IPC.print",@_) }
 	my $ding = shift;
 	my $type = shift || 'output';
 	unless (-t STDOUT && -t STDIN) { $self->silent } # FIXME what about -p ??
@@ -178,7 +178,7 @@ sub print {	# TODO term->no_color bitje s{\e.*?m}{}g
 		if ($type eq 'error') { $self->print_error($ding) && return 1 }
 
 		my $colored = 1;
-		unless ($self->{interactive}) { $colored = 0; }
+		unless ($self->{settings}{interactive}) { $colored = 0; }
 		elsif ($self->{settings}{print}{colors}{$type}) { print color($self->{settings}{print}{colors}{$type}); }
 		elsif (grep {$_ eq $type} @ansi_colors) { print color($type); }
 		else { $colored = 0; }
@@ -210,7 +210,7 @@ sub print_list {
 	my $self = shift;
 	my @strings = @_;
 	my $width = ($self->Buffer->size)[0];
-	if (!$self->{interactive} || !defined $width) { return (print join("\n", @strings)."\n"); }
+	if (!$self->{settings}{interactive} || !defined $width) { return (print join("\n", @strings)."\n"); }
 	my $longest = 0;
 	map {if (length($_) > $longest) { $longest = length($_);} } @strings;
 	unless ($longest) { return 0; }
@@ -232,7 +232,7 @@ sub print_list {
 sub print_sql_list {
 	my $self = shift;
 	my $width = ($self->Buffer->size)[0];
-	if (!$self->{interactive} || !defined $width) { return (print join("\n", map {join(', ', @{$_})} @_)."\n"); }
+	if (!$self->{settings}{interactive} || !defined $width) { return (print join("\n", map {join(', ', @{$_})} @_)."\n"); }
 	my @records = @_;
 	my @longest = ();
 	@records = map {[map {s/\'/\\\'/g; "'".$_."'"} @{$_}]} @records; # escape quotes + safety quotes
@@ -319,17 +319,27 @@ sub broadcast_event { # eval because we don't want to mess up our caller's stack
 	my $self = shift;
 	my $event = shift;
 	foreach my $reg (@{$self->{events}{$event}}) { #there was a weird $_ booboo here
-		if (ref($reg) eq 'CODE') { eval { $reg->($self, $event, @_) }; if ($@) { error("$reg died on event $event") } }
+		if (ref($reg) eq 'CODE') { eval { $reg->($self, $event, @_) }; if ($@) { error("$reg died on event $event: '$@'") } }
 		else { 
             unless (ref($self->{objects}{$reg})) {
                 error("$reg is not an object!\n");
             }
             else {
                 eval { $self->{objects}{$reg}->event($event, @_) };
-                if ($@) { error("$reg died on event $event") }
+                if ($@) { error("$reg died on event $event: '$@'") }
             }
         }
 	}
+}
+
+sub register_event {
+    my $self = shift;
+    my $ev = shift;
+    my $sub = shift;
+    unless (exists $self->{events}{$ev}) {
+        $self->{events}{$ev} = [];
+    }                      
+    push @{$self->{events}{$ev}}, $sub;
 }
 
 # more glue for using events can be found in the Zoidberg::Fish class
@@ -356,11 +366,6 @@ sub object {
 		return $self->{objects}{$name};
 	}
 
-#    if ($name =~ /\(0x[a-f\d]+\)$/i) { # refstring, return hem:) handig voor aan de andere kant van een socket
-#        my $ref = deref($name);
-#        if ($ref) { return $ref }
-#    }
-
 	unless ($silence_bit) {
 		my @caller = caller;
 		error "No such object \'$name\' as requested by $caller[1] line $caller[2]";
@@ -368,16 +373,20 @@ sub object {
 	return 0;
 }
 
-sub rehash_plugins { # TODO make this a command to force rehashing
+sub rehash_plugins { 
+	# TODO make this a command to force rehashing
+	# what about skipping existing plugins ??
 	my $self = shift;
-	return unless -d $ZoidConf{plugins_dir};
-	my $plug_dir = get_dir($ZoidConf{plugins_dir}, 1);
-	my @plugs = map {s/\.pd$//; $_} @{ $plug_dir->{files} };
-	#print "debug: rehashing plugins gave me this: --".join('--', @plugs)."--\n";
-	my $pre_eval = 'my $prefix = \''.$ZoidConf{prefix}.'\'; my $conf_dir = \''.$ZoidConf{config_dir}.'\';';
-	foreach my $plug (@plugs) {
-		unless (ref $self->{plugins}{$plug}) {
-			$self->{plugins}{$plug} = pd_read($ZoidConf{plugins_dir}.$plug.'.pd', $pre_eval.qq{ my \$me = '$plug';});
+	my @done; # FIXME you could drop an ignore list in here 
+	for my $dir (split /:/, $ZoidConf{plugin_dirs}) {
+		next unless -d $dir;
+		for (@{ get_dir($dir)->{files} }) {
+			next if /^\./; # skip hiden files
+			my $plug = $_;
+			$plug =~ s/(\.\w+)+$//; # cut _all_ extensions
+			next if grep {$plug eq $_} @done; # next if ref($self->{plugins}{$plug}) ??
+			$self->{plugins}{$plug} = Zoidberg::Config::readfile($dir.'/'.$_);
+	
 			if ($self->{plugins}{$plug}{events}) { # Register events
 				for (@{$self->{plugins}{$plug}{events}}) {
 					unless ($self->{events}{$_}) { $self->{events}{$_} = [] }
@@ -386,7 +395,9 @@ sub rehash_plugins { # TODO make this a command to force rehashing
 			}
 			if ($self->{plugins}{$plug}{commands}) { # Register commands
 				for (keys %{$self->{plugins}{$plug}{commands}}) {
-					$self->{commands}{$_} = [$self->{plugins}{$plug}{commands}{$_}, $plug];
+					my $string = $self->{plugins}{$plug}{commands}{$_};
+					$string =~ s/^(\w)/->$_->$1/;
+					$self->{commands}{$_} = [$string, $plug];
 				}
 			}
 			if ($self->{plugins}{$plug}{export}) {
@@ -394,7 +405,9 @@ sub rehash_plugins { # TODO make this a command to force rehashing
 					$self->{commands}{$_} = [$plug.'->'.$_, $plug];
 				}
 			}
-			unless ($self->{plugins}{$plug}{config}) { $self->{plugins}{$plug}{config} = {} }
+			
+			$self->{plugins}{$plug}{config} ||= {};
+			push @done, $plug;
 		}
 	}
 									
@@ -405,17 +418,6 @@ sub init_object {
 	my $zoidname = shift;
 	my $class = shift || $self->{plugins}{$zoidname}{module} || 'Zoidberg::stub';
 
-#if (($class =~ /::Crab::/)&&(0)) {
-#        if (my $pid = $self->IPC->_locate_object($zoidname,$class)) {
-#            if (my $obj = $self->_generate_crab($pid,$class,$zoidname)) {
-#                $self->{objects}{$zoidname} = $obj;
-#                return 1;
-#            }
-#        }
-#        else {
-#            $class =~ s/::Crab/::Fish/;
-#        }
-#    }
 	if ($class eq 'Zoidberg::stub') {
 		$self->{objects}{$zoidname} = $class->new($self, $self->{plugins}{$zoidname}{config}, $zoidname);
 		return 1;
@@ -442,26 +444,6 @@ sub init_object {
 
 	return 1;
 }
-
-#sub _generate_crab {
-#    my $self = shift;
-#    my $pid = shift;
-#    my $class = shift;
-#    my $zoidname = shift;
-#    my $str = "package $class; push\@${class}::ISA,'Zoidberg::Fish::Crab'";
-#    eval $str;
-#    if ($@) {
-#        $self->print("Failed to generate class $class: $!",'error');
-#        return;
-#    }
-#    my $obj = $class->new($self,$self->{config}{$zoidname},$zoidname,$pid);
-#    no strict 'refs';
-#    map { 
-#    		my $sn= $_;
-#		*{ "${class}::$sn" } = sub{ shift->_call($sn, @_) } 
-#    } grep {!$obj->can($_)} $self->IPC->_call_method("$pid:$zoidname.methods");
-#    $obj;
-#}
 
 sub require_postponed {
 	my ($self, $mod) = @_;
@@ -514,12 +496,12 @@ sub round_up {
 			}
 		}
 		Zoidberg::ZoidParse::round_up($self);
-		my $cache_file = $ZoidConf{config_dir}.'/'.$ZoidConf{file_cache};
+		my $cache_file = $ZoidConf{var_dir}.'/file_cache';
 		if ($cache_file) { f_save_cache($cache_file) } # FIXME -- see init
 		$self->{round_up} = 0;
 		$self->print("# ### CU - Please report all bugs ### #  ", 'message');
 	}
-	return $self->{exec_error} unless $self->{interactive}; # FIXME check this
+	return $self->{exec_error} unless $self->{settings}{interactive}; # FIXME check this
 }
 
 sub DESTROY {
@@ -595,23 +577,19 @@ Zoidberg - a modular perl shell
 
 =head1 SYNOPSIS
 
-You most likely want to use the default config files as installed
-by the ProgramFiles package and all the modules from the Zoidberg
-package.
-
-	FIXME
+FIXME
 
 =head1 DESCRIPTION
 
-This class provides a parent object in charge of a whole bunch of
-plugins. Most of the real functionality is put in these plugins.
-Also this class is in charche of broadcasting events.
-Stubs are provided for core plugins.
-This class autoloads plugin names as subroutines.
+I<This is devel documentation, if you're looking for user documentation start with man page zoid(1)>
+
+This class provides an event and plugin engine.
+
+FIXME more verbose description
 
 =head1 METHODS
 
-Some usefull methods:
+Some methods:
 
 =over 4
 

@@ -1,13 +1,12 @@
 $VAR1 = {
 	'module' => 'Zoidberg::Fish::Buffer',
 	'config' => {
-		'char_table_file' => $conf_dir."char-table.pd",
-		'key_bindings_file' => $conf_dir."key-bindings.pd",
+		'char_table_file' => "char-table.pd",
+		'key_bindings_file' => "key-bindings.pd",
 		'tab_string' => "    ",
 		'bell' => 1,
 		'info' => 0,
 		'title' => 'Zoidberg',
 		'max_expand' => 0,
 	},
-	
 }

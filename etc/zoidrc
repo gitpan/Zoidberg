@@ -1,0 +1,38 @@
+
+use Zoidberg::Shell qw/:zoidrc/;
+
+# set environment
+%ENV = (%ENV, (
+	EDITOR	=> 'vim',
+	MAILER	=> '',
+	PAGER	=> 'less',
+	BROWSER	=> 'mozilla',
+#	PS1	=> '[\u@\h(\L) \W]',
+) );
+
+# Some programs expect this var to point to a fully posix compliant shell.
+# Since zoid doesn't use this var, no harm is done.
+$ENV{SHELL} = '/bin/bash';
+
+# set aliases
+alias( {
+	ls => 'ls --color=auto',
+	ll => 'ls --color -l',
+	up => 'cd ..',
+} );
+
+__END__
+
+TODO for PS1
+
+['[',{color=>'red'}],
+['\u',{color=>'magenta'}],
+['@',{color=>'blue'}],
+['\h',{color=>'green'}],
+['(\L)',{color=>'yellow',if=>'sub{my$s=$self->stringify;$s=~s{\e.*?m}{}g;if($s=~/\d/){return 1} else { return 0 }}'}],
+' ',
+['\W',{color=>'cyan'}],
+[']',{color=>'red'}],
+' ',
+],
+

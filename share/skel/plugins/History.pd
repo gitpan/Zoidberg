@@ -1,7 +1,8 @@
+use Zoidberg::Config; 
 $VAR1 = {
 	'module' => 'Zoidberg::Fish::History',
 	'config' => {
-		'log_file' => $conf_dir."var/hist.log",
+		'log_file' => $ZoidConf{var_dir}.'/hist.log',
 		'max_hist' => 100,
 	},
 	

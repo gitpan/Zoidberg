@@ -39,7 +39,7 @@ my %config = (
 		'TEST_VERBOSE' => 0,
 		'VERBOSE' => 0,
 		'PERL' => $Config{perl5}||$Config{perlpath},
-#		'CONFIG' => '/etc',
+		'CONFIG' => '/etc',
 		'INSTALLDIRS' => 'site',
 		'NO_HTML' => 0,
 		'MAN2HTML' => 0,
@@ -73,7 +73,7 @@ my $make = Makefile->new(\%config);
 if ($make->{vars}{APPDIR}) { # overrule other settings
 	my $ad = $make->{vars}{APPDIR};
 	$make->{vars}{PREFIX} = $ad;
-#	$make->{vars}{CONFIG} = $ad.'/etc/';
+	$make->{vars}{CONFIG} = $ad.'/etc/';
 	$make->{vars}{LIB_DIR} = $ad.'/lib/';
 	$make->{vars}{MAN_DIR} = $ad.'/man/';
 	$make->{vars}{CONF_DIR} = $ad.'/conf/';

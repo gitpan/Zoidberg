@@ -20,6 +20,7 @@ foreach my $section (0..9) {
 		|| die "Could not open log file\n"
 		if $make->{vars}{INSTALL_LOG};
 
+	unless (-e $to) { mkdir $to }
 	for (dir_copy('b/man'.$section, $to)) { print LOG $to, '/', $_, "\n"	}
 
 	close LOG

@@ -12,15 +12,14 @@ I<This manual is of course far from complete.>
 =begin text
 
  * Configuration
- * Syntax
- * Zoidscript
  * Settings
+ * Syntax
 
 =end text
 
 =begin html
 
-<!--INDEX Configuration Syntax Zoidscript Settings-->
+<!--INDEX Configuration Settings Syntax-->
 
 =end html
 

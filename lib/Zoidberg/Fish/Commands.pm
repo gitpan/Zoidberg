@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.3b';
+our $VERSION = '0.3c';
 
 use strict;
 use Cwd;
@@ -33,16 +33,6 @@ sub eval {
 	$self->parent->do( join( ' ', @_) );
 	error $self->{parent}{exec_error}
 		if $self->{parent}{exec_error};
-}
-
-sub source { 
-	my $self = shift;
-	my $file = shift || $self->parent->{_};
-	$file = abs_path($file);
-	error "source: no such file: $file" unless -f $file;
-	$self->parent->{_} = $file;
-	do $file;
-	die if $@;
 }
 
 sub setenv {
@@ -91,17 +81,38 @@ sub set {
 	else { $self->{settings}{$opt} = $val || 1 }
 }
 
+sub source { 
+	my $self = shift;
+	my $file = shift || error 'source: need a filename as argument';
+	$file = abs_path($file);
+	error "source: no such file: $file" unless -f $file;
+	# FIXME more intelligent behaviour -- see bash man page
+	eval q{package Main; do $file; die $@ if $@ };
+	die $@ if $@;
+}
+
 sub alias {
 	my $self = shift;
 	unless (@_) {
-		for (keys %{$self->{parent}{aliases}}) { 
-			$self->{parent}->print( q/alias /.$_.q/='/.$self->{parent}{aliases}{$_}.q/'/);
+		while (my ($k, $v) = each  %{$self->{parent}{aliases}}) { 
+			$self->print( q/alias /.$k.q/='/.$v.q/'/) 
 		}
 		return;
 	}
 	for (@_) {
 		error 'alias: wrong argument format' unless /^(\w+)=['"]?(.*?)['"]?$/;
 		$self->{parent}{aliases}{$1} = $2;
+	}
+}
+
+sub unalias {
+	my $self = shift;
+	if ($_[0] eq '-a') { %{$self->{parent}{aliases}} = () }
+	else {
+		for (@_) {
+			error "alias: $_: not found" unless exists $self->{parent}{aliases}{$_};
+			delete $self->{parent}{aliases}{$_};
+		}
 	}
 }
 
@@ -118,8 +129,6 @@ sub command { todo }
 sub newgrp { todo }
 
 sub umask { todo }
-
-sub unalias { todo }
 
 sub false { error {silent => 1} }
 
@@ -259,34 +268,12 @@ sub _unhide {
 	else { error 'Dunno such a thing' }
 }
 
-sub echo {
-	my $self = shift;
-	my $string = join(" ", @_) || $self->{parent}->{_};
-	$self->{parent}->{_} = $string;
-	$self->{parent}->print($string);
-}
-
 sub quit {
 	my $self = shift;
 	if (@_) { $self->{parent}->print(join(" ", @_)); }
 	$self->{parent}->History->del; # leave no trace # FIXME - ergggg vunzig
 	$self->{parent}->exit;
 }
-
-=begin comment
-
-sub _time {
-    my $self = shift;
-    if (@_) {
-        my $kontwange = join(" ",@_);
-        $self->print(Benchmark::timestr(Benchmark::timeit(1,sub{$self->parent->parse($kontwange)}),'nop'));
-    }
-    else { error 'usage: $command something' }
-}
-
-=end comment
-
-=cut
 
 1;
 

@@ -6,7 +6,7 @@ my $parser = Pod::Text->new();
 $parser->parse_from_file('./man1/zoid.pod', 'b/zoid.usage~~'); 
 
 # append required sections to bin/zoid
-my @sections = qw/synopsis options bugs/;
+my @sections = qw/synopsis options/;
 
 open TEXT, 'b/zoid.usage~~' || die $!;
 open FLUFF, '>>b/bin/zoid' || die $!;

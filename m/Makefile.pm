@@ -127,7 +127,7 @@ sub pd_write {
 sub check_manifest {
 	my $self = shift;
 	$self->{manifest_ok} = 1;
-	print "debug: using manifest: $self->{manifest}\n";
+    # print "debug: using manifest: $self->{manifest}\n";
 	for ($self->manifest) {
 		if ($self->{vars}{VERBOSE}) { print "Checking for file \"$_\".\n"; }
 		unless (-f $_) {
@@ -136,7 +136,7 @@ sub check_manifest {
 		}
 	}
 	if ($self->{manifest_ok}) {
-		print "Manifest seems to be ok.\n";
+		print "Manifest $self->{manifest} seems to be ok.\n";
 		return 1;
 	}
 	else { 

@@ -8,10 +8,11 @@ $make->{vars}{PREFIX} =~ s/\/$//; #/
 
 my %conf = ( prefix => "'".$make->{vars}{PREFIX}."'" );
 
-if ($make->{vars}{CONF_DIR}) { 
-	$conf{config_dir} = "'".$make->{vars}{CONF_DIR}."'";
-	$conf{plugins_dir} = "'".$make->{vars}{CONF_DIR}."plugins/'"
-}
+
+#if ($make->{vars}{CONF_DIR}) { 
+#	$conf{config_dir} = "'".$make->{vars}{CONF_DIR}."'";
+#	$conf{plugins_dir} = "'".$make->{vars}{CONF_DIR}."plugins/'"
+#}
 
 unshift @INC, './b/lib/';
 eval q{use Zoidberg::Config};

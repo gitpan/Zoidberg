@@ -1,83 +1,160 @@
-=head1 Basic syntax
+=head1 SYNTAX
 
 Since the syntax of the Zoidberg shell is completely configable
 we can only comment on the syntax as defined by the default
-config files. The general structure will be the same for most user defined configuration
-but any markup or token could be changed to render the syntax completely
-unrecognizable.
+config files. The general structure will be the same for most user defined
+configuration but any markup or token could be changed to render the syntax
+completely unrecognizable.
 
 The zoidberg syntax consists of three levels of grouping:
 
-=head2 Logical grouping
+=over 4
+
+=item Logical grouping
 
 First the syntax is split into blocks with logical/script delimitters
 
-This can be signs:
-
 	[block] && [block] || [block] ; [block]
 
-Or words:
-
-	[block] AND [block] OR [block] EOS [block]
-
-These do exactly the same, _without_ difference in precedence.
-
-=head2 Pipes and redirections
+=item Pipes and redirections
 
 Once the string is cut into logical blocks each
 of these blocks is split in sub blocks by pipes
-and redirection tokens.
+and.
 
-	[sub_block] | [sub_block] > [sub_block]
+	[sub_block] | [sub_block] | [sub_block]
 
-I<For now one can only use _copies_ of the zoidberg object tree in pipelines -- we hope to use threads for this in some future.>
+=item Context blocks
 
-=head2 Context blocks
+At last for each of these sub-blocks a context is decided like:
 
-At last for each resulting block the parsing rules in the grammar
-decide a context like 'ZOID', 'PERL', 'SYSTEM' or 'SQL' and the parsing of each of these is handed to a suitable
-subroutine (or application).
+	SH	- sh like syntax (only very basic statements)
+	CMD	- builtin commands
+	PERL	- blocks of perl code
+
+Each is executed differently by a suitable subroutine or application, and all
+are glued together to form a pipeline.
+
+=back
+
+=head1 CONTEXTS
+
+The contexts named below are hardcoded, others can be added by plugins.
+To disable hardcoded contexts see SETTINGS
+
+FIXME how to link properly to this setting ? 
+
+=over 4
+
+=item PERL
+
+Perl is the default context if the whole block is between curly brackets, when
+the first non-whitespace char of the block matches $,@ or % ,
+or when the first word is a word that is reserved, like 'if', 'while', 'for' etc.
+
+FIXME where are these configgable ?
+
+	# perl because of reserved word
+	zoid> for (0..3) { sleep 1; print $_ . "\n" }
+
+	# perl because of dollar sign
+	zoid> $self->{settings}{naked_zoid}++
+	
+	# perl because of curlies
+	zoid> { open TEST, '<test.dat' }
+
+Perl code can have modifyers after the last curly. Currently supported are :
+
+	n: enclose the expression in a "while STDIN" loop
+	p: like 'n' but also print $_ at the end of each loop
+	g: grep lines from STDIN that make the expression return non-zero
+
+	zoid> ls -al | { s/^(d)\S+/DIR:/ }g
+
+	# This will _NOT_ work -- each member of the pipeline is in a forked process :(
+	zoid> ls -al | { $i++ }n && { print "$i files" }
+
+If you use the "naked" form (without the enclosing curlies) a bit of source
+filtering is applied redering a dereference operator C<< -> >> with a whitespace in
+front of it into C<< $self-> >>.
+
+	# Thus
+	zoid> ->kill('1230')
+
+	# is the same as
+	zoid> $self->kill(1230')
+
+FIXME what about the "poundsign namespace" ?
+
+=item SH
+
+This context is intended to make the zoidberg shell a little friendlier to
+people used to shells like bash(1). Also this syntax requires less chars to
+execute a system command. Only the most basic stuff is implemented, use perl for
+things like flow control. Since the default syntax for pipelines and logic lists
+is also the same as in sh-like shell, one can use basic commands in a naturla
+way.
+
+	# this does what it would in /.*sh/
+	zoid> ls -al | grep -v CVS | grep ^d > dirs.txt
+
+I< Be aware redirections ain't fully supported >
+
+=item CMD
+
+This context is not really distinguishable from the SH context, but it is used
+for builtin commands (perl subs that fake to be a system command). There was
+need for a seperate context for this so builtins won't have to fork (unless used
+in a pipeline) and thus can alter the parent environment.
+
+=back
+
+=head2 FIXME
+
+FIXME comment on custom defined contexts
 
 FIXME comment on commands, aliases etc.
 
+FIXME comment on redirections
+
 =head2 Examples
 
-Some system binary, context SYSTEM
+Some system binary, context SH
 
 	zoid> mplayer -vo sdl -ao sdl my_favorite_movie.avi
 
 Perl code between brackets, context PERL
 
-	zoid> { print "This is perl code."; }
+	zoid> { print "This is perl code." }
 
-A subroutine call to an object loaded in zoidberg, context ZOID
+A subroutine call to an object loaded in zoidberg, context PERL but with a
+little source filtering applied.
 
 	zoid> ->Help->help
 	 -or-
 	zoid> ->Help->help('objects')
 
-A zoidberg command preceded by an underscore, context COMMAND
+A builtin command faking to be executable, context CMD
 
-	zoid> _cd /usr/local
-	zoid> _back
+	zoid> cd ..
+
+A custom syntax (SQL) enforced on a block:
+
+	zoid> sql{ SELECT * FROM users WHERE clue > 0 }
 
 And as said all of these can be combined:
 
-	zoid> _cd /usr/local AND { print "This is perl code."; } | less || sql{SELECT * FROM users WHERE clue > 0}
+	zoid> cd /usr/local && { print "This is perl code." } | less || sql{SELECT * FROM users WHERE clue > 0}
 
-This will first execute C<_cd /usr/local>, on sucess followed by C<{ print "This is perl code."; } | less>
-and if  one of these failes we get to see the result of C<< sql{SELECT * FROM users WHERE clue > 0} >>
+This will first execute C<cd /usr/local>, on sucess followed by C<{ print "This is perl code." } | less>
+and if one of these failes we get to see the result of C<< sql{SELECT * FROM users WHERE clue > 0} >>
 
 This makes the precedence of this example as follows.
 
-	( ( 1 and ( 2 pipe 3 ) ) or 4 ) 
+	( ( 1 and ( 2 pipe 3 ) ) or 4 )
 
-	1 = _cd /usr/local
-	2 = { print "This is perl code."; }
+	1 = cd /usr/local
+	2 = { print "This is perl code." }
 	3 = less 
 	4 = sql{SELECT * FROM users WHERE clue > 0}
-
-FIXME syntax for commands has changed
-
-=cut
 

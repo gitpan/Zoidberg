@@ -1,72 +1,40 @@
-=head1 Main configuration
+=head1 CONFIGURATION
 
-All configuration is divided between three hashes
-in Zoidberg.pm, each having their own file to save to.
-By default these files are found in F<~/.zoid/> .
+=head2 Files
 
-=head2 C<{settings}>
+The location of files can be installation specific. You can check the location 
+where zoid looks for them with the command C<zoid --list-conf>.
+All global configuration can by default be found in your home directory 
+in F<~/.zoid> ("config_dir"), some plugins also put data files in this dir.
+Plugins have seperate config files that are hashed by zoidberg, they can be
+found in F<~/.zoid/plugins> ("plugins_dir").
 
-This hash contains Zoidbergs global settings and settings that didn't fit anywhere else. 
-By default it is stored in F<settings.pd>.
+The most important is the settings_file, is contains the main settings hash.
+( Note that this file might get incorporated in F<~/.zoidrc>. )
+
+=head2 Data Structures
 
 =over 4
 
-=item C<{settings}{init_plugins}> Array
+=item settings
 
-Plugins in this array will be loaded on init as soon as possible in the defined order. Array values
-are zoidnames, referring to plugin configuration in L</{plugins}>. This can be used to bootstrap plugins
-that influence the internals of Zoidberg, or to load modules one just likes to have around. Plugins that
-are not defined here will be loaded when called explicitly, see FIXME.
+This hash can at all times be accessed from the command line.
+Also the builtin C<set> command acts on thsi hash. See SETTINGS
+for a summary of it's keys.
 
-=item C<{settings}{naked_zoid}> Boolean
+FIXME Where are special builtins documented ?
 
-Don't shield parent object, used for debugging or serious hacking only. Switch this bit
-if you wanna know what zoid really looks like ;)
+=item plugins
 
-=item C<{settings}{no_regex}> Boolean
+This hash is a representation of the seperate plugin configuration files. Most
+of it's information is referenced by the plugins, so it could be harmfull to 
+edit it. When you edit a plugin configuration file, you probably only wnat to
+edit the "config" section, this is the configuration for the plugin - other
+fields in the file contain meta information about the plugin for zoidberg.
 
-Do not use regex at all in expansion - this results in using (some kind of) globbing instead.
+FIXME Where is documentation about the plugin system to be found ?
 
-=item C<{settings}{strict_regex}> Boolean
-
-Do not use globbing at all in expansion - everything must be pure regex.
+=item 
 
 =back
 
-If both of the above expansion options are false this results in a kind of non-strict regex. This means
-that for example a '*' will sometimes be interpreted as a glob and sometimes as regex, this mode is also
-known as the "type less chars" modus.
-
-I<For now it is advised to use strict regex when handling sensitive data -- this is the only way to be sure of the result.>
-
-=head2 C<{plugins}>
-
-This hash contains config trees for plugins that can be used with Zoidberg.
-It is a composit of individual plugin configuration files, which are by
-default located F<plugins/*.pd>.
-
-The pluging config is stored under a key identical to the filename of the configuration file,
-this is considered the zoidname of the plugin. Each plugin uses a ref to this hash so
-after deleting the object the config remains for later use, also changing config here should change
-the plugin's config hash. But in some cases this is just the theory.
-
-FIXME link description plugin config-file structure
-
-=head2 C<{grammar}>
-
-In this hash houses some black magick. It contains all kinds
-of regexes and code strings used by diverse parsers throughout
-Zoidberg. If you want to change the meaning of "&&" or
-would like to implement a new context, this is the place to look.
-It is by default stored in F<grammar.pd> .
-
-I<Warning: This structure has not yet stabalised -- work in progres.>
-
-=head2 FIXME
-
-Some zoidnames like I<Buffer>, I<Prompt>, I<History>, I<Intel> and I<Commands> are reserved.
-These are defined in C<@Zoidberg::core_objects> and are provided with stub replacements.
-
-L<Zoidberg>
-
-=cut

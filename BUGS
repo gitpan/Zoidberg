@@ -7,9 +7,9 @@ Please report new bugs through the bug tracker.
 
 __BUGS__
 
-perl code containing stuff like q/}/ will make StringParser trow an error
+See pipeline from STDIN problem in t/90_something.t
 
-C< zoid --command=ls > should wait for child processes / jobs
+perl code containing stuff like q/}/ will make StringParser trow an error
 
 Help.pm is broken -- share/zoid/help ==> share/doc/zoid/pod
 
@@ -19,13 +19,17 @@ C<forw> == C<{ cd('->') }> seems to be buggy
 
 color off (fixed by stringformat ? ) - make this Zoidberg::Output
 
+source scripts can pollute each others namespace
+
+fluff
+	C< zoid --command=ls > should wait for child processes / jobs
+
 History
-	Escape chars sometimes multiply
+	A literal "\n" vanishes after re-reading history
 
 Buffer
 	Buffer tends to overwrite the last line if it didn't end with a \n -- do we really need a seperate process to capture STDOUT to fix this :(( ??
 
-        als er een open bracket in hist staat gaat tie naar multiline en dus niet meer verder door hist - this should be fixed by the more intelligent auto-multiline implementation suggested in TODO.
 
 Intel:  
         expansie in multi line gaat fout (?)
@@ -34,9 +38,6 @@ Intel:
 	[pardus@Captain moviez] mplayer The.Matrix.Reloaded.TS.REAL.PROPER-APM/CD*/<TAB>
 	Buffer died. 
 	Can't use an undefined value as an ARRAY reference at /home/pardus/local_zoid//lib/Zoidberg/Fish/Intel.pm line 58.
-	
 
-Docs:
-	lot of docs not up2date or incomplete :((
-	lot of docs do not use pod the way it should be used
+	when expanding subroutines of class Zoidberg they get wrong postfixes
 

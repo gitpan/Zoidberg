@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.3b';
+our $VERSION = '0.3c';
 
 use strict;
 use vars qw/$DEVNULL/;
@@ -26,7 +26,7 @@ sub expand {
 	print "string is -->$string<--\nl_block is -->$l_block<--\n" if $DEBUG;
 
 	# find context of block
-	my $block = $self->{parent}->_resolv_context($l_block, 'BROKEN');
+	my $block = $self->{parent}->parse_block($l_block, 'BROKEN');
 	unless ($block) { return ('', $string.$l_block, []) }
 	if ($#$block > 1) {
 		# get pref right
@@ -136,7 +136,7 @@ sub do {
 		my $sub = 'i_'.lc($try);
 		@re = $self->$sub($block);
 	}
-	else { error $try.': no such expansion available' }
+	else { print $try.': no such expansion available' if $DEBUG }
 
 	if (defined $re[0]) { ($block, @try) = (@re, @try) }
 	else { return scalar(@try) ? $self->do($block, @try) : $block } # recurs
@@ -214,14 +214,9 @@ sub i__words {
 
 sub i___more_words {
 	my ($self, $block) = @_;
-
-	my @poss;
-	for ($self->{parent}{_words_contexts}) {
-		push @poss, $self->{parent}{contexts}{$_.'_list'}->()
-			if exists $self->{parent}{contexts}{$_.'_list'};
+	for (@{$self->{parent}{_word_lists}}) {
+		push @{$block->[0]{poss}}, $_->($block->[-1]) 
 	}
-	$block->[0]{poss} = [ grep /^\Q$block->[-1]\E/, @poss ];
-
 	return $block;
 }
 
@@ -259,10 +254,10 @@ sub i_dirs_n_files { # TODO globbing tab :)
 	}
 	print "Expanding files ($type) from dir: $dir->{path} with arg: -->$arg<--\n" if $DEBUG;
 	
-	my @poss = grep /^\Q$arg\E/, @{$dir->{files}};
+	my @poss = sort grep /^\Q$arg\E/, @{$dir->{files}};
 	@poss = grep { -x $dir->{path}.$_ } @poss if $type =~ /x/;
 
-	unshift @poss, grep /^\Q$arg\E/, map( {$_.'/'} @{$dir->{dirs}}, qw/. ../ ) if $type =~ /d|x/;
+	unshift @poss, sort grep /^\Q$arg\E/, map( {$_.'/'} @{$dir->{dirs}}, qw/. ../ ) if $type =~ /d|x/;
 
 	@poss = grep {$_ !~ /^\./} @poss
 		if $self->{parent}{settings}{hide_hidden_files} && $arg !~ /^\./;

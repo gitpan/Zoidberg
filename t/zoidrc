@@ -1,0 +1,4 @@
+
+use Zoidberg::Shell qw/alias/;
+
+alias { test => 'echo ok' }

@@ -6,29 +6,31 @@ use Test::Harness;
 
 my $make = Makefile->new;
 
-unshift @INC, 'b/lib', 'b/inc';
-
 my $done = 0;
 
-if (-f 'b/test.pl') {
+chdir 'b/';
+
+unshift @INC, './lib', './inc';
+
+if (-f 'test.pl') {
 	print "Going to run test.pl";
-	do 'b/test.pl';
+	do 'test.pl';
 	$done = 1;
 }
 
-if (-d 'b/t') {
-	opendir T, 'b/t';
-	my @tests = sort grep {-f 'b/t/'.$_ && m/\.t$/} readdir T;
+if (-d 't/') {
+	opendir T, 't/';
+	my @tests = sort grep {-f 't/'.$_ && m/\.t$/} readdir T;
 	closedir T;
 
-	# print "Going to run tests: ".join(', ', @tests)."\n";
-
 	$Test::Harness::verbose = $make->{vars}{TEST_VERBOSE} || $make->{vars}{VERBOSE};
-	runtests(map {'b/t/'.$_} @tests);
+	runtests(map {'t/'.$_} @tests);
 	$done = 1;
 }
 
 unless ($done) { print "No tests defined.\n" } 
+
+chdir '..';
 
 __END__
 

@@ -1,6 +1,6 @@
 package Zoidberg::Fish::History;
 
-our $VERSION = '0.3b';
+our $VERSION = '0.3c';
 
 use strict;
 use IO::File();
@@ -34,7 +34,7 @@ sub open_log {
 		@{$self->{data}{hist}} = map {
 			m/(\d+)\s+\[hist\]\s(.*)/; 
 			[ 
-				[ map {	s/\\\\/\\/; $_ } split(/(?<!\\)\\n/, $2) ], # FIXME: escaping ain't right
+				[ split(/(?<!\\)\\n/, $2) ], # FIXME: escaping ain't right
 				[],
 				{ 't' => $1 },
 			]
@@ -62,7 +62,7 @@ sub log_record { # recursive
 	my $self = shift;
 	my $ref = shift;
 	my $type = 'hist'; # FIXME
-	$ref->[2]{t}.' ['.$type.'] '.join('\n', map {s/\\/\\\\/; $_} @{$ref->[0]});
+	$ref->[2]{t}.' ['.$type.'] '.join('\n', @{$ref->[0]});
 }
 
 sub add {
@@ -152,13 +152,13 @@ sub get_prop {
 
 sub search {
 	my $self = shift;
-    my $str = shift;
-    for (@{$self->{data}{hist}}) {
-        foreach my $l (@{$_->[0]}) {
-            $l=~/$str/ && return $_->[0];
-        }
-    }
-    return;
+	my $str = shift;
+	for (@{$self->{data}{hist}}) {
+		foreach my $l (@{$_->[0]}) {
+			return $_->[0] if $l =~ /$str/;
+        	}
+    	}
+	return;
 }
 
 sub show {

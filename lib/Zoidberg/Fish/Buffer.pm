@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer;
 
-our $VERSION = '0.3b';
+our $VERSION = '0.3c';
 
 use strict;
 use Data::Dumper;
@@ -26,17 +26,13 @@ sub init {
 #	$self->{parser} = Zoidberg::StringParse->new($self->parent->{grammar}, 'buffer_gram');
 #	$self->{syntax_parser} = Zoidberg::StringParse::Syntax->new($self->parent->{grammar}{syntax}, 'PERL', $self->parent->{grammar}{ansi_colors});
 
-	my $default;
-	eval( join("", (<DATA>)));
-	if ($self->{config}{char_table_file} && -s $self->{config}{char_table_file}) {
-		$self->{char_table} = pd_read($self->{config}{char_table_file});
-	}
-	else { $self->{char_table} = $default->{char_table} }
+#	my $default;
+#	eval( join("", (<DATA>)));
+	$self->{char_table} = Zoidberg::Config::readfile( $self->{config}{char_table_file} );
+#	$self->{char_table} = $default->{char_table} 
 
-	if ($self->{config}{key_bindings_file} && -s $self->{config}{key_bindings_file}) {
-		$self->{bindings} = pd_read($self->{config}{key_bindings_file});
-	}
-	else { $self->{bindings} = $default->{bindings} }
+	$self->{bindings} = Zoidberg::Config::readfile( $self->{config}{key_bindings_file} );
+#	$self->{bindings} = $default->{bindings}
 
 	$self->{fb} = ['']; # important -- define fb
 
@@ -62,10 +58,10 @@ sub init {
 
 sub round_up {
 	my $self = shift;
-	if ($self->{config}{char_table_file}) {
-		pd_write($self->{config}{char_table_file}, $self->{char_table});
-	}
-	else { $self->parent->print("no char table file defined", "error"); }
+#	if ($self->{config}{char_table_file}) {
+#		pd_write($self->{config}{char_table_file}, $self->{char_table});
+#	}
+#	else { $self->parent->print("no char table file defined", "error"); }
 }
 
 #######################
