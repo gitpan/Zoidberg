@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 use AutoLoader 'AUTOLOAD';
@@ -157,20 +157,44 @@ sub eval {
 
 Set the environment variable I<var> to I<value>.
 
+TODO explain how export moved varraibles between the perl namespace and the environment
+
 =cut
 
 sub export { # TODO if arg == 1 and not hash then export var from zoid::eval to env :D
 	my $self = shift;
-	if (@_) {
-		my (undef, $args) = getopt '%', @_;
-		$ENV{$_} = $$args{$_} for keys %$args;
+	my ($opt, $args, $vals) = getopt 'unexport,n print,p *', @_;
+	my $class = $$self{shell}{settings}{perl}{namespace};
+	no strict 'refs';
+	if ($$opt{unexport}) {
+		for (@$args) {
+			s/^([\$\@]?)//;
+			next unless exists $ENV{$_};
+			if ($1 eq '@') { @{$class.'::'.$_} = split ':', delete $ENV{$_} }
+			else { ${$class.'::'.$_} = delete $ENV{$_} }
+		}
 	}
-	else { 
+	elsif ($$opt{print}) {
 		output [ map {
 			my $val = $ENV{$_};
 			$val =~ s/'/\\'/g;
 			"export $_='$val'";
 		} sort keys %ENV ];
+	}
+	else { # really export
+		for (@$args) {
+			s/^([\$\@]?)//;
+			next if defined $ENV{$_};
+			if ($1 eq '@') { # arrays
+				my @env  = defined($$vals{$_})               ? (@{$$vals{$_}})     :
+					   defined(*{$class.'::'.$_}{ARRAY}) ? (@{$class.'::'.$_}) : ();
+				$ENV{$_} = join ':', @env;
+			}
+			else { # scalars
+				$ENV{$_} = defined($$vals{$_})        ? $$vals{$_}        :
+		        		   defined(${$class.'::'.$_}) ? ${$class.'::'.$_} : ''
+			}
+		}
 	}
 }
 
@@ -308,7 +332,10 @@ sub alias {
 			error "$path: no such hash in aliases" unless $hash;
 			$alias = $$hash{$key};
 		}
-		else { $alias = $$self{shell}{aliases}{$cmd} }
+		elsif (exists $$self{shell}{aliases}{$cmd}) {
+			$alias = $$self{shell}{aliases}{$cmd};
+	       	}
+		else { error $cmd.': no such alias' }
 		$alias =~ s/(\\)|'/$1 ? '\\\\' : '\\\''/eg;
 		output "alias $cmd='$alias'";
 		return;
@@ -494,7 +521,8 @@ sub pwd {
 =item symbols [-a|--all] [CLASS]
 
 Output a listing of symbols in the specified class.
-Class defaults to C<Zoidberg::Eval>.
+Class defaults to the current perl namespace, by default
+C<Zoidberg::Eval>.
 
 All symbols are prefixed by their sigil ('$', '@', '%', '&'
 or '*') where '*' is used for filehandles.
@@ -510,7 +538,8 @@ sub symbols {
 	my $self = shift;
 	my ($opts, $class) = getopt 'all,a @', @_;
 	error 'usage: symbols [-a|--all] [CLASS]' if @$class > 1;
-	$class = shift(@$class) || 'Zoidberg::Eval';
+	$class = shift(@$class)
+       		|| $$self{shell}{settings}{perl}{namespace} || 'Zoidberg::Eval';
 	my @sym;
 	for (keys %{$class.'::'}) {
 		unless ($$opts{all}) {
@@ -614,7 +643,8 @@ sub which {
 		push @matches, "$_/$cmd";
 		last unless $$opt{all};
 	}
-	output [@matches];
+	if (@matches) { output [@matches] }
+	else { error "no $cmd in PATH" }
 	return;
 }
 

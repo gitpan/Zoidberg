@@ -1,13 +1,13 @@
 
 use strict;
 
-print "1..21\n";
+print "1..22\n";
 
 chdir './blib';
 
 unlink 'test12~' or warn 'could not remove test12~' if -e 'test12~';
 
-$ENV{PATH} = '.';
+$ENV{PATH} = ($] < 5.008) ? '.:'.$ENV{PATH} : '.'; # perl 5.6.2 uses shell more extensively
 $ENV{OK8} = 'ok 8';
 $ENV{OK} = 'ok';
 $ENV{ARRAY} = join ':', qw/f00 ok b4r/;
@@ -15,7 +15,7 @@ $ENV{ARRAY} = join ':', qw/f00 ok b4r/;
 $SIG{PIPE} = 'IGNORE';
 
 $|++;
-my $zoid = '| script/zoid -o data_dirs=share --rcfile=../t/zoidrc';
+my $zoid = '| script/zoid -o data_dirs=share -o rcfiles=../t/zoidrc';
 
 open ZOID, $zoid;
 
@@ -35,10 +35,12 @@ print ZOID "      && echo 'ok 15 - empty command'\n"; # 15
 print ZOID "(false || false) || echo 'ok 16 - subshell 1'\n"; # 16
 print ZOID "(true  || false) && echo 'ok 17 - subshell 2'\n"; # 17
 print ZOID "print '#', <*>, qq#\\n# && print qq#ok 18 - globs aint redirections\\n#\n"; # 18
+#print ZOID "echo ok 19 - some quoting >> quote\\ \\'n\\ test; cat 'quote \\'n test'\n"; # 19
+print ZOID "echo ok 19 - skipped\n";
 print ZOID
-	'{ for (qw/19 a b 20 c d 21/) { print "$_\n" } } | {/\d/}g | {chomp; $_ = "ok $_ - switches $_\n"}p',
-	"\n"; # 19..21
-#print ZOID "test 22 - next after pipeline\n"; # 22
+	'{ for (qw/20 a b 21 c d 22/) { print "$_\n" } } | {/\d/}g | {chomp; $_ = "ok $_ - switches $_\n"}p',
+	"\n"; # 20..22
+#print ZOID "test 23 - next after pipeline\n"; # 23
 
 # TODO much more tests :)
 

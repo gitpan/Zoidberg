@@ -17,7 +17,6 @@ my $build = ModuleBuildZoid->new(
 	recommends => {
 		'Term::ReadLine::Zoid' => 0,
 		'Env::PS1' => 0,
-		'Storable' => 0,
 	},
 	build_requires => {
 		'Module::Build' => '0.24',
@@ -26,7 +25,7 @@ my $build = ModuleBuildZoid->new(
 		'Test::More' => 0,
 	},
 #	create_makefile_pl => 'passthrough', # bug in M:B hacked Makefile.PL
-	dynamic_config => {}, # boolean but bug in M:B
+	dynamic_config => 1,
 	PL_files => {}, # make it ignore my stuff
 	autosplit => [
 		'lib/Zoidberg/Fish/Commands.pm',

@@ -1,6 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 use Zoidberg::Utils 'error';
@@ -144,6 +144,10 @@ named subroutine in the current object.
 Removes a command. Wipes the stacks for the named commands
 of all routines belonging to this plugin.
 
+=item C<add_expansion(regex_ref => sub { ... })>
+
+=item C<wipe_expansions()>
+
 =cut
 
 sub add_events { # get my events unless @_ ?
@@ -174,6 +178,14 @@ sub wipe_commands {
 	my $self = shift;
 	error 'wipe_commands needs args' unless @_;
 	tied( %{$$self{shell}{commands}} )->wipe( $$self{zoidname}, @_ );
+}
+
+sub add_expansion {
+	todo()
+}
+
+sub wipe_expansions {
+	todo()
 }
 
 # ########### #

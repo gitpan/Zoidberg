@@ -46,12 +46,12 @@ my @test_data1 = (
 my @test_data2 = (
 	[ qq#ls -al ../dus \n#,	          [qw#ls -al ../dus#],                  'simple statement'  ],
 	[ qq#ls -al "./ dus  " ../hmm\n#, [qw/ls -al/, '"./ dus  "', '../hmm'], 'another statement' ],
-	[ q#alias du=du\ -k#,             ['alias', 'du=du -k'],                'escape whitespace' ],
+	[ q#alias du=du\ -k#,             ['alias', 'du=du\ -k'],               'escape whitespace' ],
 );
 
 my @test_data3 = (
 	[ q#echo \\\\#,		['echo', '\\'],		'escape throughput'	],
-	[ q#echo '\\\\'#,	['echo', '\\\\'],	'escape throughput 1'	],
+	[ q#echo '\\\\'#,	['echo', '\\'],		'escape throughput 1'	], # 12
 	[ q#echo {foo,bar}#,	[qw/echo foo bar/],	'GLOB_BRACE'		],
 	[ q#echo \{foo,bar}#,	['echo', '{foo,bar}'],	'GLOB_QUOTE'		],
 	[ q#     #,		[],			'empty command'		],
@@ -67,7 +67,7 @@ import Test::More tests =>
 	+ scalar(@test_data3) + 1;
 
 my $collection = \%Zoidberg::_grammars;
-my $parser = Zoidberg::StringParser->new($collection->{_base_gram}, $collection);
+my $parser = Zoidberg::StringParser->new($collection->{_base_gram}, $collection, {no_esc_rm => 1});
 
 print "# script grammar\n";
 
@@ -107,7 +107,7 @@ print "# 3 grammars and parse_words\n";
 
 print "# rest\n";
 
-my @blocks = $parser->split(qr/XXX/, qq{ ff die XXX base_gram "XXX" XXX shit \\XXX testen} );
-my @i_want = (' ff die ', ' base_gram "XXX" ', ' shit XXX testen');
+my @blocks = $parser->split(qr/XXX/, qq{ ff die XXX base_gram "XXX" XXX shit \\XXX testen} ); # 20
+my @i_want = (' ff die ', ' base_gram "XXX" ', ' shit \\XXX testen');
 is_deeply(\@blocks, \@i_want, 'base_gram works');
 

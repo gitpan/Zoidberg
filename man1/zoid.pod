@@ -86,18 +86,13 @@ Import I<module> into the eval namespace.
 With B<-m> explicit import empty list, with B<-M> default arguments or 
 specified arguments. Details like the equivalent perl option, see L<perlrun>(1).
 
-=item B<-o> I<setting>[,I<setting>, ...]
+=item B<-o> I<setting>
 
 =item B<-o> I<setting>=I<value>
 
-=item B<+o> I<setting>[,I<setting>, ...]
+=item B<+o> I<setting>
 
 Set (B<-o>) or unset (B<+o>) one or more settings.
-These can overrule other commandline switches.
-
-=item B<-r> I<file>, B<--rcfile>=I<file>
-
-Use an alternative rcfile.
 
 =item B<-s>, B<--stdin>
 
@@ -111,10 +106,6 @@ Display version information.
 =item B<-v>, B<--verbose>
 
 Sets the shell in verbose mode. This will cause each command to be echoed to STDERR.
-
-=item B<--norc>
-
-Skip all rcfiles.
 
 =back
 
@@ -132,13 +123,20 @@ To switch off ansi colours on the terminal set $CLICOLOR to 0 (null).
 =head1 FILES
 
 Zoidberg uses rc files, data files and plugin files, use the B<--config> switch
-to check the search paths in use for a particular installation.
+to check the search paths used.
+
+Which rcfiles are loaded is controlled be the 'rcfiles' and 'norc' settings,
+try C<zoid -o norc> to skip all rcfiles or C<zoid -o rcfiles=file1:file2:file3>
+to use files other then the default.
+
+The runtime search path for plugins etc. can be controlled with the 'data_dirs'
+setting, try C<zoid -o data_dirs=dir1:dir2:dir3>.
 
 =head1 DIAGNOSTICS
 
 Error messages may be issued either by B<perl> or by one any of the
 modules in use. The B<zoid> utility itself will only complain when the commandline
-options are wrong. If the error was thrown by one of the core modules, the error 
+options are wrong. If the error was thrown by one of zoid's core modules, the error 
 message will either start with the module name or the name of the command that went wrong.
 
 =head1 RESTRICTIONS

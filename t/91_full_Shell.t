@@ -7,11 +7,11 @@ use Zoidberg::Shell;
 
 $ENV{PWD} = cwd();
 
-print "1..16\n";
+print "1..19\n";
 
 unlink 'test12~~' or warn 'could not remove test12~~' if -e 'test12~~';
 
-$ENV{PATH} = './blib/';
+$ENV{PATH} = ($] < 5.008) ? './blib/:'.$ENV{PATH} : './blib/'; # perl 5.6.2 uses shell more extensively
 $ENV{OK8} = 'ok 8';
 $ENV{OK} = 'ok';
 $ENV{ARRAY} = join ':', qw/f00 ok b4r/;
@@ -47,5 +47,28 @@ $shell->shell("      && echo 'ok 15 - empty command'"); # 15
 $shell->shell('false');
 print( ($@ ? 'ok' : 'not ok') . " 16 - errors are passed on\n"); # 16
 
+$shell->shell('$var = \'test1\'');
+$shell->shell('set perl/namespace=test');
+$shell->shell('$var = \'test2\'');
+$shell->shell('set perl/namespace=Zoidberg::Eval');
+{
+	no warnings;
+	my $ok = ($Zoidberg::Eval::var eq 'test1') && ($test::var eq 'test2');
+	ok( $ok, '17 - namespace switching works' ); # 17
+}
+
+$shell->shell('$testexp = "dusss ja"');
+$shell->shell('export testexp');
+ok( $ENV{testexp} eq 'dusss ja', '18 - export works' ); # 18
+
+$shell->shell('export -n testexp');
+ok( !$ENV{testexp}, '19 - unexport works' ); # 19
+
+# TODO test also array export / source-filtering / source-filtering for existing arrays
+
 $shell->round_up;
 
+sub ok {
+	my ($bit, $string) = @_;
+	print( ($bit ? 'ok' : 'not ok').' '.$string."\n" );
+}

@@ -105,8 +105,6 @@ subtitutions are done.
 
 FIXME put devel opts in scheme
 
---------------------------------------------------------------------------------
-
   string  --> shell_string()
   
             split script_gram
@@ -150,8 +148,6 @@ FIXME put devel opts in scheme
   
              expansion   ... FIXME list them in zoiduser
              (globs)
-
---------------------------------------------------------------------------------
 
 A block that originates from C<shell()> or C<Zoidberg::Shell::AUTOLOAD> is recognised
 as having already been split into words. This means the parsing of words, redirections

@@ -1,9 +1,8 @@
-use Test::More tests => 18;
+use Test::More tests => 17;
 use_ok('Bundle::Zoidberg');
 use_ok('Zoidberg');
 use_ok('Zoidberg::Contractor');
 use_ok('Zoidberg::DispatchTable');
-use_ok('Zoidberg::Eval');
 use_ok('Zoidberg::Fish');
 use_ok('Zoidberg::Fish::Commands');
 use_ok('Zoidberg::Fish::Intel');

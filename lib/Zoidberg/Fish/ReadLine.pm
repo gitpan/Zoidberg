@@ -1,6 +1,6 @@
 package Zoidberg::Fish::ReadLine;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 use vars qw/$AUTOLOAD $PS1 $PS2/;
@@ -58,17 +58,14 @@ sub init {
 	$$self{rl}->Attribs->{completion_function} = sub { return $$self{shell}->builtin($compl, @_) };
 
 	## Env::PS1
-	# TODO in %Env::PS1::map
-	# \m  Current mode, '-' if default
-	# \M "general status string" in prompt to be used by mode plugins
-	# \j  The number of jobs currently managed by the application.
-	# \v  The version of the application.
-	# \V  The release number of the application, version + patchelvel
+	$Env::PS1::map{m} ||= sub { $$self{settings}{mode} || '-' };
+	$Env::PS1::map{j} ||= sub { scalar @{$$self{shell}{jobs}} };
+	$Env::PS1::map{v} ||= $Zoidberg::VERSION;
 }
 
 sub wrap_rl {
 	my ($self, $prompt, $preput, $cont) = @_;
-	$prompt = $$self{rl_z} ? \$PS1 : $PS1 unless $prompt;
+	$prompt ||= $$self{rl_z} ? \$PS1 : $PS1;
 	my $line;
 	{
 		local $SIG{TSTP} = 'DEFAULT' unless $$self{shell}{settings}{login};
@@ -82,7 +79,10 @@ sub wrap_rl_more {
 	my ($self, $prompt, $preput) = @_;
 	my $line;
 	if ($$self{rl_z}) { $line = $self->continue() }
-	else { $line = $$self{last_line} . $self->wrap_rl($prompt, $preput) }
+	else {
+		$prompt ||= $$self{rl_z} ? \$PS2 : $PS2;
+		$line = $$self{last_line} . $self->wrap_rl($prompt, $preput)
+	}
 	$$self{last_line} = $line;
 	Zoidberg::Utils::output($line);
 }
@@ -136,15 +136,43 @@ Zoidberg::Fish::ReadLine - Readline glue for zoid
 
 =head1 SYNOPSIS
 
+This module is a Zoidberg plugin, see Zoidberg::Fish for details.
+
 =head1 DESCRIPTION
 
-descriptve text
+This plugin provides a general readline interface to Zoid, the readline
+functionality can be provided by any module in the L<Term::ReadLine>
+hierarchy. By default L<Term::ReadLine::Zoid> is used when it is available;
+with other modules functionality can be a little buggy.
 
-=head1 EXPORT
+=head2 Prompt
 
-None by default.
+L<Env::PS1> is used to expand prompt escapes if it is available.
+Some application specific escapes are added to the ones known to L<Env::PS1>.
+
+=over 4
+
+=item \m
+
+Current mode, defaults to '-' if no mode is used
+
+=item \j
+
+The number of jobs currently managed by the application.
+
+=item \v
+
+The version of the application.
+
+=back
+
+=head1 CONFIG
+
+TODO
 
 =head1 METHODS
+
+TODO
 
 =over 4
 

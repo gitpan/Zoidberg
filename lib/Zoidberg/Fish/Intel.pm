@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 use vars qw/$DEVNULL/;
@@ -83,10 +83,15 @@ sub _complete {
 		( map {($_ => $$block[0]{$_})} qw/message prefix postfix quoted quote/ )
 	);
 	if ($meta{quote}) { $meta{prefix} = $meta{quote} . $meta{prefix} }
-	else { $meta{quote} = sub { $_[0] =~ s#\\\\|(?<!\\)([\\\s&|><*?\[\]{}()\$%@])#$1?"\\$1":'\\\\'#eg; $_[0] } } # escaping
+	else { $meta{quote} = \&_escape_completion } # escaping
 	#debug scalar(@{$$block[0]{poss}}) . ' completions, meta: ', \%meta;
 	#debug [$$block[0]{poss}];
 	return (\%meta, $$block[0]{poss});
+}
+
+sub _escape_completion {
+	$_[0] =~ s#\\\\|(?<!\\)([\\\s&|><*?\[\]{}()\$\%\@'"`])#$1?"\\$1":'\\\\'#eg;
+	return $_[0];
 }
 
 sub _get_last_block {
@@ -100,10 +105,11 @@ sub _get_last_block {
 	#debug "parsing block: $block";
 	$block = $$self{shell}->parse_block({pretend => 1}, $block);
 	#debug 'parsed last block: ', $block;
-	return $string, [ {
-		context => uc( $$self{shell}{settings}{mode} ) || '_WORDS',
-		string => '', poss => [], pref => ''
-	}, ''] unless $block;
+	unless ($block) {
+		my $c = $$self{shell}{settings}{mode} || '_WORDS';
+		$c = uc $c unless $c =~ /::/;
+		return $string, [ {context => $c, string => '', poss => [], pref => ''}, ''];
+	}
 
 	@{$$block[0]}{'poss', 'pref'} = ([], '');
 	if (exists $$block[0]{compl}) {
@@ -334,7 +340,9 @@ sub i__zoid {
 				my @isa = ($type);
 				my @m_poss;
 				while (my $c = shift @isa) {
-					push @m_poss, grep  m/$arg/, _subs($c);
+					no strict 'refs';
+					push @m_poss, grep  m/$arg/,
+						grep defined *{$c.'::'.$_}{CODE}, keys %{$c.'::'};
 					debug "class $c, ISA ", @{$c.'::ISA'};
 					push @isa, @{$c.'::ISA'};
 				}
@@ -349,11 +357,6 @@ sub i__zoid {
 	$$block[0]{poss} = \@poss;
 	$$block[0]{quoted}++;
 	return $block;
-}
-
-sub _subs { 
-	no strict 'refs';
-	grep defined *{"$_[0]::$_"}{CODE}, keys %{"$_[0]::"};
 }
 
 sub i_env_vars {

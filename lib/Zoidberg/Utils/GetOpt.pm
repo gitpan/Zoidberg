@@ -1,6 +1,6 @@
 package Zoidberg::Utils::GetOpt;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 use Zoidberg::Utils::Error qw/error bug/;

@@ -14,7 +14,7 @@
 
 use strict;
 use Cwd qw/cwd/;
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 my @inc = (); # You can list custom includes here
 my $cwd = cwd;
@@ -39,8 +39,7 @@ eval q#use Zoidberg::Utils::GetOpt 'getopt'; 1# or die $@;
 my ($opts, $args) = eval { getopt( '
 	help,h,usage,u version,V config,C
 	exec,e@ command,c@ stdin,s
-	interactive,i login,l
-	rcfile,r@ norc plug,p@
+	interactive,i login,l plug,p@
 	debug,-D verbose,v include,-I@
 	-I* -D* +o@ -o@ -m* -M*
 	@', @ARGV ) } ;
@@ -132,16 +131,13 @@ if ($$opts{'+o'}) {
 	}
 }
 
-if ($$opts{rcfile}) { $settings{rcfiles} = $$opts{rcfile} }
-elsif ($$opts{norc}) {  $settings{rcfiles} = [] }
-
 for (qw/data_dirs rcfiles/) { # arrays
 	$settings{$_} = [ split /:/, $settings{$_} ]
 		if defined $settings{$_} and ! ref $settings{$_};
 }
 
-for (qw/verbose debug login/) { # bits
-	$settings{$_} = $$opts{$_} unless defined $settings{$_};
+for (qw/verbose debug login/) { # options
+	$settings{$_} = $$opts{$_} if defined $$opts{$_};
 }
 
 if ($$opts{config}) { # pre-emptive #3
@@ -156,7 +152,7 @@ if ($$opts{config}) { # pre-emptive #3
 		print "$_ = $val\n"
 	}
 	exit 0;
-} # FIXME shouldn't this be a machine parsable format ?
+} # FIXME shouldn't this be a machine parsable format ? -- Yes it should !
 
 # ################## #
 # prepare for launch #
@@ -205,7 +201,11 @@ if ( $$opts{stdin} || -p STDIN || (!$interact && !$exec_string) ) {
 
 $cube->main_loop if $interact;
 
-my $exit = $cube->round_up ? 1 : 0;
+my $exit = 0;
+$exit = ref($$cube{error}) ? ($$cube{error}{exit_status} || 1) : 1
+	unless $interact or ! $$cube{error};
+
+$cube->round_up;
 
 exit $exit;
 

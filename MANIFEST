@@ -14,11 +14,11 @@ Changes
 configure
 doc/index.html
 etc/zoidrc
+examples/cpan.pl
 lib/Bundle/Zoidberg.pm
 lib/Zoidberg.pm
 lib/Zoidberg/Contractor.pm
 lib/Zoidberg/DispatchTable.pm
-lib/Zoidberg/Eval.pm
 lib/Zoidberg/Fish.pm
 lib/Zoidberg/Fish/Commands.pm
 lib/Zoidberg/Fish/Intel.pm

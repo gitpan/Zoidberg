@@ -69,10 +69,11 @@ alias( {
 		? ( perldoc => 'perldoc -U', perlfunc => 'perldoc -Uf' )
 		: ( perlfunc => 'perldoc -f' )
 	),
+	unexport => 'export -n',
 } );
 
 # add some alias to perl_keywords to make completion work
-push @{ $$shell{settings}{perl_keywords} }, qw/p pp x/;
+push @{ $$shell{settings}{perl}{keywords} }, qw/p pp x/;
 
 ### default settings
 set('notify', 'notify_verbose');

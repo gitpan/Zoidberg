@@ -1,6 +1,6 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -20,7 +20,16 @@ sub new {
 	shift; #class
 	eval 'use Zoidberg';
 	die if $@;
-	Zoidberg->new(@_);
+
+	# reformat some settings
+	my %obj = @_;
+	my $set = $obj{settings} || {};
+	$$set{rcfiles} = [] if exists $$set{norc} and delete $$set{norc};
+	$$set{interactive} = (-t STDIN and -t STDOUT)
+		unless defined $$set{interactive};
+	$obj{settings} = $set;
+
+	Zoidberg->new(%obj);
 }
 
 sub current { return $Zoidberg::CURRENT }

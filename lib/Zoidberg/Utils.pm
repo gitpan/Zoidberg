@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 use vars '$AUTOLOAD';

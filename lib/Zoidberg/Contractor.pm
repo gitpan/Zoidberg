@@ -1,12 +1,11 @@
 package Zoidberg::Contractor;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 use POSIX ();
 use Config;
 use Zoidberg::Utils;
-use Zoidberg::Eval;
 no warnings; # yes, undefined == '' == 0
 
 =head1 NAME
@@ -24,7 +23,7 @@ Zoidberg::Contractor - Module to manage jobs
 
 Zoidberg inherits from this module, it manages jobs.
 
-It uses Zoidberg::StringParser and Zoidberg::Eval.
+It uses Zoidberg::StringParser.
 
 Also it defines Zoidberg::Job and subclasses.
 
@@ -74,8 +73,8 @@ sub shell_init {
 	if ($self->{shell}{settings}{interactive}) {
 		# Loop check until we are in the foreground.
 		while (POSIX::tcgetpgrp($self->{terminal}) != ($self->{pgid} = getpgrp)) {
-			CORE::kill (21, -$self->{pgid}); # SIGTTIN, stopping ourselfs 
-			# not using constants to prevent namespace pollution
+			# FIXME is this logic allright !??
+			CORE::kill($$self{_sighash}{TTIN}, -$self->{pgid}); # stop ourselfs
 		}
 		# ignore interactive and job control signals
 		$SIG{$_} = 'IGNORE' for qw/INT QUIT TSTP TTIN TTOU/;
@@ -394,13 +393,21 @@ sub exec {
 
 	my @re = eval { $self->_run };
 
-	if (my $error = $@ || $$self{exit_status}) {
-		complain if $@;
-		unless (ref $error) {
-			$error = bless { string => $error }, 'Zoidberg::Utils::Error';
+	# bitmasks for return status of system commands
+	# exit_value  = $? >> 8;
+	# signal_num  = $? & 127; 
+	# dumped_core = $? & 128;
+	if ($@ || $$self{exit_status}) { # something went wrong
+		my $error = ref($@) ? $@ : bless { string => ($@ || 'Error') }, 'Zoidberg::Utils::Error';
+		if ($@) { complain }
+		else { $$error{silent}++ }  # we trust processes returning an exit status to complain themselfs
+		unless(defined $$error{exit_status}) { # maybe $@ allready contained one
+			$$error{exit_status} = $$self{exit_status} >> 8; # only keep application specific bits
+			my $signal = $$self{exit_status} & 127;
+			$$error{signal} = $$self{_sighash}{$signal} if $signal;
+			$$error{core_dump} = $$self{core_dump};
 		}
-		$$error{signal} = $$self{exit_signal} if $$self{exit_signal};
-		$error->PROPAGATE();
+		$error->PROPAGATE(); # just for the record
 		$$self{error} = $$self{shell}{error} = $error;
 	}
 	else { delete $$self{shell}{error} }
@@ -486,7 +493,12 @@ sub _run {
 			# and run child
 			$ENV{ZOIDPID} = $zoidpid;
 			eval { $self->_run_child($proc, $stdin, $stdout) };
-			exit complain || 0; # exit child process
+			my $error = $@ || 0;
+			if ($error) {
+				complain;
+				$error = ref($error) ? ($$error{exit_status} || 1) : 1 if $error;
+			}
+			exit $error; # exit child process
 		}
 
 		POSIX::close($stdin)  unless $stdin  == fileno STDIN ;
@@ -534,7 +546,7 @@ sub _run_child { # called in child process
 	$self->_set_env($block);
 
 	# here we go ... finally
-	$self->{shell}{eval}->_eval_block($block);
+	$$self{shell}->eval_block($block); # FIXME should be hook
 }
 
 # ##################### #
@@ -565,7 +577,9 @@ sub _set_env {
 			elsif ($f =~ /^\d+$/) { $newfd = $f }
 			else {
 				no strict 'refs';
-				$newfd = fileno *{'Zoidberg::Eval::'.$f};
+				my $class = $$self{shell}{settings}{perl}{namespace}
+					|| 'Zoidberg::Eval';
+				$newfd = fileno *{$class.'::'.$f};
 				error $f.': no such filehandle' unless $newfd;
 			}
 		}
@@ -657,17 +671,17 @@ sub fg {
 
 sub bg {
 	my $self = shift;
-	$self->_bg;
+	$self->_register_bg;
 
 	if ($self->{stopped}) {
-		CORE::kill(SIGCONT, -$self->{pgid});
+		CORE::kill(SIGCONT => -$self->{pgid});
 		$self->{stopped} = 0;
 	}
 
 	message $self->status_string;
 }
 
-sub _bg {
+sub _register_bg { # register oneself as a background job
 	my $self = shift;
 
 	unless ($$self{id}) {
@@ -712,7 +726,7 @@ sub _update_child {
 	debug "pid: $pid returned: $status";
 
 	if ($pid == -1) { # -1 == all processes in group ended
-		CORE::kill( 15 => -$self->{pgid} ); # SIGTERM just to be sure
+		CORE::kill(SIGTERM => -$self->{pgid} ); # just to be sure
 		debug "group $$self{pgid} has disappeared:($!)";
 		$$_[0]{completed}++ for @{$self->{procs}};
 	}
@@ -720,23 +734,23 @@ sub _update_child {
 		my ($child) = grep {$$_[0]{pid} == $pid} @{$$self{procs}};
 		bug "Don't know this pid: $pid" unless $child;
 		$$child[0]{exit_status} = $status;
-		if (WIFSTOPPED($status)) {
+		if (WIFSTOPPED($status)) { # STOP TSTP TTIN TTOUT
 			$$self{stopped} = 1;
-			(WSTOPSIG($status) == 22 or WSTOPSIG($status) == 21 ) # SIGTT(IN|OUT)
-				? $self->fg : $self->_bg;
+			if ( ! $$self{bg} and (
+				WSTOPSIG($status) == SIGTTIN or
+				WSTOPSIG($status) == SIGTTOU
+			) )  { $self->fg           } # FIXME not sure why but this proves nescessary
+			else { $self->_register_bg }
 		}
 		else {
 			$$child[0]{completed} = 1;
 			if ($pid == $$self{procs}[-1][0]{pid}) { # the end of the line ..
 				$$self{exit_status} = $status;
-				if (WIFSIGNALED($status)) {
-					$$self{terminated}++;
-					my $num = WTERMSIG($status);
-					$$self{exit_signal} = $self->{_sighash}{$num};
-				}
-				unless ($self->completed) {
+				$$self{terminated}++ if $status & 127; # was terminated by a signal
+				$$self{core_dump}++  if $status & 128;
+				unless ($self->completed) { # kill the pipeline
 					local $SIG{PIPE} = 'IGNORE'; # just to be sure
-					$self->kill(13); # SIGPIPE
+					$self->kill(SIGPIPE);
 				}
 			}
 		}
@@ -755,7 +769,7 @@ sub _update_child {
 =item kill($signal, $wipe_list)
 
 Sends $signal (numeric or named) to all child processes belonging to this job;
-$signal defaults to 15 (SIGTERM).
+$signal defaults to SIGTERM.
 
 If the boolean $wipe_list is set all jobs pending in the same logic list are
 removed.
@@ -764,7 +778,7 @@ removed.
 
 sub kill {
 	my ($self, $sig_s, $kill_tree) = @_;
-	my $sig = defined($sig_s) ? $$self{shell}->sig_by_spec($sig_s) : 15; # 15 == TERM
+	my $sig = defined($sig_s) ? $$self{shell}->sig_by_spec($sig_s) : SIGTERM;
 	error "$sig_s: no such signal" unless $sig;
 	@{$$self{tree}} = () if $kill_tree;
 	if ($self->{shell}{settings}{interactive}) {
@@ -831,10 +845,11 @@ sub status_string {
 	}
 
 	my $status = shift || (
-		$$self{new}        ? 'New'        :
-		$$self{stopped}    ? 'Stopped'    :
-		$$self{terminated} ? 'Terminated' :
-		$$self{completed}  ? 'Done'       : 'Running' ) ;
+		$$self{new}        ? 'New'         :
+		$$self{stopped}    ? 'Stopped'     :
+		$$self{core_dump}  ? 'Core dumped' :
+		$$self{terminated} ? 'Terminated'  :
+		$$self{completed}  ? 'Done'        : 'Running' ) ;
 
 	my $string = $$self{string};
 	$string =~ s/\n$//;
@@ -876,7 +891,9 @@ sub _run { # TODO something about capturing :(
 	my $save_env = $self->_set_env($block);
 
 	# here we go !
-	eval { $self->{shell}{eval}->_eval_block($block) }; # VUNZig om hier een eval te moeten gebruiken
+	eval { $$self{shell}->eval_block($block) };
+		# FIXME should be hook
+       		# VUNZig om hier een eval te moeten gebruiken
 
 	$self->_restore_env($save_env);
 	my @re;
@@ -920,6 +937,6 @@ it under the same terms as Perl itself.
 =head1 SEE ALSO
 
 L<zoiddevel>(1),
-L<Zoidberg>, L<Zoidberg::StringParser>, L<Zoidberg::Eval>
+L<Zoidberg>, L<Zoidberg::StringParser>
 
 =cut

@@ -15,7 +15,7 @@ zoidfaq - Frequently Asked Questions about Zoidberg
 
 If you don't know where the name comes from, you should watch more cartoons.
 
-Quoting some futurama episode about a certain docter Zoidberg :
+Quoting some futurama episode about a certain doctor Zoidberg :
 
  "He's a weird monster who smells
      like he eats garbage and does"
@@ -30,6 +30,16 @@ B<NO !> If it is stable we'll call it 1.00 .
 
 Kind of, as long as you don't try too fancy stuff with too many privileges.
 
+=head3 But why !?
+
+First of all because we like Perl better then shell script, and with the right glue 
+you can do real powerful things with Perl statements in your shell.
+
+Secondly because we wanted a platform to try out some experimental shell features,
+and it is really nice to be able to do so in Perl in an object oriented fashion.
+With zoid you don't need to patch archaic C code just to add for example 
+another builtin function to your shell.
+
 
 =head2 Features
 
@@ -39,7 +49,7 @@ Set the environment variable CLICOLOR to 0 (null).
 
 =head3 What's with the single arrow syntax ?
 
-When you type perl code without brackets around it, zoid does a little source filtering making a arrow 'C<< -> >>' (the dereference operator) at the start of a word an alias for 'C<< $shell-> >>'. Where 'C<< $shell >>' is the main shell object. 
+When you type Perl code without brackets around it, zoid does a little source filtering making a arrow 'C<< -> >>' (the dereference operator) at the start of a word an alias for 'C<< $shell-> >>'. Where 'C<< $shell >>' is the main shell object. 
 
  zoid$ ->Commands->cd(q/../)
  # is the same as
@@ -60,23 +70,45 @@ If you use this module try setting C<< $ENV{RPS1} >>.
 
 No, but everyone agrees it would very nice if it did.
 
-The problem is that I ([Pardus]) don't do anything with localisation so I don't
+The problem is that I ([Pardus]) don't do anything with localization so I don't
 have any idea how this should work, no setup to test it, no experience this.
 Since I don't use this myself for me this has a low priority.
 
-Since perl has a lot of documentation and pragmas relating to this topic I have
+Since Perl has a lot of documentation and pragmas relating to this topic I have
 the feeling it shouldn't be to hard to have zoid at least understand character
 encoding correctly, but I'm going to need help from people with more experience 
-in using these perl features.
+in using these Perl features.
 
 So If B<YOU> want utf8/encoding .../locale in zoid
-and have some experience in using character encodings in perl please contact
+and have some experience in using character encodings in Perl please contact
 [Pardus] by email.
 
 =head3 I miss feature X, every shell should have feature X !
 
 Probably it's on the TODO list, or at some list at least.
 Try the mailing list.
+
+
+=head2 Development
+
+=head3 Can I use Zoidberg as a frontend for my own module ?
+
+Yes you can. Basicly all you need to do is to set the mode of the shell to the
+namespace of your module; see B<zoiduser(1)> for details.
+For a more elaborate example of using Zoidberg to build a custom shell application
+have a look at C<< examples/cpan.pl >> which is included in the source package.
+
+=head3 How do I get Zoid to cooperate with a GUI toolkit like Tk ?
+
+To my understanding the only thing needed to cooperate with any GUI
+toolkit is a "heartbeat" event to update the GUI. If you use our
+Term::ReadLine::Zoid library zoid will give you an event called "beat".
+Try something like:
+
+ $shell->{events}{beat} = \&update_gui;
+
+... please send me (Pardus) a copy if you have working example
+code of a gui application using zoid.
 
 
 =head2 Errors
@@ -86,9 +118,7 @@ Try the mailing list.
 If you use Term::ReadLine::Zoid, make sure not to use a version older then your version of Zoidberg.
 When using the latest version of zoid, the latest version of Term::ReadLine::Zoid should work.
 
-If you have all dependencies right you probably need to remove 
-either the directory C<< ~/.zoid >> or the file C<< ~/.cache/zoid_path_cache >>.
-( Cache no longer used in CVS version. )
+If you have all dependencies right you might need to remove/clean the directory C<< ~/.zoid >>.
 
 Also it might be a good idea to clean up C<< /usr/share/zoid >> and/or
 C<< /usr/local/share/zoid >> before installing a new version.
@@ -102,25 +132,13 @@ a case-insensitive filesystem. Install version 0.4 for the fix.
 
 =head3 I got a segfault, is this a bug ?
 
-Well, if it is a bug at all then probably it's a bug in perl, not in zoid.
+Well, if it is a bug at all then probably it's a bug in Perl, not in zoid.
 
-Most notoriously if you use globs in perl code, perl 5.8.0 can segfault;
-upgrading to perl 5.8.2 fixes this problem.
+Most notoriously if you use globs in Perl code, Perl 5.8.0 can segfault;
+upgrading to at least Perl 5.8.2 fixes this problem.
 
 On the other hand if zoid dies with an "attempt to free an unreferenced scalar"
 kind of message it probably is a bug in zoid, please report it.
-
-
-=head2 Development
-
-=head3 How do I get Zoid to cooperate with a gui toolkit like Tk ?
-
-To my understanding the only thing needed to cooperate with any gui
-toolkit is a "heartbeat" event to update the gui. If you use our
-Term::ReadLine::Zoid library zoid will give you an event called "beat".
-Try something like:
-
- $shell->{events}{beat} = \&update_gui;
 
 =head1 SEE ALSO
 

@@ -1,9 +1,9 @@
 package Zoidberg;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 our $LONG_VERSION = "Zoidberg $VERSION
 
-Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
+Copyright (c) 2002 - 2004 Jaap G Karssenberg. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl.
 
@@ -71,36 +71,40 @@ our @_parser_settings = qw/
 our %_settings = ( # default settings
 	output => { error => 'red', debug => 'yellow' },
 	clothes => {
-		keys => [qw/settings vars error commands aliases events/],
+		keys => [qw/settings commands aliases events error/],
 		subs => [qw/shell alias unalias setting set source mode plug unplug/],
 	},
-	perl_keywords => [qw/
-		if unless for foreach while until 
-		print
-		push shift unshift pop splice
-		delete
-		do eval
-		tie untie
-		my our use no sub 
-		import bless
-	/],
-	naked_zoid => 0,
+	perl => {
+		keywords => [qw/
+			if unless for foreach while until 
+			print
+			push shift unshift pop splice
+			delete
+			do eval
+			tie untie
+			my our use no sub package
+			import bless
+		/],
+		namespace => 'Zoidberg::Eval',
+		opts => 'Z',
+	},
 	hide_private_method => 1,
 	hide_hidden_files => 1,
+	naked_zoid => 0,
 	( map {($_ => 1)} @_parser_settings ),
 	##Insert defaults here##
 );
 our %_grammars = ( # default grammar
 	_base_gram => {
 	        esc => '\\',
-	        nests => {
-	                '{' => '}',
-			'(' => ')',
-	        },
 	        quotes => {
 	                '"' => '"',
 	                "'" => "'",
 			'`' => '`',
+	        },
+	        nests => {
+	                '{' => '}',
+			'(' => ')',
 	        },
 	},
 	script_gram => {
@@ -118,18 +122,17 @@ our %_grammars = ( # default grammar
 	word_gram => qr/\s/,
 	redirect_gram => {
 		s_esc  => qr/[\\\-\=]/,
-		no_esc_rm => 1,
 		tokens => [
 			[ qr/<\S+>/, '_SELF' ],
-			[ '>',  'OUT'      ],
 			[ '>&', 'DUP_OUT'  ],
 			[ '>|', 'CLOB_OUT' ],
 			[ '>!', 'CLOB_OUT' ],
 			[ '>>', 'APP_OUT'  ],
-			[ '<',  'IN'       ],
 			[ '<&', 'DUP_IN'   ],
 			[ '<<', 'ERROR'    ],
 			[ '<>', 'RW'       ],
+			[ '>',  'OUT'      ],
+			[ '<',  'IN'       ],
 		],
 	},
 	dezoid_gram => {
@@ -139,7 +142,6 @@ our %_grammars = ( # default grammar
 		],
 		quotes => { "'" => "'" }, # interpolate also between '"'
 		nests => {},
-		no_esc_rm => 1,
 	},
 	expand_comm_gram => {
 		tokens => {
@@ -153,6 +155,14 @@ our %_grammars = ( # default grammar
 			}
 		},
 	},
+	expand_braces_gram => {
+		tokens => {
+			'{' => {
+				token => 'BRACE',
+				tokens => { '}' => '_CUT' },
+			},
+		},
+	},
 );
 
 =item C<new(\%attr)>
@@ -160,15 +170,15 @@ our %_grammars = ( # default grammar
 Initialize secondary objects and sets config.
 C<%attr> contains non-default attributes and is used to set runtime settings.
 
-You don't really want to use this to initialise the Zoidberg shell, use L<Zoidberg::Shell>
-to obtain a new Zoidberg object.
+You probably don't want to use this to construct a new Zoidberg shell object,
+better use L<Zoidberg::Shell>.
 
 =cut
 
 sub new { # FIXME maybe rename this to init ?
 	my $class = shift;
 	my $self = @_ ? { @_ } : {};
-	$$self{$_} ||= {} for qw/settings commands aliases events objects vars/;
+	$$self{$_} ||= {} for qw/settings commands aliases events objects/;
 	$$self{no_words} ||= [];
 	push @{$$self{no_words}}, qw/PERL SUBZ/; # parser stuff
 	$$self{round_up}++;
@@ -225,11 +235,9 @@ sub new { # FIXME maybe rename this to init ?
 	## stringparser 
 	$$self{grammars} ||= \%_grammars;
 	$$self{stringparser} = Zoidberg::StringParser->new(
-		$$self{grammars}{_base_gram}, $$self{grammars}, {'allow_broken' => 1});
+		$$self{grammars}{_base_gram}, $$self{grammars},
+	       	{allow_broken => 1, no_esc_rm => 1} );
 
-	## setup eval namespace
-	$$self{eval} = Zoidberg::Eval->_new($self);
-	
 	## initialize contractor
 	$self->shell_init;
 
@@ -255,8 +263,20 @@ sub new { # FIXME maybe rename this to init ?
 				$sub = $class.'::'.$sub;
 				$sub->(@args);
 			};
+			$$self{parser}{$c}{intel} = sub {
+				my $block = shift;
+				return undef if @$block > 2;
+				no strict 'refs';
+				my @p = grep m/^$$block[1]/,
+					grep defined *{$class.'::'.$_}{CODE}, keys %{$class.'::'};
+				push @p, grep m/^$$block[1]/, keys %{$$self{aliases}{'mode_'.$c}}
+					if exists $$self{aliases}{'mode_'.$c};
+				$$block[0]{poss} = \@p;
+				return $block;
+			};
 		}
 		else { eval { $self->plug($c) } }
+		debug 'did you know 5.6.2 sucks ?' if $] < 5.008; # don't ask ... i suspect another vivication bug
 		return exists($$self{parser}{$c}) ? $$self{parser}{$c} : undef ;
 	};
 
@@ -309,11 +329,7 @@ sub main_loop {
 
 			last unless $$self{_continue};
 
-			if (length $cmd) {
-				$self->broadcast('cmd', $cmd);
-				print STDERR $cmd if $$self{_settings}{verbose}; # posix spec - FIXME doesn't echo "readmore" lines
-				$self->shell_string($cmd);
-			}
+			$self->shell_string({broadcast_cmd => 1}, $cmd) if length $cmd;
 		}
 	}
 }
@@ -324,11 +340,10 @@ sub main_loop {
 
 sub shell_string {
 	my ($self, $meta, $string) = @_;
-	unless (ref($meta) eq 'HASH') { ($meta, $string) = (undef, $meta) }
+	($meta, $string) = ({}, $meta) unless ref($meta) eq 'HASH';
 	local $CURRENT = $self;
 
 	PARSE_STRING:
-	$string = $1 if $string =~ /^\s*\((.*?)\)\s*$/s; # optimise subshell without context
 	my @list = $$self{_settings}{split_script}
        		? ($$self{stringparser}->split('script_gram', $string)) : ($string) ;
 	my $b = $$self{stringparser}{broken} ? 1
@@ -347,9 +362,15 @@ sub shell_string {
 		}
 		goto PARSE_STRING;
 	}
+
+	if ($$meta{broadcast_cmd}) {
+		$self->broadcast('cmd', $string);
+		print STDERR $string if $$self{_settings}{verbose}; # posix spec
+	}
+
 	debug 'block list: ', \@list;
 	$$self{fg_job} ||= $self;
-	return $$self{fg_job}->shell_list($meta, @list); # calling a contractor
+	$$self{fg_job}->shell_list($meta, @list); # calling a contractor
 }
 
 sub parse_block { # call as late as possible before execution
@@ -384,7 +405,7 @@ sub parse_block { # call as late as possible before execution
 	else { bug "parse tree contains $t reference" }
 
 	# do aliases
-	debug 'meta: ', $meta;
+	debug 'meta: ', $meta; # , 'words: ', [[@words]];
 	if (@words and ! $$meta{pretend} and $$meta{parse_aliases}) {
 		my @blocks = $self->parse_aliases($meta, @words);
 		if (@blocks > 1) { return @blocks } # probably an alias contained pipe or logic operator
@@ -410,7 +431,7 @@ sub parse_block { # call as late as possible before execution
 	# check builtin contexts/filters
 	unless ($$meta{context} or ! $$meta{parse_def_contexts}) {
 		debug 'trying builtin contexts';
-		my $perl_regexp = join '|', @{$self->{_settings}{perl_keywords}};
+		my $perl_regexp = join '|', @{$self->{_settings}{perl}{keywords}};
 		if (
 			$$meta{zoidcmd} =~ s/^\s*(\w*){(.*)}(\w*)\s*$/$2/s or $$meta{pretend} and
 			$$meta{zoidcmd} =~ s/^\s*(\w*){(.*)$/$2/s
@@ -538,7 +559,8 @@ sub parse_env {
 			next;
 		}
 		elsif ($op eq 'ERROR') { 
-			error 'redirection operation not supported';
+			error 'redirection operation not supported'
+				unless $$meta{pretend};
 		}
 
 		my ($n, $word);
@@ -549,16 +571,24 @@ sub parse_env {
 				$n = $3;
 			}
 		}
+
 		if ($_ < $#parts and ref $parts[$_+1]) {
 			$word = ${ delete $parts[$_+1] };
 			$$meta{compl} = $word if $_+1 == $last; # complete last word
 		}
-		else { error 'redirection needs argument' unless $op =~ /^DUP/ }
-		$n ||= ($op =~ /OUT$/) ? 1 : 0;
-		my (undef, @w) = @{ $self->parse_words([$meta, $word]) };
-		if (@w == 1) { push @{$$meta{fd}}, $n.$_redir_ops{$op}.$w[0] }
-		elsif (@w > 1) { error 'redirection argument expands to multiple words' }
-		else { error 'redirection needs argument' } # @w < 1
+		else {
+			error 'redirection needs argument'
+				unless $op =~ /^DUP/ or $$meta{pretend};
+			$$meta{compl} = '';
+		}
+
+		unless ($$meta{pretend}) {
+			$n ||= ($op =~ /OUT$/) ? 1 : 0;
+			my (undef, @w) = @{ $self->parse_words([$meta, $word]) };
+			if (@w == 1) { push @{$$meta{fd}}, $n.$_redir_ops{$op}.$w[0] }
+			elsif (@w > 1) { error 'redirection argument expands to multiple words' }
+			else { error 'redirection needs argument' } # @w < 1
+		}
 	}
 	@words = map $$_, grep {defined $_} @parts;
 
@@ -603,28 +633,83 @@ sub parse_aliases { # recursive sub (aliases are 3 way recursive, 2 ways are in 
 			$$self{stringparser}->split('word_gram', $$_)
 		] : $_
 	} $$meta{split_script} ? ($$self{stringparser}->split('script_gram', $string)) : ($string);
-	$l[0][0]  = $meta if ref $l[0]; # re-insert %meta
+
+	if ( my ($firstref) = grep ref($_), @l ) {
+		$$firstref[0]  = $meta; # re-insert %meta
+		++$$meta{no_mode} and (length $$firstref[1] or delete $$firstref[1])
+	       		if @$firstref > 1 and $$firstref[1] =~ s/^\!\s*//; # check mode
+	}
+
 	if ($string =~ /\s$/) { # recurs for 2nd word - see posix spec
 		my @l1 = $self->parse_aliases({}, @words); # recurs
-		$l[-1] = [ @{$l[-1]}, splice @{ shift(@l1) }, 1 ] if ref $l1[0];
+		push @{$l[-1]}, splice(@{ shift(@l1) }, 1) if ref $l[-1] and ref $l1[0];
 		push @l, @l1;
 	}
 	elsif (@l == 1) { return $self->parse_aliases(@{$l[0]}, @words) } # recurs
-	else { $l[-1] = [ @{$l[-1]}, @words ] }
+	else {
+		if (ref $l[-1]) { push @{$l[-1]}, @words }
+		else { push @l, \@words }
+	}
+
 	return @l;
 }
 
 sub parse_words { # expand words etc.
-	# expand_comm resets zoidcmd, all other stuff is left for appliction level re-parsing
 	my ($self, $block) = @_;
+
+	# custom stack
 	for (dispatch_stack($$self{parser}, 'word_expansion')) {
 		my $re = $_->($block);
 		$block = $re if $re;
 	}
+
+	# default expansions
+	# expand_comm resets zoidcmd, all other stuff is left for appliction level re-parsing
 	@$block = $self->$_(@$block)
 		for grep $$block[0]{$_}, qw/expand_comm expand_param expand_path/;
-	return $block;
+
+	# remove quote
+	my ($meta, @words) = @$block;
+	for (@words) {
+		if (/^([\/\w]+=)?(['"])(.*)\2$/) {
+		       	# quote removal and escape removal within quotes
+			$_ = $1.$3;
+			if ($2 eq '\'') { $_ =~ s/\\([\\'])/$1/ge }
+			else            { $_ =~ s/\\(.)/$1/ge     }
+		}
+		# FIXME also do escape removal here
+		# is now done by File::Glob
+	}
+
+	return [$meta, @words];
 }
+
+=cut
+
+sub expand_braces {
+	my ($self, $meta, @words) = @_;
+	my @re;
+	for (@words) {
+		my @parts = $$self{stringparser}->split('expand_braces_gram', $_);
+		error $$self{stringparser}{broken} if $$self{stringparser}{broken};
+		# FIXME let stringparser do the error throwing ?
+		unless (@parts > 1) {
+			push @re, $_;
+			next;
+		}
+		for (0 .. $#parts) {
+			if ($parts[$_] eq 'BRACE') {
+				my $braced = delete $parts[$_+1];
+
+			}
+			elsif (ref $parts[$_]) { $parts[$_] = ${$parts[$_]} }
+		}
+		push @re, join '', map {ref($_) ? (@$_) : $_} @parts;
+	}
+	return ($meta, @re);
+}
+
+=cut
 
 sub expand_comm {
 	my ($self, $meta, @words) = @_;
@@ -633,7 +718,6 @@ sub expand_comm {
 	for (@words) {
 		if (/^([\/\w]+=)?'.*'$/) {
 			push @re, $_;
-			next;
 		}
 		elsif (/^\@\((.*?)\)$/) {
 			debug "\@() subz: $1";
@@ -649,8 +733,11 @@ sub expand_comm {
 			}
 			for (0 .. $#parts) {
 				if ($parts[$_] eq 'COMM') {
-					debug "\$() subz: ".$parts[$_+1];
 					$parts[$_] = [ $self->shell_string($m, ${delete $parts[$_+1]}) ];
+					if ($_ < $#parts-1 and ${$parts[$_+2]} =~ s/^\[(\d*)\]//) {
+						$parts[$_] = $parts[$_][$1];
+						chomp $parts[$_];
+					}
 				}
 				elsif (ref $parts[$_]) { $parts[$_] = ${$parts[$_]} }
 			}
@@ -661,28 +748,45 @@ sub expand_comm {
 	return $meta, @re;
 }
 
-sub expand_param { # FIXME @_ implementation
+sub expand_param {
 	my ($self, $meta, @words) = @_;
 	my ($e);
 	
+	my $class = $$self{_settings}{perl}{namespace};
 	for (@words) { # substitute vars
+		no strict 'refs';
 		next if /^([\/\w]+=)?'.*'$/; # skip quoted words
-		s{ (?<!\\) \$ (?: \{ (.*?) \} | (\w+) ) (?: \[(-?\d+)\] )? }{
+		s{(?<!\\)\$\?}{ ref($$self{error}) ? $$self{error}{exit_status} : $$self{error} ? 1 : 0 }ge;
+		s{ (?<!\\) \$ (?: \{ (.*?) \} | ([\w-]+) ) (?: \[(-?\d+)\] )? }{
 			my ($w, $i) = ($1 || $2, $3);
-			$e ||= "no advanced expansion for \$\{$w\}" if $w =~ /\W/;
-			$w = 	($w eq '_') ? $$self{topic} :
-				(exists $$meta{env}{$w}) ? $$meta{env}{$w} : $ENV{$w};
-			$i ? (split /:/, $w)[$i] : $w;
+			$e ||= "no advanced expansion for \$\{$w\}" if $w =~ /[^\w-]/;
+			if ($w eq '_') { $w = $$self{topic} }
+			elsif (exists $$meta{env}{$w} or exists $ENV{$w}) {
+				$w = exists( $$meta{env}{$w} ) ? $$meta{env}{$w} : $ENV{$w} ;
+				$w = $i ? (split /:/, $w)[$i] : $w;
+			}
+			elsif ($i ? defined(*{$class.'::'.$w}{ARRAY}) : defined(*{$class.'::'.$w}{SCALAR})) {
+				$w = $i ? ${$class.'::'.$w}[$i] : ${$class.'::'.$w};
+			}
+			else { $w = '' }
+			$w =~ s/\\/\\\\/g; # literal backslashes
+			$w;
 		}exg;
 	}
 
 	@words = map { # substitute arrays
-		if (m/^ \@ (?: \{ (.*?) \} | (\w+) ) $/x) {
+		if (m/^ \@ (?: \{ (.*?) \} | ([\w-]+) ) $/x) {
 			my $w = $1 || $2;
-			$e ||= "no advanced expansion for \@\{$w\}" if $w =~ /\W/;
-			$e ||= '@_ is reserved for future syntax usage, try @{_}' if $2 eq '_';
-			$w = (exists $$meta{env}{$w}) ? $$meta{env}{$w}  : $ENV{$w};
-			split /:/, $w;
+			$e ||= "no advanced expansion for \@\{$w\}" if $w =~ /[^\w-]/;
+			$e ||= '@_ is reserved for future syntax usage' if $2 eq '_';
+			if (exists $$meta{env}{$w} or exists $ENV{$w}) {
+				$w = (exists $$meta{env}{$w}) ? $$meta{env}{$w}  : $ENV{$w};
+				map {s/\\/\\\\/g; $_} split /:/, $w;
+			}
+			elsif (defined *{$class.'::'.$w}{ARRAY}) {
+				map {s/\\/\\\\/g; $_} @{$class.'::'.$w};
+			}
+			else { () }
 		}
 		else { $_ }
 	} @words;
@@ -691,7 +795,7 @@ sub expand_param { # FIXME @_ implementation
 }
 
 # See File::Glob for explanation of behaviour
-our $_GLOB_OPTS = File::Glob::GLOB_TILDE() | File::Glob::GLOB_BRACE() | File::Glob::GLOB_QUOTE();
+our $_GLOB_OPTS = File::Glob::GLOB_TILDE() | File::Glob::GLOB_QUOTE() | File::Glob::GLOB_BRACE();
 #$_GLOB_OPTS |= File::Glob::GLOB_NOCASE()
 #	if $^O =~ /^(?:MSWin32|VMS|os2|dos|riscos|MacOS|darwin)$/; # logic borrowed from File::Glob
 # FIXME make the above a setting
@@ -699,30 +803,32 @@ our $_NC_GLOB_OPTS = $_GLOB_OPTS | File::Glob::GLOB_NOCHECK();
 
 sub expand_path { # path expansion
 	my ($self, $meta, @files) = @_;
-	return $meta, map { /^([\/\w]+=)?(['"])(.*)\2$/ ? $1.$3 : $_ } @files
-		if $$self{_settings}{noglob}; # remove quotes
+	return $meta, @files if $$self{_settings}{noglob};
 	my $opts = $$self{_settings}{allow_null_glob_expansion} ? $_GLOB_OPTS : $_NC_GLOB_OPTS;
 	return $meta, map {
-		if (/^([\/\w]+=)?(['"])(.*)\2$/) { $1.$3 } # remove quotes
-		elsif (/^m\{(.*)\}([imsx]*)$/) {
+		if (/^([\/\w]+=)?(['"])/) { $_ } # quoted
+		elsif (/^m\{(.*)\}([imsx]*)$/) { # regex globs
 			my @r = regex_glob($1, $2);
 			if (@r) { @r }
 			else { $_ =~ s/\\\\|\\(.)/$1||'\\'/eg; $_ }
 		}
-		elsif (/^~|[*?\[\]{}]/) { # substitute globs
+		elsif (/^~|[*?\[\]{}]/) { # normal globs
 			my @r = File::Glob::doglob($_, $opts);
 			debug "glob: $_ ==> ".join(', ', @r);
 			($_ !~ /^-/) ? (grep {$_ !~ /^-/} @r) : (@r);
 			# protect against implict switches as file names
 		}
-		else { $_ =~ s/\\\\|\\(.)/$1||'\\'/eg; $_ } # remove escapes
+		else { $_ =~ s/\\\\|\\(.)/$1||'\\'/eg; $_ } # remove escapes # FIXME should be done in parse_words like quote removal
 	} @files ;
 }
 
 sub parse_perl { # parse switches
 	my ($self, $block) = @_;
 	my ($meta, $string) = @$block;
-	my %opts = map {($_ => 1)} split '', $$meta{opts};
+	my %opts = map {($_ => 1)} split '', $$self{_settings}{perl}{opts};
+	$opts{z} = 0 if delete $opts{Z};
+	$opts{$_}++ for split '', $$meta{opts};
+	$opts{z} = 0 if delete $opts{Z};
 	debug 'perl block options: ', \%opts;
 
 	($meta, $string) = $self->_expand_zoid($meta, $string) unless $opts{z};
@@ -731,7 +837,7 @@ sub parse_perl { # parse switches
 	elsif ($opts{p}) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n\tprint \$_\n}" }
 	elsif ($opts{n}) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n}" }
 
-	$string = 'no strict; '.$string unless $opts{z};
+	$string = "no strict;\n".$string unless $opts{z};
 
 	return [$meta, $string];
 }
@@ -749,21 +855,21 @@ sub _expand_zoid {
 		my $next = ($_ < $#parts) ? $parts[$_+1] : '';
 		my $prev = $_ ? $parts[$_-1] : '';
 
+		my $class = $$self{_settings}{perl}{namespace};
 		if ($token =~ /^([\@\$])(\w+)/) {
 			my ($sigil, $name) = ($1, $2);
 			if ( # global, reserved or non-env var
 				$next =~ /^::/
 				or grep {$name eq $_} qw/_ ARGV ENV SIG INC JOBS/
-				or ( $name =~ /[a-z]/ and ! exists $ENV{$name} )
+				or ! exists $ENV{$name} and ! exists $$meta{env}{$name}
 			) { $parts[$_] = $token }
 			elsif ($sigil eq '@' or $next =~ /^\[/) { # array
 				no strict 'refs';
-				$pre .= "Env->import('$token'); "
-					unless defined *{'Zoidberg::Eval::'.$name}{ARRAY}
-					and @{'Zoidberg::Eval::'.$name} ;
+				$pre .= "Env->import('$token');\n"
+					unless defined *{$class.'::'.$name}{ARRAY} and @{$class.'::'.$name};
 				$parts[$_] = $token;
 			}
-			else { $parts[$_] = '$ENV{'.$name.'}' } # scalar or hash deref
+			else { $parts[$_] = '$ENV{'.$name.'}' } # scalar
 		}
 		# else token eq 'ARR'
 		elsif ($prev =~ /[\w\}\)\]]$/) { $parts[$_] = '->' }
@@ -771,6 +877,93 @@ sub _expand_zoid {
 	}
 
 	return $meta, $pre . join '', grep defined($_), @parts;
+}
+
+# ########## #
+# Exec stuff #
+# ########## #
+
+sub eval_block { # real exec code
+	my ($self, $ref) = @_;
+	my $context = $$ref[0]{context};
+
+	if ($$self{parser}{$context}{handler}) {
+		debug "going to call handler for context: $context";
+		$$self{parser}{$context}{handler}->($ref);
+	}
+	elsif ($self->can('_do_'.lc($context))) {
+		my $sub = '_do_'.lc($context);
+		debug "going to call sub: $sub";
+		$self->$sub(@$ref);
+	}
+	else {
+		$context
+			? error "No handler defined for context $context"
+			: bug   'No context defined !'
+	}
+}
+
+# FIXME FIXME remove _do_* subs below and store them in {parser}
+
+sub _do_subz { # sub shell, forked if all is well
+	my ($self, $meta) = @_;
+	my $cmd = $$meta{zoidcmd};
+	$cmd = $1 if $cmd =~ /^\s*\((.*)\)\s*$/s;
+	%$meta = map {($_ => $$meta{$_})} qw/env/; # FIXME also add parser opts n stuff
+	# FIXME reset mode n stuff ?
+	$self->shell_string($meta, $cmd);
+	error $$self{error} if $$self{error}; # forward the error
+}
+
+sub _do_cmd {
+	my ($self, $meta, $cmd, @args) = @_;
+	# exec = exexvp which checks $PATH for us
+	# the block syntax to force use of execvp, not shell for one argument list
+	# If a command is not found, the exit status shall be 127. If the command name is found,
+	# but it is not an executable utility, the exit status shall be 126.
+	$$meta{cmdtype} ||= '';
+	if ($cmd =~ m|/|) { # executable file
+		error 'builtin should not contain a "/"' if $$meta{cmdtype} eq 'builtin';
+		error {exit_status => 127}, $cmd.': No such file or directory' unless -e $cmd;
+		error {exit_status => 126}, $cmd.': is a directory' if -d _;
+		error {exit_status => 126}, $cmd.': Permission denied' unless -x _;
+		debug 'going to exec file: ', join ', ', $cmd, @args;
+		exec {$cmd} $cmd, @args or error {exit_status => 127}, $cmd.': command not found';
+	}
+	elsif ($$meta{cmdtype} eq 'builtin' or exists $$self{commands}{$cmd}) { # built-in, not forked I hope
+		error {exit_status => 127}, $cmd.': no such builtin' unless exists $$self{commands}{$cmd};
+		debug 'going to do built-in: ', join ', ', $cmd, @args;
+		local $Zoidberg::Utils::Error::Scope = $cmd;
+		$$self{commands}{$cmd}->(@args);
+	}
+	else { # command in path ?
+		debug 'going to exec: ', join ', ', $cmd, @args;
+		exec {$cmd} $cmd, @args or error {exit_status => 127}, $cmd.': command not found';
+	}
+}
+
+sub _do_perl {
+	my ($shell, $_Meta, $_Code) = @_;
+	my $_Class = $$shell{_settings}{perl}{namespace} || 'Zoidberg::Eval';
+	$_Code .= ";\n\$_Class = __PACKAGE__;" if $_Code =~ /package/;
+	$_Code  = "package $_Class;\n$_Code";
+	undef $_Class;
+	debug "going to eval perl code: << '...'\n$_Code\n...";
+
+	local $Zoidberg::Utils::Error::Scope = ['zoid', 0];
+	$_ = $$shell{topic};
+	$? = $$shell{error}{exit_status} if ref $$shell{error};
+	ref($_Code) ? eval { $_Code->() } : eval $_Code;
+	if ($@) { # post parse errors
+		die if ref $@; # just propagate the exception
+		$@ =~ s/ at \(eval \d+\) line (\d+)(\.|,.*\.)$/ at line $1/;
+		error { string => $@, scope => [] };
+	}
+	else {
+		$$shell{topic} = $_;
+		$$shell{settings}{perl}{namespace} = $_Class if $_Class;
+		print "\n" if $$shell{_settings}{interactive}; # ugly hack
+	}
 }
 
 # ############## #
@@ -798,7 +991,7 @@ sub mode {
 		my $m = ($mode =~ /::/) ? $mode : uc($mode);
 		error $mode.': No such context defined'
 			unless grep {lc($mode) eq $_} qw/perl cmd sh/
-			or     $$self{parser}{$m}{handler}   ; # allow for autoloading
+			or     $$self{parser}{$m}{handler} ; # allow for autoloading
 		$$self{settings}{mode} = $mode;
 	}
 }
@@ -967,7 +1160,6 @@ sub round_up {
 		Zoidberg::Contractor::round_up($self);
 		undef $self->{round_up};
 	}
-	return $$self{error} unless $$self{_settings}{interactive};
 }
 
 sub DESTROY {
@@ -1010,6 +1202,43 @@ sub EXISTS { exists $_[0][0]{$_[1]} }
 sub FIRSTKEY { my $a = scalar keys %{$_[0][0]}; each %{$_[0][0]} }
 
 sub NEXTKEY { each %{$_[0][0]} }
+
+package Zoidberg::Eval;
+
+# included to bootstrap a bit of default environment
+# for the perl syntax
+
+use strict;
+use vars qw/$AUTOLOAD/;
+
+use Data::Dumper;
+use Zoidberg::Shell qw/:all/;
+use Zoidberg::Utils qw/:error :output :fs regex_glob/;
+require Env;
+
+$| = 1;
+$Data::Dumper::Sortkeys = 1;
+
+sub pp { # pretty print
+	local $Data::Dumper::Maxdepth = shift if $_[0] =~ /^\d+$/;
+	if (wantarray) { return Dumper @_ }
+	else { print Dumper @_ }
+}
+
+{
+	no warnings;
+	sub AUTOLOAD {
+		## Code inspired by Shell.pm ##
+		my $cmd = (split/::/, $AUTOLOAD)[-1];
+		return undef if $cmd eq 'DESTROY';
+		shift if ref($_[0]) eq __PACKAGE__;
+		debug "Zoidberg::Eval::AUTOLOAD got $cmd";
+		@_ = ([$cmd, @_]); # force words
+		unshift @{$_[0]}, '!'
+			if lc( $Zoidberg::CURRENT->{settings}{mode} ) eq 'perl';
+		goto \&shell;
+	}
+}
 
 1;
 

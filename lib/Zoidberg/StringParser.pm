@@ -2,7 +2,7 @@ package Zoidberg::StringParser;
 
 # Hic sunt leones.
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 no warnings; # can't stand the nagging
@@ -11,14 +11,11 @@ use Zoidberg::Utils qw/debug error bug/;
 our $ERROR_CALLER = 1;
 
 # TODO :
-# esc per type
-# $() @() $()[] kind o things
-# settings in gram
-# loose tied gram (?)
+# esc per type ?
 
-# use escape depedent on type of token
+# how bout more general state machine approach,
+#     making QUOTE and NEST operations like CUT, POP and RECURS
 
-# how bout more general state machine approach, making QUOTE and NEST operations like CUT, POP and RECURS
 # grammar can be big hash (sort keys on length) .. how to deal with regexes than ?
 #  ... optimise for normal string tokens, regexes are the exception
 #  need seperate hashes for overloading
@@ -108,7 +105,8 @@ sub split {
 
 		if (exists $$slice{s_esc} and $1 =~ /$$slice{s_esc}$/) {
 			debug 'escaped token s_esc: '.$$slice{s_esc};
-			$block =~ s/$$slice{s_esc}$// if $type eq 'tokens' and ! $$slice{no_esc_rm};
+			$block =~ s/$$slice{s_esc}$//
+		       		if $type eq 'tokens' and ! $$self{settings}{no_esc_rm};
 			$block .= $sign;
 			next;
 		}
@@ -297,12 +295,6 @@ TODO
 
 FIXME
 
-=item no_esc_rm
-
-Boolean that tells the parser not to remove the escape char when an escaped token
-is encountered. Double escapes won't be replaced either. Usefull when a string needs 
-to go through a chain of parsers.
-
 =back
 
 =head2 Collection
@@ -356,6 +348,12 @@ Supported settings are:
 
 If this value is set the parser will not throw an exception if for example 
 an unmatched quote occurs
+
+=item no_esc_rm
+
+Boolean that tells the parser not to remove the escape char when an escaped token
+is encountered. Double escapes won't be replaced either. Usefull when a string needs 
+to go through a chain of parsers.
 
 =item no_split_intel
 

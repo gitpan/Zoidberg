@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils::Error;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 use UNIVERSAL qw/isa can/;
@@ -11,7 +11,8 @@ use overload
 	'eq' => sub { $_[0] },
 	fallback => 'TRUE';
 
-our $Scope = 'zoid';
+our $Scope = $0;
+$Scope =~ s#.*/##;
 
 # ################ #
 # Exported methods #

@@ -1,6 +1,6 @@
 package Zoidberg::DispatchTable;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 use Zoidberg::Utils qw/debug bug error/;

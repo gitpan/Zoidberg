@@ -1,6 +1,6 @@
 package Bundle::Zoidberg;
 
-our $VERSION = 0.04;
+our $VERSION = 0.05;
 
 __END__
 
@@ -19,11 +19,11 @@ Dependencies are not listed.
 
 =head1 CONTENTS
 
-Env::PS1 0.04 - fancy prompt
+Env::PS1 0.05 - fancy prompt
 
-Term::ReadLine::Zoid 0.05 - input module
+Term::ReadLine::Zoid 0.07 - input module
 
-Zoidberg - the shell itself
+Zoidberg 0.91 - the shell itself
 
 =head1 AUTHOR
 

@@ -1,6 +1,6 @@
 package Zoidberg::Utils::FileSystem;
 
-our $VERSION = '0.90';
+our $VERSION = '0.91';
 
 use strict;
 #use File::Spec;
@@ -74,6 +74,16 @@ sub unique_file {
 		unless defined $file;
 	return $file;
 }
+
+# [! => [^
+# *  => .*
+# ?  => .?
+# leave [] {} ()
+# quote other like $ @ % etc.
+
+#sub glob {
+#
+#}
 
 sub regex_glob {
 	my ($glob, $opt) = @_;

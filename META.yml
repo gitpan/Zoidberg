@@ -1,7 +1,8 @@
 --- #YAML:1.0
 name: Zoidberg
-version: 0.90
-author: Jaap Karssenberg <pardus@cpan.org>
+version: 0.91
+author:
+  - Jaap Karssenberg <pardus@cpan.org>
 abstract: A modular perl shell
 license: perl
 requires:
@@ -16,27 +17,27 @@ requires:
   perl: 5.6.1
 recommends:
   Env::PS1: 0
-  Storable: 0
   Term::ReadLine::Zoid: 0
 build_requires:
   Data::Dumper: 0
   Module::Build: 0.24
   Pod::Text: 0
   Test::More: 0
-dynamic_config: {}
+dynamic_config: 1
 provides:
   Bundle::Zoidberg:
     file: lib/Bundle/Zoidberg.pm
-    version: 0.04
+    version: 0.05
   Zoidberg:
     file: lib/Zoidberg.pm
-    version: 0.90
+    version: 0.91
   Zoidberg::Contractor:
     file: lib/Zoidberg/Contractor.pm
   Zoidberg::DispatchTable:
     file: lib/Zoidberg/DispatchTable.pm
   Zoidberg::Eval:
-    file: lib/Zoidberg/Eval.pm
+    file: lib/Zoidberg.pm
+    version: 0.91
   Zoidberg::Fish:
     file: lib/Zoidberg/Fish.pm
   Zoidberg::Fish::Commands:
@@ -55,7 +56,7 @@ provides:
     file: lib/Zoidberg/PluginHash.pm
   Zoidberg::SettingsHash:
     file: lib/Zoidberg.pm
-    version: 0.90
+    version: 0.91
   Zoidberg::Shell:
     file: lib/Zoidberg/Shell.pm
   Zoidberg::Shell::JobsArray:
@@ -75,4 +76,4 @@ provides:
     file: lib/Zoidberg/Utils/GetOpt.pm
   Zoidberg::Utils::Output:
     file: lib/Zoidberg/Utils/Output.pm
-generated_by: Module::Build version 0.25
+generated_by: Module::Build version 0.2604
