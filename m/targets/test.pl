@@ -2,49 +2,33 @@
 require 'm/Makefile.pm';
 import Makefile qw/path_copy rmdir_force/;
 
+use Test::Harness;
+
 my $make = Makefile->new;
 
-chdir 'b';
-
-unshift @INC, 'lib';
+unshift @INC, 'b/lib', 'b/inc';
 
 my $done = 0;
 
-if (-f 'test.pl') {
-	open IN, 'b/test.pl' || die $!;
-	my @cont = (<IN>);
-	close IN;
-
+if (-f 'b/test.pl') {
 	print "Going to run test.pl";
-	$make->print_log("Going to run test.pl", "MESS");
-
-	eval join('\n', @cont);
-	if ($@) { die  $@ };
+	do 'b/test.pl';
 	$done = 1;
 }
 
-if (-d 't') {
-	opendir T, 't';
-	my @tests = grep {-f 't/'.$_ && m/\.t$/} readdir T;
+if (-d 'b/t') {
+	opendir T, 'b/t';
+	my @tests = sort grep {-f 'b/t/'.$_ && m/\.t$/} readdir T;
 	closedir T;
 
-	print "Going to run tests: ".join(' ', @tests)."\n";
-	$make->print_log("Going to run tests: ".join(' ', @tests), "MESS");
+	# print "Going to run tests: ".join(', ', @tests)."\n";
 
-	use Test::Harness;
 	$Test::Harness::verbose = $make->{vars}{TEST_VERBOSE} || $make->{vars}{VERBOSE};
-	if (runtests(map {'t/'.$_} @tests)) { $make->print_log("Tests ok", 'check'); }
-	else { $make->print_log("Tests failed", 'error'); }
-
+	runtests(map {'b/t/'.$_} @tests);
 	$done = 1;
 }
 
-chdir '..';
-
-unless ($done) { 
-	print "No tests defined.\n";
-	$make->print_log("No tests defined.", "MESS");
-}
+unless ($done) { print "No tests defined.\n" } 
 
 __END__
 

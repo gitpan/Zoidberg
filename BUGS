@@ -1,0 +1,45 @@
+Known bugs for the Zoidberg project
+
+Disclaimer: some of this might be in dutch - in fact most of this is dutch
+
+Please report new bugs through the bug tracker.
+<http://sourceforge.net/projects/zoidberg/>
+
+__BUGS__
+
+perl code containing stuff like q/}/ will make StringParser trow an error
+
+C< zoid --command=ls > should wait for child processes / jobs
+
+SIG{PIPE} sometimes doesn't end perl statements in <code>{ print somthing } | less</code>
+
+Help.pm is broken -- share/zoid/help ==> share/doc/zoid/pod
+
+C<forw> == C<{ cd('->') }> seems to be buggy
+
+.pd files can't loop or use each other
+
+
+Buffer
+	Buffer tends to overwrite the last line if it didn't end with a \n -- do we really need a seperate process to capture STDOUT to fix this :(( ??
+
+        als er een open bracket in hist staat gaat tie naar multiline en dus niet meer verder door hist - this should be fixed by the more intelligent auto-multiline implementation suggested in TODO.
+
+Intel:  
+        expansie in multi line gaat fout (?)
+	expansie over de regel breedte gaat soms fout
+        escapes gaan fout in some situations
+        expansie van zoid in perl gaat fout
+
+Parsing:
+        A lot
+
+Docs:
+	lot of docs not up2date or incomplete :((
+	lot of docs do not use pod the way it should be used
+
+CORE:
+        color off (fixed by stringformat ? ) - make this Zoidberg::Output
+
+        check http://www.gnu.org/prep/standards_15.html#SEC15 for error formatting
+

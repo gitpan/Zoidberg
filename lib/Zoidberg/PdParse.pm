@@ -1,6 +1,6 @@
 package Zoidberg::PdParse;
 
-our $VERSION = '0.2';
+our $VERSION = '0.3a_pre1';
 
 use strict;
 
@@ -68,30 +68,34 @@ sub pd_write {
 }
 
 sub pd_merge {
-    my @refs = @_;
-    @refs = map {ref($_) ? dclone($_) : $_} @refs;
-    #print "debug trying to merge: ".Dumper(\@refs);
-    my $ref = shift @refs;
-    foreach my $ding (@refs) {
-        while (my ($k, $v) = each %{$ding}) {
+    my $ref = shift;
+    foreach my $ding (@_) { 
+    	$ding = dclone($ding) if grep {ref($ding) eq $_} qw/HASH ARRAY SCALAR/;
+    	$ref = _merge($ref, $ding);
+    }
+    return $ref;
+}
+
+sub _merge {
+	my ($ref, $ding) = @_;
+	while (my ($k, $v) = each %{$ding}) {
             if (defined($ref->{$k}) && ref($v)) {
-		if (ref($v) eq 'ARRAY') { # this one is open for discussion
-			push @{$ref->{$k}}, @{$ding->{$k}};
-		}
-		elsif (ref($v) eq 'SCALAR') { $ref->{$k} = $v; }
-		else { $ref->{$k} = pd_merge($ref->{$k}, $ding->{$k}); } #recurs for HASH (or object)
+                if (ref($v) eq 'ARRAY') { # this one is open for discussion
+                        push @{$ref->{$k}}, @{$ding->{$k}};
+                }
+                elsif (grep {ref($v) eq $_} qw/SCALAR CODE Regexp/) { $ref->{$k} = $v; }
+                else { $ref->{$k} = _merge($ref->{$k}, $ding->{$k}); } #recurs for HASH (or object)
             }
             else { $ref->{$k} = $v; }
         }
-    }
-    return $ref;
+	return $ref;
 }
 
 sub _file {
 	# files starting with a / are absolute
 	# else relative to base_dir
 	my $file = shift;
-	unless ($file =~ /^\//) {
+	unless ($file =~ /^\.{0,2}\//) { # unless / ./ ../
 		$base_dir =~ s/\/?$/\//;
 		$file = $base_dir.$file;
 	}

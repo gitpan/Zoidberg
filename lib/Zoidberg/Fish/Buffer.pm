@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer;
 
-our $VERSION = '0.2';
+our $VERSION = '0.3a_pre1';
 
 use strict;
 use Data::Dumper;
@@ -10,7 +10,7 @@ use Term::ReadKey;
 use Term::ANSIColor;
 use Term::ANSIScreen qw/:screen :cursor/;
 use Zoidberg::StringParse;
-use Zoidberg::StringParse::Syntax;
+# use Zoidberg::StringParse::Syntax;
 use Zoidberg::PdParse;
 #use Zoidberg::FileRoutines qw/abs_path unique_file %cache/;
 
@@ -23,7 +23,7 @@ sub init {
     #print "debug: buffer config: ".Dumper($self->{config})."\n";
 	$self->{tab_string} = $self->{config}{tab_string} || "    ";
 	$self->{parser} = Zoidberg::StringParse->new($self->parent->{grammar}, 'buffer_gram');
-	$self->{syntax_parser} = Zoidberg::StringParse::Syntax->new($self->parent->{grammar}{syntax}, 'PERL', $self->parent->{grammar}{ansi_colors});
+#	$self->{syntax_parser} = Zoidberg::StringParse::Syntax->new($self->parent->{grammar}{syntax}, 'PERL', $self->parent->{grammar}{ansi_colors});
 
 	my $default;
 	eval( join("", (<DATA>)));
@@ -39,7 +39,7 @@ sub init {
 
 	$self->{fb} = ['']; # important -- define fb
 
-	$self->{modi} = { # HACK TODO FIXME
+	$self->{modi} = { # HACK TODO FIXME ALERT
 		'insert' => 'Zoidberg::Fish::Buffer::Insert',
 		'meta' => 'Zoidberg::Fish::Buffer::Meta::Vim',
 		'multi_line' => 'Zoidberg::Fish::Buffer::Insert::MultiLine',
@@ -60,11 +60,6 @@ sub round_up {
 		pd_write($self->{config}{char_table_file}, $self->{char_table});
 	}
 	else { $self->parent->print("no char table file defined", "error"); }
-
-	if ($self->{config}{key_bindings_file}) {
-		pd_write($self->{config}{key_bindings_file}, $self->{bindings});
-	}
-	else { $self->parent->print("no key bindings file defined", "error"); }
 }
 
 #######################
@@ -161,7 +156,7 @@ sub reset {
 	my $self = shift;
 	$self->{pos} = [0, 0];
 	$self->{_r_lines} = 0;
-	$self->{_last_quest} = '';
+	$self->{_last_quest} = [];
 	$self->{tab_exp_back} = [ ["", ""] ];
 	$self->{fb} = [''];
 	$self->{state} = 'idle';
@@ -249,7 +244,7 @@ sub _read_key { # TODO clean up
 			$self->{lines} = 0;
 			$self->refresh;
 		};
-		while (not defined ($chr = ReadKey(0.05))) { $self->parent->broadcast_event($self->{state}) }
+		while (not defined ($chr = ReadKey(0.05))) { $self->broadcast_event($self->{state}) }
 
 		#<VUNZIG> this will cause bugs
 		if ($chr eq "\e") {
@@ -258,7 +253,7 @@ sub _read_key { # TODO clean up
 				my @poss = grep /^\Q$str\E/, keys %{$self->{char_table}{esc}};
 				while ($#poss >= 0 && (length($str) < length($poss[0]))) {
 					my $my_chr;
-					while (not defined ($my_chr = ReadKey(0.05))) { $self->parent->broadcast_event($self->{state}) }
+					while (not defined ($my_chr = ReadKey(0.05))) { $self->broadcast_event($self->{state}) }
 					$str .= $my_chr;
 					@poss = grep /^\Q$str\E/, keys %{$self->{char_table}{esc}};
 				}
@@ -303,18 +298,16 @@ sub _do_key {
 	my $self = shift;
 	my $chr = shift;
 
-	my $sub = 'default($chr)';
-	my @opts = ();
+	my $sub;
 
-	if ($self->{bindings}{$self->{current_modus}}{$chr}) { $sub = $self->{bindings}{$self->{current_modus}}{$chr}; }
+	if ($self->{bindings}{$self->{current_modus}}{$chr}) { 
+		$sub = $self->{bindings}{$self->{current_modus}}{$chr}; 
+	}
 	elsif ($self->{bindings}{_all}{$chr}) { $sub = $self->{bindings}{_all}{$chr}; }
 	elsif ($self->can('k_'.$chr)) { $sub = 'k_'.$chr; }
 
-	$sub =~ s/^->/parent->/;
-	if ($sub =~ s/(\(.*\))\s*$//) { unshift @opts, eval($1); }
-	my $e_sub = eval("sub { \$self->$sub(\@_) }");
-	return $e_sub->(@opts);
-
+	if ($sub) { $self->_do_sub($sub) }
+	else { $self->default($chr) }
 }
 
 # overloadable hooks
@@ -367,7 +360,7 @@ sub probe {
 		my @keys = sort map {ref($_)?values(%{$_}):$_} values %{$self->{char_table}};
 		my @dus;
 		foreach my $k (@keys) { unless (grep {$_ eq $k} @dus) { push @dus, $k; } }
-		for (@dus) { $self->probe($_); }
+		for (@dus) { $self->probe($_); } 
 	}
 }
 
@@ -390,8 +383,15 @@ sub help {
 #############################
 
 sub k_ctrl_d {
-	$_[0]->discard;
-	$_[0]->parent->exit;
+	my $self = shift;
+	if ($self->{settings}{ignoreeof}) { $self->print('Setting \'ignoreeof\' in effect.', 'warning') }
+	elsif (join '', @{$self->{fb}}) { $self->bell } # make accidental ^d less harmfull
+	else {
+		$self->reset;
+		$self->{continu} = 0;
+		$self->parent->exit;
+		# FIXME last line should be enough
+	}
 }
 
 sub k_ctrl_c { $_[0]->discard }
@@ -418,8 +418,17 @@ sub clear {
 sub discard {
 	my $self = shift;
 	$self->history_add;
-	$self->{fb} = [""];
-	$self->{continu} = 0;
+	$self->submit(1);
+}
+
+sub submit { # arg is 'discard bit'
+	my $self = shift;
+	unless ($_[0] || join('', @{$self->{fb}}) =~ /^\s*$/) { $self->{continu} = 0; }
+	else {
+                $self->reset;
+                print "\n";
+                $self->respawn;
+        }
 }
 
 sub history_add { if (join('', @{$_[0]->{fb}})) { $_[0]->{parent}->History->add($_[0]->{fb}, $_[0]->{tab_exp_back}); } }
@@ -449,10 +458,21 @@ sub _arr_eq {
 sub golf {
 	my $self = shift;
 	my $fb = join ("\n", @{$self->{fb}});
-	print "\n".color('blue')."--[".color('reset')." Total length: ".color('yellow').length($fb).color('reset')." chr. ".color('blue')."]".color('reset');
+	print	"\n",
+		color('blue'), "--[", color('reset'),
+		" Total length: ",
+		color('yellow'), length($fb), color('reset'),
+		" chr. ",
+		color('blue'), "]", color('reset')
+	;
 	if (my ($ref) = reverse grep {$_->[2] eq 'PERL'} @{$self->{parser}->parse($fb, 'pipe_gram', 1, 1)}) {
 		$ref->[0] =~ s/(^\s*\w*{|}(\w*)\s*$)//g;
-		print color('blue')."--[".color('reset')." Last perl block: ".color('yellow').length($ref->[0].$2).color('reset')." chr. ".color('blue')."]".color('reset');
+		print	color('blue'), "--[", color('reset'),
+			" Last perl block: ",
+			color('yellow'), length($ref->[0].$2), color('reset'),
+			" chr. ",
+			color('blue'), "]", color('reset')
+		;
 	}
 	print "\n";
 	$self->respawn;
@@ -461,7 +481,7 @@ sub golf {
 sub editor {
 	my $self = shift;
 	my $ext = 'pl'; # TODO make this dynamic
-	my $editor = $self->parent->{core}{utils}{editor};
+	my $editor = $self->parent->{settings}{utils}{editor};
 	my $tempfile = $self->parent->unique_file("/tmp/zoid-XXXX.".$ext);
 	#print "debug: editor used: $editor, tempfile: $tempfile\n";
 	open(TEMP,'>'.$tempfile);
@@ -516,7 +536,7 @@ sub move_right {
 	    if ($self->{pos}[0] > length($self->{fb}[$self->{pos}[1]])) { $self->{pos}[0] = length($self->{fb}[$self->{pos}[1]]) }
     	elsif ($self->{pos}[0] < length($self->{fb}[$self->{pos}[1]])) {
     		$self->{pos}[0]++;
-    		if ($opt eq 'fast') {
+    		if ($opt eq 'fast') { 
     			while ( (substr($self->{fb}[$self->{pos}[1]], $self->{pos}[0], 1) ne ' ') && ($self->{pos}[0] < length($self->{fb}[$self->{pos}[1]]))) {
     				$self->{pos}[0]++;
     			}
@@ -610,6 +630,7 @@ sub highlight { # this belongs in a string util module or something
 	my $fb = join("\n", @{$self->{fb}});
 
 	# do syntax highlighting
+=pod
 	my $tree = $self->{parser}->parse($fb, 'pipe_gram', 1, 1);
 	my $error = $self->{parser}->{error};
 	my $string = '';
@@ -621,11 +642,13 @@ sub highlight { # this belongs in a string util module or something
 		$string .= $ref->[1];
 		$self->{_last_context} = $ref->[2];
 	}
+=cut
+	my $string = $fb; my $error;
 
 	# display hack
 	if ($self->{config}{magick_char}) { $string =~ s/\xA3/$self->{config}{magick_char}/g; }
 	
-	#filthy hack -- TODO
+	#filthy hack -- TODO implement this kind of thing in the parser
 	if (($error =~ /^Open block/) && ($self->{current_modus} eq 'insert')) {
 		$self->{____auto_switch} = 1;
 		$self->switch_modus('multi_line');

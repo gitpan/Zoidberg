@@ -1,0 +1,18 @@
+
+=head1 SETTINGS
+
+Settings supported by (some) Zoidberg modules.
+
+=over 4
+
+=item noglob
+
+Disable path expansion for shell-like syntax.
+
+=item allow_null_glob_expansion
+
+It allows to have wildcard patterns that expand into an empty list.
+The default behaviour is to leave the pattern unchanged  
+when it  is  syntactically  incorrect,  or the list of matching pathnames is empty.  
+
+=back

@@ -1,0 +1,24 @@
+=for html <!--UP-->
+
+=head1 Zoidberg developer manual 
+
+This directory contains development documentation.
+
+I<Be aware: work in progres.>
+
+=head2 Sections
+
+=begin text
+
+ * Structure
+ * ParseTree
+
+=end text
+
+=begin html
+
+<!--INDEX Structure ParseTree-->
+
+=end html
+
+=cut

@@ -1,0 +1,85 @@
+=for html <!--PREV-INDEX-NEXT-->
+
+=head1 Basic syntax
+
+Since the syntax of the Zoidberg shell is completely configable
+we can only comment on the syntax as defined by the default
+config files. The general structure will be the same for most user defined configuration
+but any markup or token could be changed to render the syntax completely
+unrecognizable.
+
+The zoidberg syntax consists of three levels of grouping:
+
+=head2 Logical grouping
+
+First the syntax is split into blocks with logical/script delimitters
+
+This can be signs:
+
+	[block] && [block] || [block] ; [block]
+
+Or words:
+
+	[block] AND [block] OR [block] EOS [block]
+
+These do exactly the same, _without_ difference in precedence.
+
+=head2 Pipes and redirections
+
+Once the string is cut into logical blocks each
+of these blocks is split in sub blocks by pipes
+and redirection tokens.
+
+	[sub_block] | [sub_block] > [sub_block]
+
+I<For now one can only use _copies_ of the zoidberg object tree in pipelines -- we hope to use threads for this in some future.>
+
+=head2 Context blocks
+
+At last for each resulting block the parsing rules in the grammar
+decide a context like 'ZOID', 'PERL', 'SYSTEM' or 'SQL' and the parsing of each of these is handed to a suitable
+subroutine (or application).
+
+FIXME comment on commands, aliases etc.
+
+=head2 Examples
+
+Some system binary, context SYSTEM
+
+	zoid> mplayer -vo sdl -ao sdl my_favorite_movie.avi
+
+Perl code between brackets, context PERL
+
+	zoid> { print "This is perl code."; }
+
+A subroutine call to an object loaded in zoidberg, context ZOID
+
+	zoid> ->Help->help
+	 -or-
+	zoid> ->Help->help('objects')
+
+A zoidberg command preceded by an underscore, context COMMAND
+
+	zoid> _cd /usr/local
+	zoid> _back
+
+And as said all of these can be combined:
+
+	zoid> _cd /usr/local AND { print "This is perl code."; } | less || sql{SELECT * FROM users WHERE clue > 0}
+
+This will first execute C<_cd /usr/local>, on sucess followed by C<{ print "This is perl code."; } | less>
+and if  one of these failes we get to see the result of C<< sql{SELECT * FROM users WHERE clue > 0} >>
+
+This makes the precedence of this example as follows.
+
+	( ( 1 and ( 2 pipe 3 ) ) or 4 ) 
+
+	1 = _cd /usr/local
+	2 = { print "This is perl code."; }
+	3 = less 
+	4 = sql{SELECT * FROM users WHERE clue > 0}
+
+FIXME syntax for commands has changed
+
+=cut
+

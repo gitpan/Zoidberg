@@ -1,0 +1,56 @@
+=for html <!--PREV-INDEX-NEXT-->
+
+=head1 DESCRIPTION
+
+This document describes the form of a parse tree as used between the various Zoidberg objects.
+
+
+=head2 Example
+
+ # Commandline input:
+ 
+ $ ls -al | perl{ while (<STDIN>) { print $_ }  }abc && echo done
+ 
+ # Would be parsed to:
+ 
+ [ 
+	[qw/SH ls -al/],
+	[ [qw/PERL abc/], q{ while (<STDIN>) { print $_ } } ],
+	'AND',
+	[qw/SH echo done/]
+ ]
+ 
+ 
+ 
+ # Commandline input:
+ 
+ $ cd .. && ls -al ; cp dus ~/tmp/ &
+ 
+ # Would be parsed to:
+ 
+ [
+	[qw/CMD cd ../],
+	'AND',
+	[qw/SH ls -al/],
+	'EOS',	# End Of Statement
+	[qw{SH cp dus ~/tmp/}],
+	'BGS'	# BackGround Statement
+ ]
+  
+ # FIXME an example with redirections
+
+=head2 Basics 
+
+A parse tree is an array consisting of blocks and tokens. A block can be any kind of code and is stored in
+a nested array. Blocks directly following each other are supposted to be a pipeline. A token is a delimiter 
+between blocks.
+
+The first field of a block contains information about the block, all other field in a block make up the content.
+The most important information about a block is the context, which tells the parser how to execute the block.
+This first field can be: 
+
+ a scalar       ==> it is the context name
+ a nested array ==> the first field is the context name
+ a nested hash  ==> the key 'context' contains the context name
+
+You are  free to store all kinds of specific information in this first field as long as it contains a context name.

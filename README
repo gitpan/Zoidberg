@@ -1,14 +1,15 @@
- Zoidberg - a modular perl shell, version 0.2b
+ Zoidberg - a modular perl shell, version 0.3a
 ===============================================
 
 ** Laziness, Impatience, Hubris ! **
 
  http://zoidberg.sourceforge.net
-
-  Zoidberg provides a shell written in perl, configured in
-  perl and operated in perl. It is intended as a login shell
-  and developement environment. Most likely you'll have to
-  be a perl programmer to enjoy this.
+ 
+  Zoidberg provides a modular Perl shell written, configured, and operated 
+  entirely in Perl. It aspires to be a fully operational login shell with all 
+  the features one normally expects. But it also gives direct access to Perl 
+  objects and data structures from the command line, and allows you to run Perl 
+  code within the scope of your commandline.
 
  Features include:
     - runs perl code from shell prompt (duh!)
@@ -17,7 +18,6 @@
     - comes with a SQL syntax plugin (DBI)
     - perl codable config
     - runtime (re-)loadable modules
-    - regex tab expansion (this is not a bug !)
     - tab expansion through your perl data structure and objects
     - event based plugin engine
     - support for pipelines
@@ -28,38 +28,6 @@
  planned:
     - screen like functionality
     - glue for other (non-perl) languages
-
-INSTALLATION
-
-  First of all you need perl <www.perl.com>,
-  it is very likely this is allready on your system.
-  Zoidberg is tested for perl versions 5.8.0 and 5.6.1
-  
-  Modules which are not in the Zoidberg package but are depended upon
-  by Zoidberg are listed in the file "m/Depends.pd" -- these modules
-  are available from CPAN <http://cpan.org>
-
- To install the package type:
-   > perl Makefile.PL
-   > make all
-
- To install dependencies from CPAN try:
-   > perl Makefile.PL
-   > make dep
-
- For advanced installation options type:
-   > perl Makefile.PL
-   > make help
-
- To install packages from CPAN try for example:
-   > perl -MCPAN -e 'install Zoidberg'
-
-  The following plugins (should) contain core functionality:
-    Zoidberg::Fish::Buffer
-    Zoidberg::Fish::Intel
-    Zoidberg::Fish::Prompt
-    Zoidberg::Fish::Commands
-    Zoidberg::Fish::History
 
 BUGS AND LIMITATIONS
 
@@ -75,6 +43,8 @@ BUGS AND LIMITATIONS
   Unlike all sh clones Zoidberg is _not_ a command language interpreter, it 
   provides a minimal syntax layer but leaves the real parsing to real 
   interpreters like perl. Zoidberg is a interface to language interpreters.
+  Allthough in some cases native interpreters could be added as an
+  compatibility layer.
 
   Since Zoidberg completely relies on perl, it has both the advantages and
   disadvantages of this language, one of the last kind for example is having a
@@ -98,5 +68,5 @@ COPYRIGHT AND LICENCE
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See either
   the GNU General Public License or the Artistic License for more details.
 
-  See: <www.perl.com/language/misc/Artistic.html> and
+  See: <http://www.perl.com/language/misc/Artistic.html> and
   <http://www.gnu.org/copyleft/gpl.html>

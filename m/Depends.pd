@@ -1,20 +1,19 @@
 $VAR1 = {
-  'Pod::Usage' => '1.14',
-  'Pod::Text::Color' => '1.04',
-  'File::Spec' => '0.83',
-  'Pod::Text' => '2.21',
-  'Storable' => '2.06',
-  'Term::ANSIScreen' => '1.40',
-  'POSIX' => '1.05',
-  'Term::ReadKey' => '2.21',
-  'DBI' => '1.32',
-  'Getopt::Long' => '2.32',
-  'IO::File' => '1.09',
-  'Term::ANSIColor' => '1.05',
-  'Data::Dumper' => '2.12',
-  'Devel::Symdump' => '2.03',
-  'vars' => '1.01',
-  'utf8' => '1.00',
-  'IO::File()' => '1.09',
-  'Sys::Hostname' => '1.1'
+  'core' => {
+    'Storable' => '2.04',
+    'Term::ANSIScreen' => '1.3',
+    'Config' => 0,
+    'Term::ReadKey' => '2.21',
+    'Term::ANSIColor' => '1.05',
+    'IO::File' => '1.09',
+    'Data::Dumper' => '2.12',
+    'Env' => '1.00',
+    'Tie::Hash' => '1.00',
+    'Tie::Hash::Stack' => '0.09',
+    'POSIX' => '1.05',
+    'File::Glob' => '1.01',
+    'Exporter' => '5.566',
+    'Carp' => '1.01',
+    'Cwd' => '2.06'
+  }
 };

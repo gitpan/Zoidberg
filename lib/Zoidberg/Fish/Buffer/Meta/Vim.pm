@@ -1,7 +1,8 @@
 package Zoidberg::Fish::Buffer::Meta::Vim;
 
-use strict;
+our $VERSION = '0.3a_pre1';
 
+use strict;
 use base 'Zoidberg::Fish::Buffer::Meta';
 
 sub _do_key {

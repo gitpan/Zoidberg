@@ -1,6 +1,14 @@
 package Zoidberg::Fish::Buffer::Insert::VimCommand;
 
-@Zoidberg::Fish::Buffer::Insert::VimCommand::ISA=qw{Zoidberg::Fish::Buffer::Insert Zoidberg::Fish::Buffer::Meta};
+our $VERSION = '0.3a_pre1';
+
+use Zoidberg::Fish::Buffer::Insert;
+use Zoidberg::Fish::Buffer::Meta;
+
+@Zoidberg::Fish::Buffer::Insert::VimCommand::ISA = qw{
+	Zoidberg::Fish::Buffer::Insert 
+	Zoidberg::Fish::Buffer::Meta
+};
 
 sub _switch_on {
     my $self = shift;
@@ -56,6 +64,14 @@ sub _parse_command {
         print "\nCommand not yet understood: $cmd\n";
         sleep 1;
     }
+}
+
+sub c_q {
+	my $self = shift;
+	$self->reset;
+	$self->{continu} = 0;
+	$self->parent->exit;
+	# FIXME last line should be enough
 }
 
 sub c_set {

@@ -1,0 +1,24 @@
+=for html <!--UP-->
+
+=head1 Zoidberg plugin documentation
+
+This directory contains user documentation files for several plugins.
+
+I<Be aware: work in progres.>
+
+=head2 Sections
+
+=begin text
+
+ * Commands
+ * Monitor
+
+=end text
+
+=begin html
+
+<!--INDEX Commands Monitor-->
+
+=end html
+
+=cut

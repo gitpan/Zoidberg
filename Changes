@@ -1,6 +1,44 @@
 Revision history for Zoidberg -- a modular perl shell
 <http://zoidberg.sourceforge.net>
 
+     Tu Jun 24 2003
+ 	Releasing 0.3a_pre1 to test the make and release process
+
+     .. Jun 19 2003
+	- Added Zoidberg::Error for OO exception handling
+
+     .. Jun 01 2003
+	- Added Zoidberg::DispatchTable
+
+     Mo May 12 2003
+        - Added support for $CDPATH, upgraded "cd" builtin.
+
+     We May 07 2003
+        - Fixed major bugs in make process.
+
+     Su Apr 06 2003
+     	- Removed the MOTZ plugin, this was just legacy.
+	- Tuned the interface of the FileRoutines module, 
+	seems a bit faster now.
+
+     Mo Mar 31 2003
+	- Both events and commands are now defined in a plugins config file,
+	thus allowing zoidberg to 'wake up' plugins when needed.
+	- Commands defined by a plugin are integrated with both the perl syntax
+	as with the command syntax variants.
+
+     We Mar 19 2003
+	- All plugins now have their own config files. This makes moving plugins 
+	around a bit easier.
+
+     Tu Mar 18 2003
+	- Config is not dumped on exit any longer, change of mind.
+	- The FileRoutines cache now dumps using Storable, this speeds up the
+	initialisation.
+
+     Fr Mar 14 2003
+	- Added install profiles to make installing from CVS simpler.
+
 0.2b Su Feb 16 2003
 	- Module namespace cleaned up for CPAN
 

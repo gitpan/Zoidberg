@@ -1,0 +1,74 @@
+=for html <!--PREV-INDEX-NEXT-->
+
+=head1 Main configuration
+
+All configuration is divided between three hashes
+in Zoidberg.pm, each having their own file to save to.
+By default these files are found in F<~/.zoid/> .
+
+=head2 C<{settings}>
+
+This hash contains Zoidbergs global settings and settings that didn't fit anywhere else. 
+By default it is stored in F<settings.pd>.
+
+=over 4
+
+=item C<{settings}{init_plugins}> Array
+
+Plugins in this array will be loaded on init as soon as possible in the defined order. Array values
+are zoidnames, referring to plugin configuration in L</{plugins}>. This can be used to bootstrap plugins
+that influence the internals of Zoidberg, or to load modules one just likes to have around. Plugins that
+are not defined here will be loaded when called explicitly, see FIXME.
+
+=item C<{settings}{naked_zoid}> Boolean
+
+Don't shield parent object, used for debugging or serious hacking only. Switch this bit
+if you wanna know what zoid really looks like ;)
+
+=item C<{settings}{no_regex}> Boolean
+
+Do not use regex at all in expansion - this results in using (some kind of) globbing instead.
+
+=item C<{settings}{strict_regex}> Boolean
+
+Do not use globbing at all in expansion - everything must be pure regex.
+
+=back
+
+If both of the above expansion options are false this results in a kind of non-strict regex. This means
+that for example a '*' will sometimes be interpreted as a glob and sometimes as regex, this mode is also
+known as the "type less chars" modus.
+
+I<For now it is advised to use strict regex when handling sensitive data -- this is the only way to be sure of the result.>
+
+=head2 C<{plugins}>
+
+This hash contains config trees for plugins that can be used with Zoidberg.
+It is a composit of individual plugin configuration files, which are by
+default located F<plugins/*.pd>.
+
+The pluging config is stored under a key identical to the filename of the configuration file,
+this is considered the zoidname of the plugin. Each plugin uses a ref to this hash so
+after deleting the object the config remains for later use, also changing config here should change
+the plugin's config hash. But in some cases this is just the theory.
+
+FIXME link description plugin config-file structure
+
+=head2 C<{grammar}>
+
+In this hash houses some black magick. It contains all kinds
+of regexes and code strings used by diverse parsers throughout
+Zoidberg. If you want to change the meaning of "&&" or
+would like to implement a new context, this is the place to look.
+It is by default stored in F<grammar.pd> .
+
+I<Warning: This structure has not yet stabalised -- work in progres.>
+
+=head2 FIXME
+
+Some zoidnames like I<Buffer>, I<Prompt>, I<History>, I<Intel> and I<Commands> are reserved.
+These are defined in C<@Zoidberg::core_objects> and are provided with stub replacements.
+
+L<Zoidberg>
+
+=cut

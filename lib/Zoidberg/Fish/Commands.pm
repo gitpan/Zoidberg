@@ -1,49 +1,29 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.2';
+our $VERSION = '0.3a_pre1';
 
-use Devel::Symdump;
-use Data::Dumper;
 use strict;
-
+use Cwd;
+use Env qw/@CDPATH/;
+use Data::Dumper;
+use Zoidberg::Error;
 use base 'Zoidberg::Fish';
-require Benchmark;
+#require Benchmark;
 use Zoidberg::FileRoutines qw/abs_path/;
 
-sub parse {
-	my $self = shift;
-	my $com = shift;
+# FIXME what to do with commands that use block input ?
+#  currently hacked with statements like join(' ', @_)
 
-	if ($com =~ /^\d+$/) {	# multiply
-		my $re = "";
-		for (1..$com) {
-			$self->parent->{_} = $_;
-			$re = $self->{parent}->parse(join(' ', @_));
-		}
-		if ($com == 8) { $self->parent->MOTZ->eightball('disc'); } # easter egg :)
-		elsif ($com == 69) { $self->parent->MOTZ->eightball('slet'); } # heheheh
-		return $re;
-	}
-
-	my $sub = "";
-	if ($com =~ /^->/) { $sub = $com; }
-	elsif (defined $self->{config}{aliases}{$com}) { $sub = $self->{config}{aliases}{$com}; }
-	elsif ($self->can('c_'.$com)) { $sub = 'c_'.$com; }
-
-	my @opts = @_;
-	if ($sub) {
-		$sub =~ s/^->/parent->/;
-		if ($sub =~ s/(\(.*\))\s*$//) { unshift @opts, eval($1); }
-		my $e_sub = eval("sub { \$self->$sub(\@_) }");
-		return $e_sub->(@opts);
-	}
-	else {
-		$self->{parent}->print("Unknown command.", 'error');
-		return "";
-	}
+sub init { 
+	$_[0]->{dir_hist} = [$ENV{PWD}];
+	$_[0]->{_dir_hist_i} = 0;
 }
 
-sub intel {
+=begin comment
+
+# This subroutine is out of use
+
+sub intel { # not a command
 	my $self = shift;
 	my ($set, $block, $intel) = @_;
 
@@ -59,171 +39,255 @@ sub intel {
 	return $set;
 }
 
-sub c_exec { # not completely stable I'm afraid
+=end comment
+
+=cut
+
+sub exec { # not completely stable I'm afraid
 	my $self = shift;
 	$self->{parent}->{round_up} = 0;
 	$self->{parent}->parse(join(" ", @_));
-	# the process may not make it to this line in some cases
+	# the process should not make it to this line
 	$self->{parent}->{round_up} = 1;
 	$self->{parent}->exit;
 }
 
-sub c_eval {
+sub eval {
 	my $self = shift;
-	$self->{parent}->parse(join(" ", @_));
-	return $self->parent->{exec_error};
+	$self->parent->do( join( ' ', @_) );
+	error $self->parent->{exec_error}
+		if $self->parent->{exec_error};
 }
 
-sub c_source {
+sub source { 
 	my $self = shift;
-	my $file = shift || $self->{parent}->{_};
+	my $file = shift || $self->parent->{_};
 	$file = abs_path($file);
-	$self->{parent}->{_} = $file;
-	open IN, $file || (
-		$self->parent->print("source: no such file: $file", 'error'),
-		$self->parent->{exec_error} = 1,
-		return "",
-	);
-	my $body = join('', (<IN>));
-	close IN;
-	return $self->parent->parse($body);
+	error "source: no such file: $file" unless -f $file;
+	$self->parent->{_} = $file;
+	do $file;
+	die if $@;
 }
 
-sub c_set_env {
+sub setenv {
 	my $self = shift;
 	my $string = join(" ", @_);
 	if ($string =~ m/^\s*(\w*)\s*=\s*\"?(.*?)\"?\s*$/) { $ENV{$1} = $2; }
-	else {
-		$self->parent->print("set_env: syntax error", 'error');
-		$self->parent->{exec_error} = 1 ;
-	}
+	else { error 'argument syntax error' }
 }
 
-sub c_change_dir {
-	# argumenten: dir, no-hist-bit
+sub set {
 	my $self = shift;
-	my $dir = shift;
-	unless ($dir) { 
-		if (-d $self->{parent}->{_}) { $dir = $self->{parent}->{_} }
-		else { $dir = $ENV{HOME} }
+	# FIXME use some getopt
+	# be aware '-' is set '+' is unset (!!??)
+	unless (@_) { todo 'I should printout all shell vars' }
+
+	my ($sw, $opt, $val);
+	if ($_[0] =~ m/^([+-])(\w+)/) {
+		shift;
+		$sw = $1;
+		my %args = ( # quoted is yet unsupported
+			#a => 'allexport',	b => 'notify',
+			#C => 'noclobber',	e => 'errexit',
+			f => 'noglob',		#m => 'monitor',	
+			#n => 'noexec',		u => 'nounset',
+			v => 'verbose',		#x => 'xtrace',
+		);
+		# other posix options: ignoreeof, nolog & vi
+		if ($2 eq 'o') { $opt = shift }
+		elsif ($args{$2}) { $opt = $args{$2} }
+		else { error "Switch $sw not (yet?) supported." }
 	}
-	my $target = abs_path($dir);
-	#print "Debug: target: --$target--\n";
-	$target =~ s/(?<!^)\/$//; #/
-	my $no_hist = shift;
-	my $last = $ENV{PWD};
-	unless (chdir($target)) { 
-		$self->{parent}->print("Could not change to dir $target", 'error'); 
-		$self->parent->{exec_error} = 1;
-		return 0;
+	else { 
+		$opt = shift;
+		$sw = '-';
+		if ($opt =~ m/^(\w+)=(.*)$/) { ($opt, $val) = ($1, $2) }
+		elsif ($opt =~ m/^(.*)([+-]{2})$/) { 
+			$opt = $1;
+			$sw = '+' if $2 eq '--'; # sh has evil logic
+		}
 	}
-	else {
-		$ENV{PWD} = $target;
-		$self->{parent}->{_} = $target;
-		unless ($no_hist) { $self->parent->History->add_dir($last); }
-		#print "debug: changed from $last to $ENV{PWD}\n";
-	}
-	return 1;
+	
+	$val = shift unless defined $val;
+	error "Setting $opt is a data structure" if ref $self->{settings}{$opt};
+	
+	if ($sw eq '+') { delete $self->{settings}{$opt} }
+	else { $self->{settings}{$opt} = $val || 1 }
 }
 
-sub c_change_dir_f { #change dir fancy
-	#args: cmd, back || forw
+sub alias { todo }
+
+sub read { todo }
+
+sub wait { todo }
+
+sub fc { todo }
+
+sub getopts { todo }
+
+sub command { todo }
+
+sub newgrp { todo }
+
+sub umask { todo }
+
+sub unalias { todo }
+
+sub false { error { silent => 1 } }
+
+sub true { 1 }
+
+sub cd {
 	my $self = shift;
-	my $act = shift;
-	#print "debug: change dir fancy -- gonna $act\n";
-	my $dir = $self->parent->History->get_dir($act);
-	if ($dir) { $self->c_change_dir($dir, 'no hist !'); }
-	else { $self->parent->print('Dir history is empty.', 'warning'); }
+
+	# TODO [-L|-P] see man 1 bash
+	# FIXME remove '->' and '<-' and use '-b', '--back', '-f', '--forward' instead
+	# the /[<>-]+/ gives parsing issues with shell syntax
+	my ($dir, $browse_hack);
+	if ($_[0] =~ /^-|<-/) {
+		$dir = $self->__get_dir_hist(@_);
+		# TODO seperated error for wrongly formatted input
+		error q{History index out of range} unless defined $dir;
+		$browse_hack++;
+	}
+	else { $dir = shift }
+
+	# due to things like autofs we must try every possibility
+	# instead of checking '-d'
+
+	my $done;
+	if ($dir) {
+		$dir =~ s{(?<!^)/$}{}; # cut trailing slash
+
+		my @dirs = ($dir);
+		push @dirs, map {$_.'/'.$dir} @CDPATH unless $dir =~ m{^/};
+
+		for (@dirs) {
+			$dir = abs_path($_);
+			# print "Denug: Trying dir --$dir--\n";
+			last if $done = chdir $dir;
+		}
+	}
+	else { $done = chdir($self->parent->{_}) || chdir() }
+
+	if ($done) {
+		$ENV{OLDPWD} = $ENV{PWD};
+		$ENV{PWD} = getcwd;
+		$self->__add_dir_hist unless $browse_hack;
+	}
+	else { 
+		error $dir.': Not a directory' unless -d $dir;
+		error "Could not change to dir: $dir";
+	}
 }
 
-sub c_pwd {
+##################
+#### Dir Hist ####
+##################
+
+sub __add_dir_hist {
+	my $self = shift;
+	my $dir = shift || $ENV{PWD};
+
+	return if $dir eq $self->{dir_hist}[0];
+
+	unshift @{$self->{dir_hist}}, $dir;
+	$self->{_dir_hist_i} = 0;
+
+	my $max = $self->{config}{max_dir_hist} || 5;
+	pop @{$self->{dir_hist}} if $#{$self->{dir_hist}} > $max ;
+}
+
+sub __get_dir_hist {
+	my $self = shift;
+
+	my ($sign, $num);
+	if (scalar(@_) > 1) { ($sign, $num) = @_ }
+	elsif (@_) { 
+		$_[0] =~ /^\s*(-|->|<-)(\d*)\s*$/ || return undef;
+		($sign, $num) = ($1, $2 || 1);
+	}
+	else { $sign = '-' }
+
+	if ($sign eq '-') { return $ENV{OLDPWD} }
+	elsif ($sign eq '->') { $self->{_dir_hist_i} -= $num }
+	elsif ($sign eq '<-') { $self->{_dir_hist_i} += $num }
+	else { return undef }
+
+	return undef if $num < 0 || $num > $#{$self->{dir_hist}};
+	return $self->{dir_hist}[$num];
+}
+
+##################
+
+sub pwd {
 	my $self = shift;
 	$self->parent->print($ENV{PWD});
-	$ENV{PWD};
 }
 
-sub c_delete_object {
+sub _delete_object { # FIXME some kind of 'force' option to delte config, so autoload won't happen
 	my $self = shift;
 	if (my $zoidname = shift) {
         	unless (ref($self->{parent}{objects}{$zoidname})) {
-			$self->{parent}->print("No such object: $zoidname",'error');
-			$self->parent->{exec_error} = 1;
-			return;
+			error "No such object: $zoidname";
 		}
-		$self->{parent}->unregister_all_events($zoidname);
+		$self->unregister_all_events($zoidname);
 		if ($self->{parent}{objects}{$zoidname}->isa('Zoidberg::Fish')) {
 			$self->{parent}{objects}{$zoidname}->round_up;
 		}
 		delete $self->{parent}{objects}{$zoidname};
 	}
-	else { 
-		$self->{parent}->print("Usage: \$command \$object_name");
-		$self->parent->{exec_error} = 1;
-	}
+	else { error 'Usage: $command $object_name' }
 }
 
-sub c_load_object {
+sub _load_object {
 	my $self = shift;
 	if (my $name = shift) {
-		if (my $class = shift) { 
-		$self->{parent}->init_postponed($name, $class, @_); 
-		return;
-		}
+		if (my $class = shift) { $self->{parent}->init_object($name, $class, @_) }
+		return 0;
 	}
-	$self->{parent}->print("Usage: \$command \$object_name \$class_name");
-	$self->parent->{exec_error} = 1;
+	error 'Usage: $command $object_name $class_name';
 }
 
-sub c_hide {
+sub _hide {
 	my $self = shift;
 	my $ding = shift || $self->{parent}->{_};
 	if ($ding =~ m/^\{(\w*)\}$/) {
-		@{$self->parent->{core}{clothes}{keys}} = grep {$_ ne $1} @{$self->parent->{core}{clothes}{keys}};
+		@{$self->{settings}{clothes}{keys}} = grep {$_ ne $1} @{$self->{settings}{clothes}{keys}};
 	}
 	elsif ($ding =~ m/^\w*$/) {
-		@{$self->parent->{core}{clothes}{subs}} = grep {$_ ne $ding} @{$self->parent->{core}{clothes}{subs}};
+		@{$self->{settings}{clothes}{subs}} = grep {$_ ne $ding} @{$self->{settings}{clothes}{subs}};
 	}
 }
 
-sub c_unhide {
+sub _unhide {
 	my $self = shift;
 	my $ding = shift || $self->{parent}->{_};
 	$self->{parent}->{_} = '->'.$ding;
-	if ($ding =~ m/^\{(\w*)\}$/) { push @{$self->parent->{core}{clothes}{keys}}, $1; }
+	if ($ding =~ m/^\{(\w*)\}$/) { push @{$self->{settings}{clothes}{keys}}, $1; }
 	elsif (($ding =~ m/^\w*$/)&& $self->parent->can($ding) ) {
-		push @{$self->parent->{core}{clothes}{subs}}, $ding;
+		push @{$self->{settings}{clothes}{subs}}, $ding;
 	}
-	else { $self->parent->print('Dunno such a thing', 'error'); $self->parent->{exec_error}=1}
+	else { error 'Dunno such a thing' }
 }
 
-sub c_print {
-	my $self = shift;
-	my $statement = join(" ", @_) || $self->{parent}->{_};
-	my $ding = $self->{parent}->parse($statement);
-	if ((ref($ding) eq 'ARRAY') && ($#{$ding} == 0)) { $ding = $ding->[0]; }
-	elsif (ref($ding)=~/Scuddle::Wide/) { $self->{parent}->print("You don't wanna dump $ding, believe me\n(filthy hack at ".__FILE__.' line '.__LINE__.")",'warning');return}
-	$self->{parent}->print($statement.' = ', '', 'n');
-	$self->{parent}->print($ding);
-	$self->{parent}->{_} = $statement;
-	return $ding;
-}
-
-sub c_echo {
+sub echo {
 	my $self = shift;
 	my $string = join(" ", @_) || $self->{parent}->{_};
 	$self->{parent}->{_} = $string;
 	$self->{parent}->print($string);
-	return 1;
 }
 
-sub c_quit {
+sub quit {
 	my $self = shift;
 	if (@_) { $self->{parent}->print(join(" ", @_)); }
-	$self->{parent}->History->del; # leave no trace
+	$self->{parent}->History->del; # leave no trace # FIXME - ergggg vunzig
 	$self->{parent}->exit;
 }
 
-sub c_time {
+=begin comment
+
+sub _time {
     my $self = shift;
     if (@_) {
         my $kontwange = join(" ",@_);
@@ -235,15 +299,12 @@ sub c_time {
     }
 }
 
-sub list {
-	my $self = shift;
-	my @commands = keys %{$self->{config}{aliases}};
-	push @commands, map {s/^c_//;$_} grep {/^c_/} map {s/^(.+\:\:)*//g; $_} (Devel::Symdump->new(ref($self))->functions);
-	return [sort(@commands)];
-}
+=end comment
 
+=cut
 
 1;
+
 __END__
 
 =head1 NAME
@@ -294,12 +355,6 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<perl>
+L<perl>, L<Zoidberg>, L<Zoidberg::Fish>, L<http://zoidberg.sourceforge.net>
 
-L<Zoidberg>
-
-L<Zoidberg::Fish>
-
-http://zoidberg.sourceforge.net
-.
 =cut

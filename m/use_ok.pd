@@ -1,0 +1,27 @@
+$VAR1 = {
+  'core' => [
+    'Zoidberg::Fish::Commands',
+    'Zoidberg::Fish::Buffer::Insert',
+    'Zoidberg::Fish::Buffer::Meta',
+    'Zoidberg::Fish::Buffer::Insert::MultiLine',
+    'Zoidberg::Fish::Buffer::Insert::VimCommand',
+    'Zoidberg::Fish::Buffer::Meta::Vim',
+    'Zoidberg::Fish::Buffer::Select',
+    'Zoidberg::Fish::Buffer',
+    'Zoidberg::Fish::History',
+    'Zoidberg::Fish::Intel',
+    'Zoidberg::Fish::Prompt',
+    'Zoidberg::Config',
+    'Zoidberg::DispatchTable',
+    'Zoidberg::Error',
+    'Zoidberg::Eval',
+    'Zoidberg::Fish',
+    'Zoidberg::FileRoutines',
+    'Zoidberg::PdParse',
+    'Zoidberg::Shell',
+    'Zoidberg::StringParse',
+    'Zoidberg::ZoidParse',
+    'Zoidberg',
+    'Exporter::Inheritor'
+  ]
+};

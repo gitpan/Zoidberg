@@ -1,6 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.2';
+our $VERSION = '0.3a_pre1';
 
 #use Zoidberg::Fish::Crab;
 
@@ -8,8 +8,9 @@ sub new {
     my $class = shift;
     my $self = {};
     $self->{parent} = shift;
-    $self->{config} = shift;
     $self->{zoid_name} = shift;
+    $self->{settings} = $self->{parent}{settings};
+    $self->{config} = $self->{parent}{plugins}{$self->{zoid_name}}{config};
     bless $self, $class;
     $self;
 }
@@ -46,43 +47,82 @@ sub event {
 }
 
 sub broadcast_event {
-    my $self = shift;
-    $self->parent->broadcast_event(@_);
+	my $self = shift;
+	$self->{parent}->broadcast_event(@_);
 }
 
 sub register_event {
-    my $self = shift;
-    for (@_) { $self->parent->register_event($_, $self->{zoid_name}); }
-}
-
-sub unregister_event {
-    my $self = shift;
-    for (@_) { $self->parent->unregister_event($_, $self->{zoid_name}); }
-}
-
-sub unregister_all_events {
-    my $self = shift;
-    $self->parent->unregister_all_events($self->{zoid_name})
+	my $self = shift;
+	my $event = shift;
+	my $zoidname = shift || $self->{zoid_name};
+	unless (exists $self->{parent}{events}{$event}) { $self->{parent}{events}{$event} = [] }
+	push @{$self->{parent}{events}{$event}}, $zoidname;
 }
 
 sub registered_events {
-    my $self = shift;
-    return $self->parent->registered_events($self->{zoid_name});
+	my $self = shift;
+	my $zoidname = shift || $self->{zoid_name};
+	my @events = ();
+	foreach my $event (keys %{$self->{parent}{events}}) {
+		if (grep {$_ eq $zoidname} @{$self->{parent}{events}{$event}}) { push @events, $event; }
+	}
+	return @events;
 }
+
+sub registered_objects {
+	my $self = shift;
+	my $event = shift;
+	return @{$self->{parent}{events}{$event}};
+}
+
+sub unregister_event {
+	my $self = shift;
+	my $event = shift;
+	my $zoidname = shift || $self->{zoid_name};
+	@{$self->{parent}{events}{$event}} = grep {$_ ne $zoidname} @{$self->{parent}{events}{$event}};
+}
+
+sub unregister_all_events {
+	my $self = shift;
+	foreach my $event (keys %{$self->{parent}{events}}) { $self->unregister_event($event, @_) }
+}
+
+######################
+### command logic ####
+######################
+
+# TODO implement a hash of commands in parent, access through interface here
 
 #####################
 #### other stuff ####
 #####################
+
+sub _do_sub {
+	my $self = shift;
+	my $ding = shift;
+	my @args = @_;
+	if (ref($ding) eq 'CODE') { $ding->($self, @args) }
+	elsif (ref($ding)) { die "Can't use a ".ref($ding)." reference as sub routine." }
+	else {
+		$ding =~ s/^\s*//;
+		unless ($ding =~ /^\$/) { 
+			$ding =~ s/^->/parent->/;
+			$ding = '$self->'.$ding;
+		}
+		
+		if ($ding =~ s/(\(.*\))\s*$//) { unshift @args, eval($1) }
+		my $sub = eval("sub { $ding(\@_) }");
+		return $sub->(@args);
+	}
+}
 
 sub help {
 	my $self = shift;
 	return "";
 }
 
-sub round_up {
-    my $self = shift;
-    # put shutdown sequence here -- like saving files etc.
-}
+sub round_up {} # put shutdown sequence here -- like saving files etc.
+
 
 sub DESTROY {
 	my $self = shift;
@@ -99,83 +139,106 @@ Zoidberg::Fish - Base class for loadable Zoidberg plugins
 
 =head1 SYNOPSIS
 
-  package My::Dynamic::ZoidPlugin
+  package My_Zoid_Plugin;
   use base 'Zoidberg::Fish';
+
+  FIXME some example code
 
 =head1 DESCRIPTION
 
-  Base class for loadable Zoidberg plugins. Has many stubs
-  to provide compatibility with Zoidberg
-
-  Once this base class is used your module looks and smells
-  like fish -- Zoidberg WILL eat it.
-
-  See the user documentation on how to load these objects
-  into Zoidberg.
+Once this base class is used your module smells like fish -- Zoidberg WILL eat it.
+It supplies stub methods for hooks and has some routines to simplefy the interface to
+Zoidberg. One should realize that the bases of a plugin is not the module but
+the config file. Any module can be used as plugin as long as it's properly configged.
+The B<developer manual> should describe this in more detail.
 
 =head1 METHODS
 
-=head2 new($parent, \%config, $zoid_name)
+=over 4
 
-  $self->{parent} a reference to parent Zoidberg object
-  $self->{config} hash with some config
-  $self->{zoid_name} name as known by parent object
+=item C<new($parent, $zoid_name)>
 
-=head2 init()
+Simple constructor that bootstraps same attributes. When your module smells like fish
+Zoidberg will give it's constructor two arguments, a reference to itself and the name by
+which your module is identified. From this all other config can be deducted.
 
-  To be overloaded, should be called by parent object.
-  Do things like loading files, opening sockets here.
+	# Default attributes created by this constructor:
+ 
+	$self->{parent}    # a reference to parent Zoidberg object
+	$self->{zoid_name} # name by which your module is identified
+	$self->{settings}  # reference to hash with global settings
+	$self->{config}    # hash with plugin specific config
 
-=head2 parent()
+=item C<init()>
 
-  Returns a reference to the Zoidberg object
+To be overloaded, will be called directly after the constructor. 
+Do things you normally do in the constructor like loading files, opening sockets 
+or setting defaults here.
 
-=head2 print()
+=item C<parent()>, C<config()>
 
-  Convenience method for calling ->parent->print
+These methods return a reference to the attributes by the same name.
 
-=head2 config()
+=item C<print()>
 
-  Return the config hash
+Prefered output method.
 
-=head2 event($event_name, @_)
+FIXME this one might move to helper library
 
-  This method is called by the parent when an event is broadcasted
+=item C<_do_sub($thing)>
 
-=head2 broadcast_event($event_name, @_)
+Execute subroutine specified by string C<$thing> or execute C<$thing> directly
+when it's a CODE ref. It works the same way like Zoidberg executes commands, with the
+difference it takes the subroutine as base instead of the parent object. It is preferred 
+to use this for "command-like" configuration options.
 
-  Calls ->parent->broadcast_event
+=item C<event($event_name, @_)>
 
-=head2 register_event($event_name)
+This method is called by the parent object when an event is broadcasted for which this
+plugin is registered.
 
-  Register an event with the parent object.
-  When the event occurs, the `event' method will be called, with at least one argument: the event name.
+=item C<broadcast_event($event_name, @_)>
 
-=head2 unregister_event($event_name)
+Broadcast an event to whoever might be listening.
 
-  Unregister self for event $event_name
+=item C<register_event($event_name)>
 
-=head2 unregister_all_events()
+Register for an event by the parent object. When the event occurs, the C<event()> method 
+will be called.
 
-  Unregister self for all events
+=item C<unregister_event($event_name)>
 
-=head2 registered_events()
+Unregister self for event C<$event_name>.
 
-  List events self is registered for
+=item C<unregister_all_events()>
 
-=head2 help()
+Unregister self for all events, this is by default called by C<round_up()>. It is good practice 
+to call this routine when a plugin signs off.
 
-  Stub help function, should return a string
-  with dynamic content for the zoidberg help system.
+FIXME this is what _should_ happen -- but events need to get more efficient
 
-=head2 round_up()
+=item C<registered_events()>
 
-  Is called when the plugin is unloaded or when sudden DESTROY occurs.
-  To be overloaded, do things like saving files, closing sockets here
+List events self is registered for.
+
+=item C<help()>
+
+Stub help function, to be overloaded. This method should return a string
+with B<dynamic> content for the zoidberg help system. Static help content
+should be formatted as a seperate pod file.
+
+=item C<round_up()>
+
+Is called when the plugin is unloaded or when a sudden DESTROY occurs.
+To be overloaded, do things like saving files or closing sockets here.
+
+=back
 
 =head1 AUTHOR
 
 R.L. Zwart, E<lt>carlos@caremail.nlE<gt>
+
+Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
 
 Copyright (c) 2002 Raoul L. Zwart. All rights reserved.
 This program is free software; you can redistribute it and/or

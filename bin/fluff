@@ -13,132 +13,174 @@
 ##################################################################
 
 use strict;
+use vars qw/%ZoidConf/;
 
-#print "Debug: ARGV is: --".join('--', @ARGV)."--\n";
+our $VERSION = '0.3a_pre1';
 
-# get info
-my @passwd = getpwuid($>);
-# Returns ($name, $passwd, $uid, $gid, $quota, $comment, $gcos, $dir, $shell).
+####################
+#### Parse ARGV ####
+####################
+my %args = ();
+my %opts = (
+	# name	=> [char, expect_arg_bit ]
+	'help'		=> ['h'],
+	'usage'		=> ['u'],
+	'exec'		=> ['e', 1],
+	'command'	=> ['c', 1],
+	'version'	=> ['V'],
+	'list-conf'	=> ['l'], # FIXME also support -V:varname (see man perlrun)
+	'interactive'	=> ['i'],
+	'debug'		=> ['d'], # FIXME, use this switch
+	# TODO -M use module etc.
+	# -q
+	#     Quiet (usually without argument). Suppress normal result or 
+	#     diagnostic output. This is very common. Examples: ci(1), co(1), make(1).
+	#
+	#-v verbose (as opposed to -q)
+);
 
-#### CONFIG ####
-my $prefix	= '/usr/local/';	# prefix to zoidberg files
-my $skel_dir	= '/etc/zoid/';		# path to default config file
-my $dir		= $passwd[7].'/.zoid/';	# users personal dir
-my @my_inc	= (),			# include shit
-#### END ####
+while ((@ARGV) && ($ARGV[0] =~ /^-/)) {
+	my $opt = shift @ARGV;
+	if ($opt =~ /^--?$/) { last; }
+	# specials
+	elsif ($opt =~ s/^-I//) { $args{inc} .= ($args{inc} ? ',' : '').$opt; }
+	# default
+	elsif ($opt =~ s/^--([\w-]+)(?:=(.*))?/$1/) {
+		unless ($opts{$opt}) { complain('--'.$opt) }
+		if ($opts{$opt}[1]) { 
+			my $arg = $2 || shift @ARGV || complain('--'.$opt, 2);
+			$args{$opt} .= ( $args{$opt} ? ' ' : '' ).$arg; # join with whitespace
+		}
+		else { $args{$opt}++; }
+	}
+	elsif ($opt =~ s/^-(?!-)//) {
+		foreach my $o (split //, $opt) {
+			my ($key) = grep { $opts{$_}[0] eq $o } keys %opts;
+			unless ($key) { complain($o) }
 
-use Getopt::Long qw(:config gnu_compat no_getopt_compat no_ignore_case);
-use Pod::Usage;
-
-#############################
-#### Parse basic options ####
-#############################
-
-my $message = $Zoidberg::LONG_VERSION."\n\nSee also <http://zoidberg.sourceforge.net>\n";
-my ($help, $version, $exec_string, $interact_opt, $script, $inc, $argv) = (0, 0, '', -1, "", "", [@ARGV]);
-
-GetOptions(
-	'help|?|usage'		=> \$help,
-	'exec|command=s'	=> \$exec_string,
-	'version'		=> \$version,
-	'interaction!'		=> \$interact_opt,
-	'Include=s'		=> \$inc, # TODO check GetOpt for multiple args
-) || pod2usage( {
-        '-message' => $message,
-        '-verbose' => 0,
-        '-exitval' => 1,
-} );
-
-if ($help) {
-	pod2usage( {
-		'-message' => $message,
-		'-verbose' => 1,
-		'-exitval' => 0,
-	} );
+			if ($opts{$key}[1]) { 
+				my $arg = shift @ARGV || complain('--'.$opt, 2);
+				$args{$key} .= ( $args{$key} ? ' ' : '' ).$arg; # join with whitespace
+			}
+			else { $args{$key}++; }
+		}
+	}
+	else { complain($opt) }
 }
-elsif ($version) {
+
+# parse includes
+#my $dir = abs_path($0);
+#$dir =~ /^(.*\/)/
+#unshift @INC, $1.'/lib' if -d $1.'/lib';
+#unshift @INC, $1.'/../lib' if  -d $1.'/../lib';
+
+if ($args{inc}) { unshift @INC, split(/\,/, $args{inc}); }
+
+# load some packages - force runtime eval to get includes right
+for (qw/Zoidberg Zoidberg::Config/) {
+	eval "use $_";
+	die $@ if $@;
+}
+
+if ($args{help} || $args{usage}) { 
+	print (<DATA>);
+	exit 0;
+}
+elsif ($args{version}) { 
+	if ($VERSION) { print "zoid $VERSION\n" }
 	print $Zoidberg::LONG_VERSION."\n";
 	exit 0;
 }
+elsif ($args{'list-conf'}) { 
+	Zoidberg::Config->output();
+	exit 0;
+}
+
+my $exec_string = $args{exec} || $args{command} || '';
+
+# rest ARGV should be files
+for (@ARGV) { 
+	if (-f $_) { $exec_string .= ($exec_string ? ' ; ' : '').'_source '.$_; } # FIXME dit via api
+	else { complain($_, 3); }
+}
 
 my $interact;
-unless ($interact_opt < 0) { $interact = $interact_opt; }
+if ($args{interactive}) { $interact = 1; }
 elsif (!$exec_string) { $interact = (-t STDIN) && (-t STDOUT); }
 else { $interact = 0; }
 #print "debug: interact: $interact, interact_opt: $interact_opt, string: $exec_string\n";
 
-if ($inc) { unshift @my_inc, split(/\,/, $inc); }
-#use Data::Dumper; print "my inc: ".Dumper(\@my_inc);
 ############################
 #### prepare for launch ####
 ############################
 
-# check ARGV
-# TODO let ARGV (in caps) pass GetOpt::Long
-if ((-f $argv->[0])&&(!$argv->[1])) { $exec_string .= ($exec_string ? ' ; ' : '').'_source '.$argv->[0]; }
-
 # copy skel
-my $first_time = 0;
+my ($dir, $prefix) = ($ZoidConf{config_dir}, $ZoidConf{prefix});
 $dir =~ s/\/?$/\//;
 unless (-e $dir) {
-	dircopy($skel_dir, $dir);
-	mkdir $dir.'var/';
-	mkdir $dir.'plugins/';
-	$first_time = 1;
+	dircopy($prefix.'/share/zoid/skel', $dir);
+	for (qw/var lib cmd plugins/) {
+		my $s_dir = $dir.$_;
+		unless (-d $s_dir) { mkdir $s_dir }
+	}
 }
 
 # set env
-$ENV{USER} = $passwd[0];
-$ENV{HOME} = $passwd[7];
+$ENV{USER} = $Zoidberg::Config::user_info[0];
+$ENV{HOME} = $Zoidberg::Config::user_info[7];
 
 # check for login shell
-unless ($ENV{PWD}) { 
-	$ENV{PWD} = $passwd[7]; 
+unless ($ENV{PWD}) {
+	$ENV{PWD} = $ENV{HOME} || '/'; 
 	$ENV{SHELL} = $0;
 }
-
-my $fluff_conf = {
-	'prefix' => $prefix,
-	'config_dir' => $dir,
-	'config_file' => 'profile.pd',
-	'core_file' => 'core.pd',
-	'grammar_file' => 'grammar.pd',
-	'cache_file' => 'var/cache.pd',
-	'interactive' => $interact,
-};
 
 ########################
 #### AND Lift-off ! ####
 ########################
 
-unshift @INC, (@my_inc, $dir.'plugins');
-
-eval('use Zoidberg;'); # force runtime eval, gets includes right
-
 my $cube = Zoidberg->new;
-if ($interact) {
-	$cube->init($fluff_conf);
-	if ($exec_string) { $cube->parse($exec_string); }
-	if ($first_time) {
-		$cube->print("## Type help to get on your feet", 'message');
-		$cube->print("## Try typing \"->Buffer->probe\" if keybindings fail", 'message');
-	}
-	$cube->main_loop;
+
+unless ($interact) { $cube->silent } # FIXME -- this should be done internally - this api is wrong
+
+$cube->init(interactive => $interact);
+if ($exec_string) { $cube->do($exec_string) }
+
+if (-e $dir.'/.first_time' && $interact) {
+	$cube->print("## Type help to get on your feet", 'message');
+	$cube->print("## Try typing \"->Buffer->probe\" if keybindings fail", 'message');
+	unlink $dir.'/.first_time';
 }
 
-else {
-	$cube->silent;
-	$cube->init($fluff_conf);
-	if ($exec_string) { $cube->parse($exec_string); }
+if (-p STDIN) {
+	while (<STDIN>) { $cube->do($_) } 
+	# FIXME more intel for this situation ?
+	# built this in the api ? something like "parse_from_pipe()"
 }
+
+if ($interact) { $cube->main_loop }
 
 my $exit = $cube->round_up ? 1 : 0;
 
 exit $exit;
 
-#######################
-#### helpfull subs ####
-#######################
+######################
+#### sub routines ####
+######################
+
+sub complain {
+	my $opt = shift;
+	my $m = shift || 1;
+	
+	my $bn = $0;
+	$bn =~ s|^(.*/)*||;
+	if ($m == 1) { print STDERR "$bn: unrecognized option '$opt'"; }
+	elsif ($m == 2) { print STDERR "$bn: option '$opt' requires an argument"; }
+	elsif ($m == 3) { print STDERR "$bn: $opt: No such file or directory\n"; }
+	
+	if ($m < 3) {print "\nTry '$bn --help' for more information.\n"}
+	exit $m;	
+}
 
 sub dircopy {
 	# dir from, dir to
@@ -164,64 +206,4 @@ sub dircopy {
 	}
 }
 
-__END__
-
-=head1 NAME
-
-    zoid - a frontend script to the Zoidberg shell
-
-=head1 SYNOPSIS
-
-    zoid [options]
-
-    Options:
-       --help           Detailed help message
-       --exec           execute string
-       --command        does the same as --exec
-       --version        display version information
-       --interaction    start interactive shell
-       --nointeraction  execute non-interactive
-
-    See also F<man zoid>
-
-=head1 OPTIONS
-
-Abbreviations of options are also allowed.
-
-=over 4
-
-=item B<-h, --help, -u, --usage>
-
-    Print a this help message and exits.
-
-=item B<-e, --exec>
-
-    Execute string as interpreted by zoidberg.
-    If non-interactive exits with exit status
-    of command string.
-
-=item B<-c, --command>
-
-    Does the same as exec.
-
-=item B<-v, --version>
-
-    Display version information.
-    The displayed version is the version of the
-    Zoidberg module, not of the program files.
-
-=item B<-i, --interaction>
-
-    Start an interactive shell.
-    This is the default if no exec string is
-    supplied. If exec string is supplied
-    nointeraction becomes default.
-
-=item B<--nointeraction>
-
-    Do not start interactive shel - just
-    execute commandline options and exit.
-
-=back
-
-=cut
+__DATA__

@@ -1,0 +1,27 @@
+=for html <!--UP-->
+
+=head1 Zoidberg user manual
+
+This is the user manual for the Zoidberg shell.
+
+I<Be aware this is work in progres, zoidberg has not yet made any stable release.>
+I<This manual is of course far from complete.>
+
+=head2 Sections
+
+=begin text
+
+ * Configuration
+ * Syntax
+ * Zoidscript
+ * Settings
+
+=end text
+
+=begin html
+
+<!--INDEX Configuration Syntax Zoidscript Settings-->
+
+=end html
+
+=cut

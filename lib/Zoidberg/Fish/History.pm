@@ -1,6 +1,6 @@
 package Zoidberg::Fish::History;
 
-our $VERSION = '0.2';
+our $VERSION = '0.3a_pre1';
 
 use strict;
 use IO::File();
@@ -29,41 +29,40 @@ sub init {
 
 sub open_log {
 	my $self = shift;
-	if ($self->{config}{hist_file} && -s $self->{config}{hist_file}) {
-		open IN, $self->{config}{hist_file} || die "Could not open hist file";
-		@{$self->{data}{hist}} = map {eval($_)} reverse (<IN>);
+	if ($self->{config}{log_file} && -s $self->{config}{log_file}) {
+		open IN, $self->{config}{log_file} || die "Could not open log file";
+		@{$self->{data}{hist}} = map {
+			m/(\d+)\s+\[hist\]\s(.*)/; 
+			[ 
+				[ map {	s/\\\\/\\/; $_ } split(/(?<!\\)\\n/, $2) ], # FIXME: escaping ain't right
+				[],
+				{ 't' => $1 },
+			]
+		} reverse (<IN>); # FIXME 'hist' type flexible
 		close IN;
 		if ($@) { $self->parent->print("while reading hist: $@", 'error'); }
 	}
 
-	if ($self->{config}{hist_file}) { $self->{log} = IO::File->new('>>'.$self->{config}{hist_file}) || die $!; }
-	else { $self->print("No hist file found.", 'warning'); }
+	if ($self->{config}{log_file}) { $self->{log} = IO::File->new('>>'.$self->{config}{log_file}) || die $!; }
+	else { $self->print("No hist log found.", 'warning'); }
 }
 
 sub close_log {
 	my $self = shift;
 	if (ref($self->{log})) { $self->{log}->close; }
-	if ($self->{config}{hist_file}) {
-		open OUT, '>'.$self->{config}{hist_file} || die "Could not open hist file";
-		print OUT map {$self->serialize($_)."\n"} grep {$_->[0]} reverse @{$self->{data}{hist}};
+	if ($self->{config}{log_file}) {
+		open OUT, '>'.$self->{config}{log_file} || die "Could not open hist file";
+		print OUT map {$self->log_record($_)."\n"} grep {$_->[0]} reverse @{$self->{data}{hist}};
 		close OUT;
 	}
-	else { $self->print("No hist file found.", 'warning'); }
+	else { $self->print("No hist log found.", 'warning'); }
 }
 
-sub serialize { # recursive
+sub log_record { # recursive
 	my $self = shift;
-	my $ding = shift;
-	if (ref($ding) eq 'ARRAY') {
-		return '['.join(', ', map {$self->serialize($_)} @{$ding}).']';
-	}
-	elsif (ref($ding) eq 'HASH') {
-		return '{'.join(', ', map {$_.'=>'.$self->serialize($ding->{$_})} keys %{$ding}).'}';
-	}
-	else {
-		$ding =~ s/([\'\\])/\\$1/g;
-		return '\''.$ding.'\'';
-	}
+	my $ref = shift;
+	my $type = 'hist'; # FIXME
+	$ref->[2]{t}.' ['.$type.'] '.join('\n', map {s/\\/\\\\/; $_} @{$ref->[0]});
 }
 
 sub add {
@@ -79,7 +78,7 @@ sub add {
 			unshift @{$self->{data}{hist}}, $record;
 			my $max = $self->{config}{max_hist} || 100;
 			if ($#{$self->{data}{hist}} > $max) { pop @{$self->{data}{hist}}; }
-			$self->{log}->print($self->serialize($self->{data}{hist}[0]));
+			$self->{log}->print($self->log_record($self->{data}{hist}[0])."\n");
 		}
 		else {
 			$self->{data}{hist}[0][1] = [@_];
@@ -158,54 +157,6 @@ sub search {
 sub show {
 	my $self = shift;
 }
-
-##################
-#### dir hist ####
-##################
-
-sub add_dir {
-	my $self = shift;
-	my $dir = shift || $ENV{PWD};
-	#print "debug: got dir $dir to add to dir hist\n";
-	unless ($dir eq $self->{data}{dir_hist}{prev}[0]) {
-		unshift @{$self->{data}{dir_hist}{prev}}, $dir;
-	}
-}
-
-sub get_dir {
-	my $self = shift;
-	my $return = $ENV{PWD};
-	if (($_[0] eq "next")||($_[0] eq "forw")) {
-		$return = pop @{$self->{data}{dir_hist}{next}} || '';
-		if ($return && ($return ne $self->{data}{dir_hist}{prev}[0])) {
-			unshift @{$self->{data}{dir_hist}{prev}}, $ENV{PWD};
-		}
-	}
-	elsif (($_[0] eq "prev")||($_[0] eq "back")) {
-		$return = shift @{$self->{data}{dir_hist}{prev}} || '';
-		if ($return && ($return ne $self->{data}{dir_hist}{next}[-1])) {
-			push @{$self->{data}{dir_hist}{next}}, $ENV{PWD};
-		}
-	}
-	else { return $ENV{PWD}; }
-	$self->dir_check_max;
-	return $return;
-}
-
-sub dir_check_max {
-	my $self = shift;
-	my $max = $self->{config}{max_dir_hist} || 5;
-	if ($#{$self->{data}{dir_hist}{prev}} > $max) {
-		pop @{$self->{data}{dir_hist}{prev}};
-	}
-	if ($#{$self->{data}{dir_hist}{next}} > $max) {
-		shift @{$self->{data}{dir_hist}{next}};
-	}
-}
-
-##############
-#### rest ####
-##############
 
 sub round_up {
 	my $self = shift;
@@ -294,15 +245,6 @@ TODO - search on string or property
 =item B<show()>
 
 TODO - should print hist nicely formatted
-
-=item B<add_dir($dir)>
-
-Add a dir to directory history.
-
-=item B<get_dir($action)>
-
-Get a dir from directory history.
-Action can be 'forw' or 'back'.
 
 =back
 

@@ -1,106 +1,117 @@
 package Zoidberg::FileRoutines;
 
-require Exporter;
+our $VERSION = '0.3a_pre1';
 
-use File::Spec;
+#use File::Spec;
+use Carp;
+use Env qw/@PATH/;
+use Storable qw(lock_store lock_retrieve);
+use Exporter;
 use strict;
 
-push @{Zoidberg::FileRoutines::ISA}, 'Exporter';
-
-@{Zoidberg::FileRoutines::EXPORT_OK} = qw/abs_path cache_path list_path scan_dir read_dir is_executable unique_file wipe_cache $cache/;
-%{Zoidberg::FileRoutines::EXPORT_TAGS} = (
-	zoid_compat => [qw/abs_path cache_path list_path scan_dir is_executable unique_file wipe_cache/],
-	exec_scope  => [qw/abs_path scan_dir is_executable/],
+our @ISA = qw/Exporter/;
+our @EXPORT_OK = qw/
+	abs_path list_path get_dir read_dir unique_file f_index_path 
+	f_wipe_cache f_read_cache f_save_cache is_exec_in_path
+/;
+our %EXPORT_TAGS = (
+	engine => [qw/f_index_path f_wipe_cache f_read_cache f_save_cache/],
+	basic => [qw/abs_path list_path get_dir unique_file/],
+	exec_scope  => [qw/abs_path get_dir list_path/],
 );
 
 our $cache = {};
+our $cache_time = 300; # 5x60 -- 5 minutes
+our $dump_file = '';
 
-our $cache_time = 300;
+our $DEBUG = 0;
 
-########################################
-#### File routines -- do they belong in this object ? #### no they don't!
-########################################
+#############################
+#### Basic file routines ####
+#############################
 
 sub abs_path {
 	# return absolute path
 	# argument: string optional: reference
+	# FIXME use File::Spec in this sub
 	my $string = shift || return $ENV{PWD};
 	my $refer = $_[0] ? abs_path(shift @_) : $ENV{PWD}; # possibly recurs
-	$refer =~ s/\/$//; # print "debug: refer was: $refer\n"; #/
-	if ($string =~ /^\//) {} # do nothing
-	elsif ( $string =~ /^~([^\/]*)/ ) {# print "debug: '~': ";
-		if ($1) {
-			my @info = getpwnam($1); # Returns ($name, $passwd, $uid, $gid, $quota, $comment, $gcos, $dir, $shell).
-			$string =~ s/^~$1\/?/$info[7]\//;
+	$refer =~ s/\/$//;
+	$string =~ s{/+}{/}; # ever tried using $::main::main::main::something ?
+	unless ($string =~ m{^/}) {
+		if ( $string =~ /^~([^\/]*)/ ) {
+			if ($1) {
+				my @info = getpwnam($1); 
+				# @info = ($name, $passwd, $uid, $gid, $quota, $comment, $gcos, $dir, $shell).
+				$string =~ s{^~$1/?}{$info[7]/};
+			}
+			else { $string =~ s{^~/?}{$ENV{HOME}/}; }
 		}
-		else { $string =~ s/^~\/?/$ENV{HOME}\//; }
+		elsif ( $string =~ s{^\.(\.+)(/|$)}{}) { 
+			my $l = length($1);
+			$refer =~ s{(/[^/]*){0,$l}$}{};
+			$string = $refer.'/'.$string;
+		}
+		else {
+			$string =~ s{^\.(/|$)}{};
+			$string = $refer.'/'.$string;
+		}
 	}
-	elsif ( $string =~ s/^\.(\.+)(\/|$)//) {  #print "debug: '../': string: $string length \$1: ".length($1)." "; #'
-		my $l = length($1);
-		$refer =~ s/(\/[^\/]*){0,$l}$//;  #print "refer: $refer\n"; #/
-		$string = $refer.'/'.$string;
-	}
-	else {	# print "debug: './': ";
-		$string =~ s/^\.(\/|$)//; # print "string: $string refer: $refer\n"; #/
-		$string = $refer.'/'.$string;
-	}
-	$string =~ s/\\//g;# print "debug: result: $string\n"; #/
+	$string =~ s/\\//g;
 	return $string;
 }
 
-sub cache_path {
-	my $ding = shift;
-	@{$cache->{path_dirs}} = grep {-d $_} grep {($_ ne '..') && ($_ ne '.') && (!/^\.+\//)} split (/:/, $ENV{PATH});
-	foreach my $dir (@{$cache->{path_dirs}}) { scan_dir($dir, $ding, 1); }
-}
-
-sub list_path {
-	my @return = ();
-	foreach my $dir (@{$cache->{path_dirs}}) { push @return, grep {-x $dir.'/'.$_} @{$cache->{dirs}{$dir}{files}}; }
-	return [@return];
-}
-
-sub scan_dir {
+sub get_dir {
 	my $dir = shift || $ENV{PWD};
-	my ($string, $no_wipe) = @_;
 	unless ($cache->{dirs}{$dir}) { $dir = abs_path($dir); }
+	
 	my $mtime = (stat($dir))[9];
-	unless ($cache->{dirs}{$dir} && ($string ne 'force') && ($mtime == $cache->{dirs}{$dir}{mtime})) {
-		read_dir($dir, $no_wipe);
-	}
-	else { $cache->{dirs}{$dir}{cache_time} = time; }
+	read_dir($dir, @_) unless $cache->{dirs}{$dir} && ($mtime == $cache->{dirs}{$dir}{mtime});
+	$cache->{dirs}{$dir}{cache_time} = time;
+	
 	return $cache->{dirs}{$dir};
 }
 
 sub read_dir {
 	my $dir = shift;
+	print "(re-) scanning directory $dir\n" if $DEBUG;
 	if (-e $dir) {
 		my $no_wipe = shift || $cache->{dirs}{$dir}{no_wipe};
-		opendir DIR, $dir;
-		my @contents = readdir DIR;
-		splice(@contents, 0, 2); # . && ..
-		closedir DIR;
-		chdir $dir;
-		my @files = grep {-f $_ || -f readlink($_)} @contents;
-		my @dirs = grep {-d $_  || -d readlink($_)} @contents;
-		my @rest = grep { !(grep $_, @files) && !(grep $_, @dirs) } @contents;
-		chdir($ENV{PWD});
 		$cache->{dirs}{$dir} = { 
-			'files' => [@files],
-			'dirs' => [@dirs],
-			'rest' => [@rest],
+			'files' => [],
+			'dirs' => [],
 			'mtime' => (stat($dir))[9],
 			'no_wipe' => $no_wipe,
-			'cache_time' => time,
 		};
+		opendir DIR, $dir;
+		my $item;
+		while ($item = readdir DIR) {
+			next if $item =~ /^\.{1,2}$/;
+			if (-d $dir.'/'.$item  || -d readlink($dir.'/'.$item)) { 
+				push @{$cache->{dirs}{$dir}{dirs}}, $item;
+			}
+			else { push @{$cache->{dirs}{$dir}{files}}, $item }
+		}
+		closedir DIR;
+		$cache->{dirs}{$dir}{cache_time} = time;
 	}
+	else { croak "no such dir $dir" }
+	return $cache->{dirs}{$dir};
 }
 
-sub is_executable {
-	my $name = pop;
-	if (-x $name) { return 1; }
-	elsif (grep {/^$name$/} @{&list_path}) { return 1; }
-	else {return 0; }
+sub list_path { return map { @{&get_dir($_)->{files}} } grep { -d $_ } @PATH }
+
+sub is_exec_in_path {
+	my $cmd = shift;
+	my $file;
+	for my $dir (@PATH) {
+		next unless -d $dir;
+		($file) = grep { -x $_ }
+			map  { $dir.'/'.$_ }
+			grep { $_ eq $cmd  }
+			@{&get_dir($dir)->{files}};
+		return $file if $file;
+	}
 }
 
 sub unique_file {
@@ -124,35 +135,89 @@ sub unique_file {
 	return $file;
 }
 
-sub wipe_cache {
+#########################
+#### Engine routines ####
+#########################
+
+sub f_index_path { foreach my $dir (grep {-e $_} @PATH) { read_dir($dir, 1) } }
+
+sub f_wipe_cache { 
 	foreach my $dir (keys %{$cache->{dirs}})  {
 		unless ($cache->{dirs}{$dir}{no_wipe}) {
-			my $diff = $cache->{dirs}{$dir}{cache_time} - time;
-			if ($diff > $cache_time) { delete ${$cache->{dirs}}{$dir}; }
+			my $diff = time - $cache->{dirs}{$dir}{cache_time};
+			if ($diff > $cache_time) { delete ${$cache->{dirs}}{$dir} }
 		}
 	}
 }
 
-sub glob {
+sub f_read_cache {
+	my $file = _shift_file(@_);
+	if (-s $file) { $cache = lock_retrieve($file); } # _our_ $cache
+}
+
+sub f_save_cache {
+	my $file = _shift_file(@_);
+	lock_store($cache, $file);
+}
+
+sub _shift_file {
+	my $file = pop || $dump_file; # $Zoidberg::FileRoutines::dump_file
+        if ( !$file || ref $file) { die 'Got no valid filename.' }
+        $dump_file = $file; # memorise it
+	return $file;
 }
 
 1;
+
 __END__
 
 =pod
 
+=head1 NAME
+
+Zoidberg::FileRoutines
+
+=head1 DESCRIPTION
+
+This module contains a few routines dealing with files and/or directories.
+Mainly used to speed up searching $ENV{PATH} by "hashing" the filesystem.
+
+=head1 EXPORT
+
+By default none, potentially all functions listed below.
+
 =head1 FUNCTIONS
 
-=item B<abs_path($file, $reference)>
+=over 4
 
-  Returns the absolute path for possible relative $file
-  $reference is optional an defaults to $ENV{PWD}
+=item C<abs_path($file, $reference)>
 
-=item B<scan_dir($dir)>
+Returns the absolute path for possible relative C<$file>
+C<$reference> is optional an defaults to C<$ENV{PWD}>
 
-  Returns contents of $dir as a hash ref containing :
+=item C<get_dir($dir)>
+
+Returns contents of $dir as a hash ref containing :
 	'files' => [@files],
 	'dirs' => [@dirs],
-	'rest' => [@rest],
-  'rest' are all files that are not (a symlink to) a file or dir
+Array files contains everything that ain't a dir.
+
+=item C<list_path()>
+
+Returns a list of all the files found in directories listed in C<$ENV{PATH}>.
+Non existing directories in C<$ENV{PATH}> are silently ignored.
+
+=item C<is_exec_in_path($cmd)>
+
+Returns absolute path if C<$cmd> exists in a directory listed in C<$ENV{PATH}>
+and is executable. If C<$cmd> can't be found or isn't executable undef is returned.
+
+=back
+
+=head1 TODO
+
+This module could benefit from using C<tie()>.
+
+=cut
+
 

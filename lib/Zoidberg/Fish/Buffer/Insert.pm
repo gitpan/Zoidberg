@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer::Insert;
 
-our $VERSION = '0.2';
+our $VERSION = '0.3a_pre1';
 
 use strict;
 use base 'Zoidberg::Fish::Buffer';
@@ -43,17 +43,9 @@ sub k_backspace { # TODO clean up -- make rub_out multiline
 	else { $self->bell; }
 }
 
-sub k_return {
-	my $self = shift;
-	unless (join('', @{$self->{fb}}) =~ /^\s*$/) { $self->{continu} = 0; }
-	else {
-		$self->reset;
-		print "\n";
-		$self->respawn;
-	}
-}
+sub k_return { $_[0]->submit }
 
-sub k_insert {} # overwrite
+sub k_insert {} # FIXME do overwrite
 
 sub k_page_up { $_[0]->history_get('prev', 10); }
 

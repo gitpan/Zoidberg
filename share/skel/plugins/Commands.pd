@@ -1,0 +1,27 @@
+$VAR1 = {
+	module => 'Zoidberg::Fish::Commands',
+	config => { max_dir_hist => 10 },
+	commands => {
+			back      => $me.q{->cd('<-')},
+			forw      => $me.q{->cd('->')},
+	},
+	export => [qw/
+			cd
+			
+			exec		eval		source 
+			
+			alias		command		false 
+			fc		getopts		newgrp
+			pwd		read		true
+			umask		unalias		wait
+			
+			set 		setenv
+			
+			_delete_object	_load_object 	
+			_hide		_unhide
+			
+			print		echo		quit
+			
+			_time
+	/],
+}

@@ -1,0 +1,603 @@
+TODO-list for Zoidberg -- a modular perl shell
+<http://zoidberg.sourceforge.net>
+
+Disclaimer: some of this might be in dutch - in fact most of this is dutch
+
+__TRAJECTORY__
+
+Done    * Zoidberg::Config ipv %fluff_conf	Sat Apr 19
+		> Need abs_path to make LOCAL_DIR work
+		> Where to put dependecies for make process ?
+			Storable, Pod::Text, Pod::Html  ...
+Done	* return values tunen			Thu Apr 24
+		> exec_error heeft teveel uses => kan worden overschreven
+		  moet een meer coherente afhandeling komen
+Done	* rules fixen				Tue Jun 17
+Done    * context config fixen			Mon Jun 23
+        * Intel fixen
+                * ~pa<TAB> !!!
+                * meer splitsen over plugins
+Done    * make release doen (nog eens naar MANIFEST systeem kijken)
+        * Changes goed bijwerken (andere metafiles checken)
+     -- v0.3a_preX release CPAN only
+Done ?  * debug cpan install			Wed May 7
+     -- v0.3a release
+Done    * stringparse fixen			Wed Jun 4
+        * meer opties in fluff implementeren
+     -- v0.3b release
+        * Zoidberg::Output
+Done		* ook error output		Jun 19
+		* and warnings :)
+                * debug modes etc. goed zetten (use $DEBUG)
+		- RFC: should this include input as well ??? (of course renaming to Zoidberg::IO )
+        * plugins opschonen
+        * Zoidberg::IPC
+		* simpele YAML voor ipc --> portability & security, echt yaml module nog te log
+                * In principe alleen commando's (both shell and subroutine ->syntax)
+                * Doch wel een eval_perl commando
+                * Een "get_till_eof_from_socket" commando als input method
+     -- v0.4a release
+        * Zoidberg::Events
+                * transperante events lib
+                * denk aan curses based plugins
+                * denk ala FileRoutines
+        * Zoidberg::Shell afmaken
+                * ipv Zoidberg::Eval::_Self een $ENV{something} gebruiken
+        * ~/.zoid/cmd ( is deze nog nodig met ipc ? - misschien eerder een .zoid/auto ? )
+     -- 1.0_rc1 release -- beta test fase (geen '_' voor CPAN !)
+        * docs afwerken
+                * quick guide - examples
+                * user guide
+                * devel guide
+                * pod's
+                * faq
+        * bugs hunten
+        * tests creeren
+        * examples creeren
+     -- rc's totdat er geen obvious bugs meer zijn
+
+        Buiten release traject:
+        * Rox plugin - pas na 0.3a
+        * Input methode pluggable maken - niet alleen Buffer moduses doch ook niet-buffer moduses
+                * IPC
+                * Curses based plugins
+                * source scripts
+        * Help plugin module repareren
+		* also search for ~/.zoid/plugins/zoidname/*.pod !
+        * CPAN plugin
+		* interaction
+		* tab expansion ( caching !)
+        * controleren of Hermes nog werkt
+        * Huge utils libs (think autoloader)
+	* Buffer could use some speed optimisation / cleaning
+
+
+__DEVEL__
+
+use die instead of print error + set exec error unless you want a sophisticated error message
+	* use die '' for programmer errors
+	* use die "\n" for user errors
+use retun value to indicate failure for commands
+
+use default cpan modules, do not use exotic modules
+	A default module will be used by extension programs
+	so using it won't be a complete waste of resources.
+	When using excotic, changes are you have double code.
+
+is ->{vars} still needed ??
+
+use Carp for nicer error messages ? -- or carp like functionality ?
+
+moet MANIFEST niet gewoon alle files bevatten ?
+	dan moeten de profiles juist aangeven wat er niet mee moet ofzo ?
+
+what should a parse tree look like ?
+
+$ ls -al
+['shell', qw/ls -al/]
+$ print 'dus'
+['perl', q{print 'dus'}]
+$ ls -al | print '>>', $_, "\n"
+( ['shell', qw/ls -al/], '|', ['perl', q{print 'dus'}] )
+  -or- 
+( ['shell', qw/ls -al/], 'PIPE', ['perl', q{print 'dus'}] )
+
+parser structure
+
+      prompt input       -- 'string'
+            |
+      rules -> context   -- 
+            |
+interface --|
+input       |
+      logical list       -- ( [ ['shell', qw/ls -al/], 'PIPE', ['perl', q{print 'dus'}] ] 'AND' [ ['perl', q{print 'dus'}] ] )
+            |          -or- ( ['shell', qw/ls -al/], 'PIPE', ['perl', q{print 'dus'}] 'AND' ['perl', q{print 'dus'}] )
+        Job - (fork)
+	    |
+         pipeline        -- ( ['shell', qw/ls -al/], 'PIPE', ['perl', q{print 'dus'}] )
+            |
+     (redirections ?)
+	    |
+        statement        -- ['shell', qw/ls -al/]
+
+Waar worden contexts aan subs gekoppeld ? In rules parsing of in eval ??
+	ans: zo laat mogenlijk - het vorige statement kan ze veranderd hebben
+	==> [ 'shell', qw/ls -al/ ]
+	       ^^^^^not a sub but a context
+Waar blijven context switches ? ( als in perl{ // }g )
+	ans: [ 'CONTEXT', @ARGS ] but also allow [ ['CONTEXT', @meta], @ARGS ]
+	     first element is meta field
+
+split logical tokens
+	parse 1 element <--i
+             |             |
+             V             |
+	exec 1 element ----i
+
+parse() voor ruwe input
+do() voor internal/socket input
+
+over socket bijv ['do', 'COMMAND', qw/cd ../]
+maar dit mag ook ['parse', 'cd .. && ls']
+              of ['->myplug->dosomethin', @args]
+what about pipelines ? (en logical lists)
+ ['do', ['CONTEXT', @args], '|', ['CONTEXT', @args] ]
+ voelt goed, maar is niet compat met
+ ['do', ['CONTEXT', @meta], @args]
+ dan toch: ['do', {context => CONTEXT, args => [@args], .. } ] ? UGLY
+ or pipe() and list() ?
+
+__WANTED_MODS__
+
+
+commands intel verfijnen -- meteen usage fixe in 1 hash
+	ook getopt toeveogen
+	zie Shell::POSIX::Builtin
+	Commands->usage
+	
+plain output format for non-interactive modus
+	zie parent->output plannen
+
+FILE context afsplitsen van SYSTEM context voor tab_exp
+	-- handig voor save file .. ZoidParse doet dit nu zelf ... is vunzig
+
+
+__WANTED_FEATURES__
+
+<!!>
+redirections alleen naar files -- voor andere contxts work around
+	parent->print wordt parent->output
+	return value van command "sh-style" naar parent->{exec_error}
+	als input van pipe pound_ voor while STDIN do ...
+		tevens in shell block $\w => ENV pound\w => eigen namespace
+	als output naar pipe doet parent->print bufferen en dinge doorgeven.
+	
+.zoid/plugin => .zoid/lib 
+		ook een .zoid/bin 
+		(misschien een ENV CMDPATH oid)
+		.pl'tjes uit deze dir worden automatisch gesourced ipv gerunt
+		
+</!!>
+
+config soms reffen naar $ENV (not sure)
+
+<TAB><TAB> => I feel lucky
+bell-style => sub { print "\a" }
+
+alias command
+
+config-/user- profiles
+
+how about handlers voor dingen als files, dirs, urls etc.
+	as plugin - rox plugin as proof of concept
+
+meer intel in grammar om perl te onderscheiden van files etc.
+
+subs in "->" namespace (?)
+
+history:
+	entries taggen zodat er meer histories in 1 object met 1 file hange
+	~/.zoid/var/log 
+	-->timestamp [tag.subtag] data\n<--
+
+context
+	aparte context config hash
+	strict context bit
+		strict perl bit
+	recursive context met q.*//
+	
+config:
+	profile - legt alles vast
+		gram-file (RO)
+		rc file
+		logout file
+		huidige core
+	plugin_conf
+		per plugin file in dir
+
+	bitje to suppress inlog scripts
+
+	Zoidberg::Config
+		( uitzoeken welke dir)
+		legt hard coded shit vast
+
+		=> fluff geen config taak meer
+
+	config en env ""tie'en"" -- bijv. voor EDITOR MANPATH etc..
+
+	ENV:
+		PATH
+			be aware of '.' and '' in path ...
+			 { $ENV{PATH} .= ':/sbin' }
+		ignoreeof --
+			Die Shell l??t sich nach Setzen dieser Variable nicht mehr durch Dr?cken
+			von Control-D beenden, sondern nur noch per Eingabe von "exit".
+		COLUMNS
+			If you set this variable to a numeric value, various commands use its
+			value as the width of the output device in columns. This overrides the default.
+		LINES idem
+		TMPDIR
+		
+		PS1
+		
+		http://asis.web.cern.ch/asis/products/GNU.SYS/bash-2.05/bashref_5.html
+
+	alias should be bash compat
+
+fluff:
+	--login
+	--noprofile
+	""When  bash is invoked as an interactive login shell, or as a non-inter-
+       active shell with the --login option, it first reads and executes  com-
+       mands  from  the file /etc/profile, if that file exists.  After reading
+       that file, it looks for ~/.bash_profile, ~/.bash_login, and ~/.profile,
+       in  that order, and reads and executes commands from the first one that
+       exists and is readable.  The --noprofile option may be  used  when  the
+       shell is started to inhibit this behavior.
+
+       When  a  login  shell  exits, bash reads and executes commands from the
+       file ~/.bash_logout, if it exists.
+
+       When an interactive shell that is not a login shell  is  started,  bash
+       reads  and executes commands from ~/.bashrc, if that file exists.  This
+       may be inhibited by using the --norc option.  The --rcfile file  option
+       will  force  bash  to  read  and  execute commands from file instead of
+       ~/.bashrc.
+
+       When bash is started non-interactively, to  run  a  shell  script,  for
+       example, it looks for the variable BASH_ENV in the environment, expands
+       its value if it appears there, and uses the expanded value as the  name
+       of  a  file to read and execute.  Bash behaves as if the following com-
+       mand were executed:
+              if [ -n "$BASH_ENV" ]; then . "$BASH_ENV"; fi
+       but the value of the PATH variable is not used to search for  the  file
+       name.""
+
+	-Dvar=value als -e export var = value
+	-s  Command input is taken from the standard input -- voor pipes etc
+	--rcfile oid
+	--Mmodule
+
+Buffer
+	nano keybindings implementen in Buffer::Fish
+	kill and yank
+	auto multiline is nu vunzig - dit moet ala Shell::POSIX uit parser komen
+	set autoindent
+
+	check posix stnd. voor default vi-like behauviour
+
+Intel:
+	fix force context for commands and system, think old specials
+
+	cpan context 02modulelist.txt.gz -- caching
+	ook context man caching maken
+
+	tab man pages ENV{MANPATH}
+
+	ooit een keer bash completion compat (???)
+
+api:
+	eenduidige fish api
+
+	Zoidberg::Shell:
+	apart object om source files .pl te maken
+		=> geen default profile nodig
+		(source ne execute)
+
+	api over socket voor child processes
+
+rest:
+	Zoidberg::StringFormat -- Thijs working on this
+		interpolate vars voor prompt en info en etc
+		zie color bug
+	wordt Zoidberg::Ouptut
+
+	t/check_default_config_files_for_syntax_errors.t
+
+	seperate release voor Makefile.pm -- met een skel dir
+	
+
+__RELEASE__
+
+release procedure:
+	set $VERSION in zoidberg.pm ++
+	check $DEVEL in zoidberg.pm
+	update Changes !!
+	update README (version number !!)
+	generate new web docs
+
+	check stubs in Zoidberg.pm
+	update pod - both in modules and help files -- dont forget man1/zoid.pod
+
+	check MANIFEST
+	run "make release"
+	test the release tree extensively ( check for debug code ! )
+		(test with all modules removes from usr/lib/perl ... -- make uninstall)
+	run "make release"
+
+	add "_cvs" to $VERSION in non-release tree
+	cvs commit (non-release tree !)
+	cvs tag -- always goes wrong :((
+
+	upload to sf and cpan
+	update the website (upload docs) !
+
+	announce on freshmeat
+	announce on zoidberg-devel
+
+__VISION__
+
+modular
+repeat after me MODULAR
+events zijn goed
+plugins zijn goed
+load modules _only_ when needed
+
+__DOCS__
+
+Short text:
+Zoidberg provides a modular Perl shell written, configured, and operated entirely in Perl. 
+It aspires to be a fully operational login shell with all the features one normally 
+expects. But it also gives direct access to Perl objects and data structures from the 
+command line, and allows you to run Perl code within the scope of your commandline. 
+what about interactive boxes in screen ?
+
+Philosophy text
+	be true to perl
+	don't be a *sh
+	be an interface not an interpreter
+	etc.
+
+common problems
+	browse sh faqs and answer shell-dependent questions
+
+## Zoidberg Documentation
+
+  # Contents
+
+  0 Introduction
+  1 Release notes (oid)
+  2 Tour
+  3 Common configuration variables
+  4 Default syntax
+    4.1 Commands
+    4.2 Aliases
+    4.3 Perl
+    4.4 Methods
+    4.5 Pipes
+  5 Use of objects
+    5.1 Standard objects
+    5.2 Custom objects
+  6 Jobs and Screens
+  7 Communication
+  8 FAQ
+  9 Disclaimer and Copyright
+
+__NOTES__
+
+routines that might be usefull for making perl more shell friendly
+	shell($bash_script_string) for compat (and quick hacks)
+	cmd(@args) like exec(@args) but with zoid's job control etc.
+	pipeline( \@cmd1, \@cmd2 ...) for creating pipelines
+	export() to get vars in the parent programs' ENV
+	source() to hook scripts together
+	most of Zoidberg::FileRoutines
+	of course AUTOLOADER from zoid's Shell.pm work alike
+
+	maybe even a subshell()
+	and get_output_from_cmd() as a replacement for $output = `cmd`
+
+	of course perl replaces sed & awk
+	but how about some routines for quickly editing line based records ?
+	colom(2) is better then (split /\t/, $_)[2]
+
+	tab expand files in perl context
+	more routines for handling arrays of filenames, see also FileRoutines
+
+	see subroutines in 4html_doc.pl
+
+take a look at man tcsh
+
+man sh heeft een mooie lijst args
+
+build-ins van bash checken voor kritieke dingen
+	dit is nu een Shell::POSIX prob
+
+check http://www.catb.org/~esr/writings/taoup/html/ch10s04.html for config ideas
+
+
+<r> one thing I found though ... not related to pmake though, is that if you override
+default system settings when doing a perl Makefile.PL with the PREFIX and LIB options, the make
+process will still ...
+<r> ... try and install the man pages in the default system directory (resulting in 'you do
+not have permission to write to /usr/perl5/..."
+<c> hmm, didnt do it for me (with a 5.6.1)
+<t> Hm. Sounds like a bug to me.
+<c> mine landed in $HOME/perl/share/m an/man3 .. ;)
+<r> this is under 5.005.03 on a solaris box ... one of the first times that I have had to
+bow to a separate infrastructure team for server maintenance and admin - is actually quite a good
+feeling ... :-)
+
+Subject: How do I construct a ... matches all files except "." and ".." ?
+Date: Thu Mar 18 17:16:55 EST 1993
+
+2.11) How do I construct a shell glob-pattern that matches all files
+      except "." and ".." ?
+
+      You'd think this would be easy.
+
+      *        Matches all files that don't begin with a ".";
+
+      .*             Matches all files that do begin with a ".", but
+             this includes the special entries "." and "..",
+             which often you don't want;
+
+      .[!.]*   (Newer shells only; some shells use a "^" instead of
+             the "!"; POSIX shells must accept the "!", but may
+             accept a "^" as well; all portable applications shall
+             not use an unquoted "^" immediately following the "[")
+
+             Matches all files that begin with a "." and are
+             followed by a non-"."; unfortunately this will miss
+             "..foo";
+
+      .??*     Matches files that begin with a "." and which are
+             at least 3 characters long.  This neatly avoids
+             "." and "..", but also misses ".a" .
+
+      So to match all files except "." and ".." safely you have to use
+      3 patterns (if you don't have filenames like ".a" you can leave
+      out the first):
+
+        .[!.]* .??* *
+
+      Alternatively you could employ an external program or two and use
+      backquote substitution.  This is pretty good:
+
+      `ls -a | sed -e '/^\.$/d' -e '/^\.\.$/d'`
+
+        (or `ls -A` in some Unix versions)
+
+      but even it will mess up on files with newlines, IFS characters
+      or wildcards in their names.
+
+      In ksh, you can use:  .!(.|) *
+      
+      
+Subject: How are shell variables assigned?
+>From: wicks@dcdmjw.fnal.gov (Matthew Wicks)
+Date: Wed, 7 Oct 92 14:28:18 -0500
+
+5.4)  How are shell variables assigned?
+
+      The shells from the C shell category use "set variable=value" for
+      variables local to the shell and "setenv variable value" for
+      environment variables.  To get rid of variables in these shells
+      use unset and unsetenv.  The shells from the Bourne shell
+      category use "variable=value" and may require an "export
+      VARIABLE_NAME" to place the variable into the environment.  To
+      get rid of the variables use unset.
+      
+Subject: What "dot" files do the various shells use?
+>From: wicks@dcdmjw.fnal.gov (Matthew Wicks)
+>From: tmb@idiap.ch (Thomas M. Breuel)
+Date: Wed, 28 Oct 92 03:30:36 +0100
+
+5.6)  What "dot" files do the various shells use?
+
+      Although this may not be a complete listing, this provides the
+      majority of information.
+
+      csh
+          Some versions have system-wide .cshrc and .login files.  Every
+          version puts them in different places.
+
+          Start-up (in this order):
+              .cshrc   - always; unless the -f option is used.
+              .login   - login shells.
+
+          Upon termination:
+              .logout  - login shells.
+
+          Others:
+              .history - saves the history (based on $savehist).
+
+      tcsh
+          Start-up (in this order):
+              /etc/csh.cshrc - always.
+              /etc/csh.login - login shells.
+              .tcshrc        - always.
+              .cshrc         - if no .tcshrc was present.
+              .login         - login shells
+
+          Upon termination:
+              .logout        - login shells.
+
+          Others:
+              .history       - saves the history (based on $savehist).
+              .cshdirs       - saves the directory stack.
+
+      sh
+          Start-up (in this order):
+              /etc/profile - login shells.
+              .profile     - login shells.
+
+          Upon termination:
+              any command (or script) specified using the command:
+                 trap "command" 0
+
+      ksh
+          Start-up (in this order):
+              /etc/profile - login shells.
+              .profile     - login shells; unless the -p option is used.
+              $ENV         - always, if it is set; unless the -p option is used.
+			  /etc/suid_profile - when the -p option is used.
+
+          Upon termination:
+              any command (or script) specified using the command:
+                 trap "command" 0
+
+      bash
+          Start-up (in this order):
+              /etc/profile  - login shells.
+              .bash_profile - login shells.
+              .profile      - login if no .bash_profile is present.
+              .bashrc       - interactive non-login shells.
+              $ENV          - always, if it is set.
+
+          Upon termination:
+              .bash_logout  - login shells.
+
+          Others:
+              .inputrc      - Readline initialization.
+
+      zsh
+          Start-up (in this order):
+              .zshenv   - always, unless -f is specified.
+              .zprofile - login shells.
+              .zshrc    - interactive shells, unless -f is specified.
+              .zlogin   - login shells.
+
+          Upon termination:
+              .zlogout  - login shells.
+
+      rc
+          Start-up:
+              .rcrc - login shells
+
+I suggest for zoid 
+	(/etc/profile once Shell::POSIX works)
+	/etc/zoid(.pl) - system wide stuff- always unless some option
+	.zoid/init(.pl) - always unless some option
+	.zoid/exit(.pl) - idem
+	($ENV{ENV} - see POSIX - (wait for Shell::POSIX ?))
+
+__CHECK CPAN__
+
+Carp -- make errors indicate the rigth place
+Class::AutoUse -- load on use to speed things up
+Autoloader -- cut large command libs in pieces
+POE -- advanced events stuff, maybe we need this but it might be to heavy
+Exporter::Tidy -- said to be faster then Exporter vanilla
+IPC::Run -- doesn't this do everything we want ? - or does it do to much ?
+File::... -- for our fileutils lib

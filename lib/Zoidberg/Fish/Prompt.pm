@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Prompt;
 
-our $VERSION = '0.2';
+our $VERSION = '0.3a_pre1';
 
 use strict;
 
@@ -69,7 +69,7 @@ sub reset {
 
 package Zoidberg::Fish::Prompt::string;
 
-use Term::ANSIColor;
+use Term::ANSIColor ();
 
 sub new {
     my $class = shift;
