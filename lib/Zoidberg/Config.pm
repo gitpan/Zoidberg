@@ -32,7 +32,7 @@ L<Zoidberg>, L<http://zoidberg.sourceforge.net>
 
 package Zoidberg::Config;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use vars '$ScriptDir';

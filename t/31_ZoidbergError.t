@@ -1,5 +1,5 @@
 use Test::More tests => 3;
-use Zoidberg::Error;
+use Zoidberg::Utils::Error;
 
 # normal use
 

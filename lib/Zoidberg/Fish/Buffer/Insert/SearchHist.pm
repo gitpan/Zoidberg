@@ -1,6 +1,8 @@
 package Zoidberg::Fish::Buffer::Insert::SearchHist;
 use base 'Zoidberg::Fish::Buffer::Insert';
 
+our $VERSION = '0.41';
+
 use strict;
 
 sub _switch_on {

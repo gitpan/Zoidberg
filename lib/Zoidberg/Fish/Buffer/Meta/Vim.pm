@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer::Meta::Vim;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use Zoidberg::Utils qw/debug/;
@@ -11,6 +11,7 @@ sub _switch_on { $_[0]->{_vim_meta_cmd} = '' }
 sub _do_key {
 	my ($self, $key) = @_;
 	if ($key eq 'esc') { $self->{_vim_meta_cmd} = '' }
+	elsif (length($key) > 1) { $self->bell }
 	else {
 		$self->{_vim_meta_cmd} .= $key;
 		$self->_try_it;

@@ -1,18 +1,15 @@
 package Zoidberg::Eval;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use vars qw/$AUTOLOAD/;
 
 use Data::Dumper;
 use File::Glob qw/:glob/;
-use Zoidberg::Error;
-use Zoidberg::FileRoutines qw/:exec_scope is_exec_in_path/;
-use Zoidberg::Shell;
-use Zoidberg::Utils qw/:output/;
+use Zoidberg::Shell qw/:all/;
+use Zoidberg::Utils qw/:error :output :fs is_exec_in_path/;
 
-our @ISA = qw/Zoidberg::Shell/;
 our %_REFS; # stores refs to objects of this class for ipc use
 
 $| = 1;
@@ -23,24 +20,23 @@ sub _eval_block {
 	my ($self, $ref) = @_;
 	my $context = $$ref[0]{context};
 
-	eval {
-		# TODO check plugin contexts
-		if (
-			exists $self->{zoid}{contexts}{$context} and
-			exists $self->{zoid}{contexts}{$context}{handler}
-		) {
-			debug "going to call handler for context: $context";
-			$self->{zoid}{contexts}{$context}{handler}->(@$ref);
-		}
-		elsif ($self->can('_do_'.lc($context))) {
-			my $sub = '_do_'.lc($context);
-			debug "going to call sub: $sub";
-			$self->$sub(@$ref);
-		}
-		else { error qq/No handler defined for context $context\n/ }
-	};
-
-	die if $@;
+	if (
+		exists $self->{zoid}{contexts}{$context} and
+		exists $self->{zoid}{contexts}{$context}{handler}
+	) {
+		debug "going to call handler for context: $context";
+		$self->{zoid}{contexts}{$context}{handler}->(@$ref);
+	}
+	elsif ($self->can('_do_'.lc($context))) {
+		my $sub = '_do_'.lc($context);
+		debug "going to call sub: $sub";
+		$self->$sub(@$ref);
+	}
+	else {
+		$context
+			? error "No handler defined for context $context"
+			: bug   'No context defined !'
+	}
 }
 
 =cut
@@ -81,9 +77,10 @@ sub _do_cmd {
 	$self->{zoid}{topic} = $words[-1]; # FIXME check this
 
 	debug 'going to run cmd: ', join ', ', $cmd, @words;
-	no strict 'refs';
+	local $Zoidberg::Utils::Error::Scope = $cmd;
+#	no strict 'refs';
 #	if (defined *{ref($self).'::'.$cmd}{CODE}) {
-#		return $self->{zoid}->print( &{ref($self).'::'.$cmd}->(@$block) )
+#		return output &{ref($self).'::'.$cmd}->(@$block);
 #	}
 #	elsif (exists $self->{zoid}{commands}{$cmd}) {
 	if (exists $self->{zoid}{commands}{$cmd}) {
@@ -127,12 +124,14 @@ sub _expand_path { # path expansion
 
 sub _check_exec {
 	# arg 0 is executable when this sub doesn't die
+	debug "checking $_[0]";
 	if ($_[0] =~ m|/|) {
 		error $_[0].': No such file or directory' unless -e $_[0];
 		error $_[0].': is a directory' if -d $_[0];
 		error $_[0].': Permission denied' unless -x $_[0];
 	}
 	elsif (! is_exec_in_path($_[0])) { error $_[0].': command not found' }
+	debug 'approved';
 	return 1;
 }
 
@@ -142,14 +141,15 @@ sub _do_perl {
 	$_Code = $_Eval->_parse_opts($_Code, $_Meta->{opts}) if $_Meta->{opts};
 	debug 'going to eval perl code: no strict; '.$_Code;
 
-	my $self = $_Eval->{zoid};
-	$_ = $self->{topic};
+	my $shell = $_Eval->{zoid};
+	$_ = $shell->{topic};
 
+	local $Zoidberg::Utils::Error::Scope = ['zoid', 0];
 	eval 'no strict; '.$_Code; # FIXME make strict an option
         die if $@; # should we check $! / $? / $^E here ?
 
-        $self->{topic} = $_;
-	print "\n" if $self->{settings}{interactive}; # ugly hack
+        $shell->{topic} = $_;
+	print "\n" if $shell->{settings}{interactive}; # ugly hack
 }
 
 sub _interpolate_magic_char {
@@ -170,7 +170,14 @@ our $_Zoid_gram = {
 
 sub _dezoidify {
 	my ($self, $code) = @_;
-	my $p = $self->{zoid}{StringParser};
+	
+	## environment variables
+	#$code =~ s/\$([A-Z_]+)(?![\{\[\w])/\$ENV{$1}/g;
+	# TODO arrays
+	# TODO unless $1 eq ENV || SIG || ..
+
+	## arrow syntax
+	my $p = $self->{zoid}{stringparser};
 	$p->set($_Zoid_gram, $code);
 	my ($n_code, $block, $token, $prev_token, $thing);
 	while ($p->more) { 
@@ -184,10 +191,10 @@ sub _dezoidify {
 		elsif (
 			$self->{zoid}{settings}{naked_zoid} && ($prev_token ne 'MCH')
 			or grep {$_ eq $thing} @{$self->{zoid}->list_clothes}
-		) { $n_code .= '$self->'.$block }
-		elsif ($thing =~ /^\{/) { $n_code .= '$self->{vars}'.$block }
+		) { $n_code .= '$shell->'.$block }
+		elsif ($thing =~ /^\{/) { $n_code .= '$shell->{vars}'.$block }
 		else {
-			$block =~ s/^(\w+)/\$self->{objects}{$1}/;
+			$block =~ s/^(\w+)/\$shell->{objects}{$1}/;
 			$n_code .= $block;
 		}
 	}
@@ -242,7 +249,7 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Zoidberg>, L<Zoidberg::ZoidParse>,
+L<Zoidberg>, L<Zoidberg::Parser>, L<Zoidberg::Contractor>
 L<http://zoidberg.sourceforge.net>
 
 =cut

@@ -1,6 +1,45 @@
 Revision history for Zoidberg -- a modular perl shell
 <http://zoidberg.sourceforge.net>
 
+0.41 Fr Dec 05 2003
+        Maintenance release, also know as "the sinterklaas release" (yes you have 
+	to be dutch to pronounce that correctly). Not really new features but some
+	nice bug fixes and clean-ups.
+        - replace all parent->print() calls with output()
+	- removed overload for chdir, ENV{PWD} is now set at precmd event
+	- small bug fixes in Buffer and Intel
+	- Update lot of pod documentation
+
+     We Dec 03 2003
+        - small bug fix in Parser
+        - small bug fixes in Buffer and Buffer::Meta::Vim
+
+     Tu Dec 02 2003
+        Re-routing some interface stuff
+	- changed $self in eval scope to $shell
+	- make Zoidberg inherit from Zoidberg::Shell
+	- Zoidberg::Eval now only imports from Z::Shell
+	- Make shell() in Z::Shell the main exec interface
+	- added system() to shell so allow DispatchTable can be used to call
+	system commands, OO only to avoid conflicts with perlfunc system()
+	- make Zoidberg::AUTOLOAD also call Z::Shell::AUTOLOAD
+
+     Fr Nov 28 2003
+        - Fixed bug that caused non existing commands to die silently
+	- made error string less informative :)
+
+     Tu Nov 25 2003
+     	Done all kinds of namespace cleanup
+        - Fixed Zoidberg::Utils cluster interface using a modified version 
+	of Exporter::Tidy
+        - Moved Output, Error and FileRoutines to the Utils namespace,
+	FileRoutines was renamed to FileSystem
+	- Renamed StringParse to StringParser
+	- Removed PdParse and StringFormat, moving pd_read to Utils.pm
+
+     Su Nov 02 2003
+        - Splitted Z::ZoidParse into Z::Parser and Z::Contractor
+
 0.40 Th Oct 30 2003
 	You may notice the numbering scheme changed, this was done to make the
 	numbering a little more CPAN friendly.

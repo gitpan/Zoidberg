@@ -1,13 +1,13 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use vars qw/$DEVNULL/;
-use base 'Zoidberg::Fish';
-use Zoidberg::Error;
-use Zoidberg::FileRoutines qw/abs_path list_path get_dir $DEVNULL/;
-use Zoidberg::Utils qw/debug/;
+use Zoidberg::Fish;
+use Zoidberg::Utils qw/:error debug abs_path list_path get_dir/;
+
+our @ISA = qw/Zoidberg::Fish/;
 
 sub init {
 	my $self = shift;
@@ -31,7 +31,7 @@ sub expand {
 		$block->[0]{pref} = $l_block;
 		unless ( ! length $block->[-1] or $block->[0]{pref} =~ s/\Q$block->[-1]\E$//) {
 			# probably escape chars make the match fail
-			my @words = $self->{parent}{StringParser}->split(
+			my @words = $self->{parent}{stringparser}->split(
 				['word_gram', {no_esc_rm => 1}],
 				$l_block );
 			return '', $string.$l_block, []
@@ -79,7 +79,7 @@ sub expand {
 
 sub _get_last_block {
 	my ($self, $string) = @_;
-	my @dinge = $self->{parent}{StringParser}->split('script_gram', $string);
+	my @dinge = $self->{parent}{stringparser}->split('script_gram', $string);
 	# remember @dinge contains scalar refs
 
 	unless (scalar(@dinge) && ref $dinge[-1]) { return ($string, '') }
@@ -213,23 +213,28 @@ sub i__words {
 	push @{$block->[0]{poss}}, grep /^\Q$arg\E/, keys %{$self->{parent}{commands}};
 	push @{$block->[0]{poss}}, grep /^\Q$arg\E/, list_path() unless $arg =~ m#/#;
 
-	return ($block, qw/exec __more_words/);
-}
+	$block = $self->i_dirs_n_files($block, 'x') || $block;
 
-sub i___more_words { # FIXME FIXME FIXME
-	my ($self, $block) = @_;
-	for (@{$self->{parent}{_word_lists}}) {
-		push @{$block->[0]{poss}}, $_->($block->[-1]) 
+	for (keys %{$self->{parent}{contexts}}) {
+		next unless exists $self->{parent}{contexts}{$_}{word_list};
+		push @{$block->[0]{poss}}, grep {defined $_}
+			$self->{parent}{contexts}{$_}{word_list}->($block->[-1]);
 	}
+
 	return $block;
 }
 
-sub i_sh {
-	my ($self, $block) = @_;
-	return ($block, ($block->[-1] =~ /^-/) ? 'man_opts' : 'dirs_n_files');
-}
+sub i_sh { return $_[1], ($_[1]->[-1] =~ /^-/) ? 'man_opts' : 'cmd' }
 
-sub i_cmd { return ($_[1], 'dirs_n_files') }
+sub i_cmd { 
+	my ($self, $block) = @_;
+	my @exp = qw/dirs_n_files/;
+	if (exists $self->{config}{commands}{$$block[1]}) {
+		my $exp = $self->{config}{commands}{$$block[1]};
+		unshift @exp, ref($exp) ? (@$exp) : $exp;
+	}
+	return $block, @exp;
+}
 
 sub i_dirs { i_dirs_n_files(@_, 'd') }
 sub i_files { i_dirs_n_files(@_, 'f') }
@@ -253,7 +258,8 @@ sub i_dirs_n_files { # TODO globbing tab :)
 	else {
 		if ($arg =~ s!^(.*/)!!) { 
 			$dir = abs_path($1);
-			$block->[0]{pref} .= _quote_file($1);
+			$block->[0]{pref} .= _quote_file($1)
+				unless $block->[0]{i_dirs_n_files}++;
 		}
 		else { $dir = '.' }
 		return undef unless -d $dir;
@@ -261,7 +267,8 @@ sub i_dirs_n_files { # TODO globbing tab :)
 	}
 	debug "Expanding files ($type) from dir: $dir->{path} with arg: $arg";
 
-	my @poss = sort grep /^\Q$arg\E/, @{$dir->{files}};
+	my @poss;
+	@poss = sort grep /^\Q$arg\E/, @{$dir->{files}} if $type =~ /f|x/;
 	@poss = grep { -x $dir->{path}.$_ } @poss if $type =~ /x/;
 
 	unshift @poss, sort grep /^\Q$arg\E/, map( {$_.'/'} @{$dir->{dirs}}, qw/. ../ ) if $type =~ /d|x/;
@@ -270,7 +277,7 @@ sub i_dirs_n_files { # TODO globbing tab :)
 		if $self->{parent}{settings}{hide_hidden_files} && $arg !~ /^\./;
 
 	$block->[0]{_file_quote}++;
-	$block->[0]{poss} = \@poss;
+	push @{$block->[0]{poss}}, @poss;
 
 	debug 'Got ', scalar(@{$block->[0]{poss}}), ' matches';
 	return $block;
@@ -301,8 +308,12 @@ sub i_man_opts { # TODO caching (tie classe die ook usefull is voor FileRoutines
 	
 	# re-route STDERR
 	open SAVERR, '>&STDERR';
-	open STDERR, '>'.$DEVNULL;
-	
+	open STDERR, '>', $Zoidberg::Utils::FileSystem::DEVNULL;
+
+	# reset manpager
+	my $manpager = $ENV{MANPAGER};
+	$ENV{MANPAGER} = 'cat'; # is this portable ?
+
 	debug "Going to open pipeline '-|', '$self->{config}{man_cmd}', '$block->[1]'";
 	open MAN, '-|', $self->{config}{man_cmd}, $block->[1];
 	my (%poss, @poss, $state, $desc);
@@ -336,13 +347,12 @@ sub i_man_opts { # TODO caching (tie classe die ook usefull is voor FileRoutines
 	close MAN;
 
 	open STDERR, '>&SAVERR';
+	$ENV{MANPAGER} = $manpager;
 	
-#	use Data::Dumper;
-#	print Dumper \%poss;
-	
-	$block->[0]{poss} = [ grep /^\Q$block->[-1]\E/, sort keys %poss ];
-	$block->[0]{message} = ${$poss{$block->[0]{poss}[0]}} if scalar(@{$block->[0]{poss}}) == 1;
-	$block->[0]{message} =~ s/[\s\n]+$//;
+	$block->[0]{poss} = [ grep /^\Q$$block[-1]\E/, sort keys %poss ];
+	if (@{$$block[0]{poss}} == 1) { $$block[0]{message} = ${$poss{$$block[0]{poss}[0]}} }
+	elsif (exists $poss{$$block[-1]}) { $$block[0]{message} = ${$poss{$$block[-1]}} }
+	$block->[0]{message} =~ s/[\s\n]+$//; #chomp it
 
 	return $block;
 }
@@ -374,6 +384,8 @@ None by default.
 FIXME
 
 =head2 Build-in expansions
+
+FIXME
 
 =head1 AUTHOR
 

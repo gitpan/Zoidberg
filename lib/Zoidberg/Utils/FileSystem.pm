@@ -1,6 +1,6 @@
-package Zoidberg::FileRoutines;
+package Zoidberg::Utils::FileSystem;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 #use File::Spec;
@@ -8,12 +8,10 @@ use Carp;
 use Env qw/@PATH/;
 use Storable qw(lock_store lock_retrieve);
 use File::Spec; # TODO make more use of this lib
-use Zoidberg::Utils qw/debug/;
-use Exporter::Tidy
-	engine     => [qw/index_path wipe_cache read_cache save_cache/],
-	basic      => [qw/abs_path list_path get_dir unique_file $DEVNULL/],
-	exec_scope => [qw/abs_path get_dir list_path $DEVNULL/],
-	other      => [qw/is_exec_in_path/];
+use Zoidberg::Utils::Output qw/debug/;
+use Exporter::Tidy 
+	default => [qw/abs_path list_path get_dir unique_file is_exec_in_path/],
+	engine  => [qw/index_path wipe_cache read_cache save_cache/];
 
 our $cache = {};
 our $cache_time = 300; # 5x60 -- 5 minutes
@@ -21,9 +19,7 @@ our $dump_file = '';
 
 our $DEVNULL = File::Spec->devnull();
 
-#############################
-#### Basic file routines ####
-#############################
+## Basic file routines ##
 
 sub abs_path {
 	# return absolute path
@@ -109,6 +105,7 @@ sub is_exec_in_path {
 			@{&get_dir($dir)->{files}};
 		return $file if $file;
 	}
+	return 0;
 }
 
 sub unique_file {
@@ -131,9 +128,7 @@ sub unique_file {
 	return $file;
 }
 
-#########################
-#### Engine routines ####
-#########################
+## Engine routines ##
 
 sub index_path { foreach my $dir (grep {-e $_} @PATH) { read_dir($dir, 1) } }
 
@@ -157,7 +152,7 @@ sub save_cache {
 }
 
 sub _shift_file {
-	my $file = pop || $dump_file; # $Zoidberg::FileRoutines::dump_file
+	my $file = pop || $dump_file;
         if ( !$file || ref $file) { die 'Got no valid filename.' }
         $dump_file = $file; # memorise it
 	return $file;
@@ -171,12 +166,15 @@ __END__
 
 =head1 NAME
 
-Zoidberg::FileRoutines - file handling utils for Zoidberg
+Zoidberg::Utils::FileRoutines - filesystem routines
 
 =head1 DESCRIPTION
 
 This module contains a few routines dealing with files and/or directories.
 Mainly used to speed up searching $ENV{PATH} by "hashing" the filesystem.
+
+Although when working within the Zoidberg framework this module should be used through
+the L<Zoidberg::Utils> interface, it also can be used on it's own.
 
 =head1 EXPORT
 
@@ -227,5 +225,6 @@ modify it under the same terms as Perl itself.
 =head1 SEE ALSO
 
 L<Zoidberg>
+L<Zoidberg::Utils>
 
 =cut

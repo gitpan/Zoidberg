@@ -2,12 +2,12 @@
 package Fake::Zoid;
 
 use Zoidberg::Utils qw/read_file/;
-use Zoidberg::StringParse;
+use Zoidberg::StringParser;
 
 sub new {
 	my $self = {};
 	my $coll = read_file('./share/data/grammar.pd');
-	$$self{StringParser} = Zoidberg::StringParse->new($$coll{_base_gram}, $coll);
+	$$self{stringparser} = Zoidberg::StringParser->new($$coll{_base_gram}, $coll);
 	bless $self;
 }
 
@@ -19,25 +19,25 @@ use Zoidberg::Eval;
 require Test::More;
 
 my @test_data1 = (
-	['->dus', '$self->dus', 'basic'],
+	['->dus', '$shell->dus', 'basic'],
 	['$f00->dus', '$f00->dus', 'normal arrow'],
-	['->Plug', '$self->{objects}{Plug}', 'objects'],
-	['->{Var}', '$self->{vars}{Var}', 'vars'],
+	['->Plug', '$shell->{objects}{Plug}', 'objects'],
+	['->{Var}', '$shell->{vars}{Var}', 'vars'],
 	[
 		q/print 'OK' if ->{settings}{notify}/,
-		q/print 'OK' if $self->{settings}{notify}/,
+		q/print 'OK' if $shell->{settings}{notify}/,
 		'old quoting bug'
 	],
 );
 my @test_data2 = (
-	['->Plug', '$self->Plug', 'naked objects'],
-	['->{Var}', '$self->{Var}', 'naked vars'],
+	['->Plug', '$shell->Plug', 'naked objects'],
+	['->{Var}', '$shell->{Var}', 'naked vars'],
 );
 
 import Test::More tests => @test_data1 + @test_data2;
 
 my $zoid = Fake::Zoid->new;
-my $eval = Zoidberg::Eval->new($zoid);
+my $eval = Zoidberg::Eval->_new($zoid);
 
 for (@test_data1) {
 	my $dezoid = $eval->_dezoidify($$_[0]);

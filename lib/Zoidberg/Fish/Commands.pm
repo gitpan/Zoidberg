@@ -1,15 +1,14 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use Cwd;
 use Env qw/@CDPATH @DIRSTACK/;
 use Data::Dumper;
-use Zoidberg::Error;
 use base 'Zoidberg::Fish';
 #require Benchmark;
-use Zoidberg::FileRoutines qw/abs_path/;
+use Zoidberg::Utils qw/:default abs_path/;
 
 # FIXME what to do with commands that use block input ?
 #  currently hacked with statements like join(' ', @_)
@@ -30,9 +29,9 @@ sub exec { # not completely stable I'm afraid
 
 sub eval {
 	my $self = shift;
-	$self->parent->do( join( ' ', @_) );
-	error $self->{parent}{exec_error}
-		if $self->{parent}{exec_error};
+	$self->parent->shell( join( ' ', @_) );
+	error $self->{parent}{error}
+		if $self->{parent}{error};
 }
 
 sub setenv {
@@ -82,22 +81,16 @@ sub set {
 	else { $self->{settings}{$opt} = $val || 1 }
 }
 
-sub source { 
+sub source {
 	my $self = shift;
-	my $file = shift || error 'source: need a filename as argument';
-	$file = abs_path($file);
-	error "source: no such file: $file" unless -f $file;
 	# FIXME more intelligent behaviour -- see bash man page
-	eval q{package Main; do $file; die $@ if $@ };
-	die $@ if $@;
+	$self->{parent}->source(@_);
 }
 
 sub alias {
 	my $self = shift;
 	unless (@_) {
-		while (my ($k, $v) = each  %{$self->{parent}{aliases}}) { 
-			$self->print( q/alias /.$k.q/='/.$v.q/'/) 
-		}
+		output map "alias $_='$$self{parent}{aliases}{$_}'", keys %{$$self{parent}{aliases}};
 		return;
 	}
 	for (@_) {
@@ -224,7 +217,7 @@ sub pushd { # FIXME some options - see man bash
 
 sub pwd {
 	my $self = shift;
-	$self->parent->print($ENV{PWD});
+	output $ENV{PWD};
 }
 
 sub _delete_object { # FIXME some kind of 'force' option to delte config, so autoload won't happen
@@ -269,7 +262,7 @@ sub _unhide {
 
 sub quit {
 	my $self = shift;
-	if (@_) { $self->{parent}->print(join(" ", @_)); }
+	output join " ", @_ if @_;
 	$self->{parent}->History->del; # leave no trace # FIXME - ergggg vunzig
 	$self->{parent}->exit;
 }
@@ -289,8 +282,8 @@ see Zoidberg::Fish for details.
 
 =head1 DESCRIPTION
 
-This object handles internal commands
-for the Zoidberg shell, it is a core object.
+This object contains internal/built-in commands
+for the Zoidberg shell.
 
 =head2 EXPORT
 
@@ -298,22 +291,7 @@ None by default.
 
 =head1 METHODS
 
-=head2 parse($command, @options)
-
-  Execute command $command
-
-=head2 c_*
-
-  Methods bound to specific commands
-
-=head2 list()
-
-  List commands
-
-=head2 help()
-
-  Output helpfull text
-
+FIXME
 
 =head1 AUTHOR
 

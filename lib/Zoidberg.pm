@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 our $LONG_VERSION =
 "Zoidberg $VERSION
 
@@ -20,24 +20,15 @@ use Carp;
 use Data::Dumper;
 use Cwd ();
 use Zoidberg::Config;
-use Zoidberg::FileRoutines 'get_dir', '_prefix' => 'f_', ':engine';
-use Zoidberg::DispatchTable _prefix => 'dt_', 'stack';
-use Zoidberg::Error;
-use Zoidberg::Utils qw/:output complain read_data_file merge_hash/;
+use Zoidberg::Parser;
+use Zoidberg::Shell ();
 use Zoidberg::PluginHash;
+use Zoidberg::DispatchTable _prefix => 'dt_', 'stack';
+use Zoidberg::Utils 
+	qw/:error :output :fs read_data_file merge_hash :fs_engine/;
 #use Zoidberg::IPC;
 
-use base 'Zoidberg::ZoidParse';
-
-BEGIN { 
-	*CORE::GLOBAL::chdir = sub { # FIXME this has to go
-		my $oldpwd = $ENV{PWD};
-		CORE::chdir($_[0]) || return;
-		$ENV{OLDPWD} = $ENV{PWD};
-		$ENV{PWD} = Cwd::cwd();
-		return 1;
-	}
-}
+our @ISA = qw/Zoidberg::Parser Zoidberg::Shell/;
 
 our %Objects; # used to store refs to ALL Zoidberg objects
 our @core_objects = qw/Buffer Intel Prompt Commands History/; # DEPRECATED
@@ -78,12 +69,13 @@ sub new {
 	my %events;
 	tie %events, 'Zoidberg::DispatchTable', $self, $self->{events};
 	$self->{events} = \%events;
+	$self->{events}{precmd} = sub { @ENV{qw/OLDPWD PWD/} = ($ENV{PWD}, Cwd::cwd()) };
 
 #    $self->{ipc} = Zoidberg::IPC->new($self);
 #    $self->{ipc}->init;
 
 	## parser 
-	Zoidberg::ZoidParse::init($self);
+	Zoidberg::Parser::init($self);
 
 	## plugins
 	my %objects;
@@ -94,7 +86,7 @@ sub new {
 	my $file_cache = "$cache_dir/zoid_path_cache" ;
 	if (-s $file_cache) { f_read_cache($file_cache) }
 	else {
-		$self->print("Initializing PATH cache.", 'message');
+		message 'Initializing PATH cache.';
 		&f_index_path;
 	}
 	$self->{events}{precmd} = \&f_wipe_cache;
@@ -102,6 +94,7 @@ sub new {
 	return $self;
 }
 
+sub import { bug "You should use Zoidberg::Shell to import from" if @_ > 1 }
 
 # ############ #
 # Main routine #
@@ -120,7 +113,7 @@ sub main_loop { # FIXME use @input_methods instead of buffer
 		my $cmd = eval { $self->Buffer->get_string };
 		last unless $self->{_continue}; # buffer can call exit
 		if ($@) {
-			$self->print("\nBuffer died. \n$@", 'error');
+			complain "\nBuffer died. \n$@";
 			sleep 1; # infinite loop protection
 			next;
 		}
@@ -129,22 +122,13 @@ sub main_loop { # FIXME use @input_methods instead of buffer
 		$self->broadcast_event('cmd', $cmd);
 		print STDERR $cmd if $self->{settings}{verbose}; # posix spec
 
-		$self->do($cmd);
+		$self->shell_string($cmd);
 	}
 }
 
 ### Backward compatible temporary code ###
 
-require Zoidberg::Output;
-
-sub print {
-	shift;
-	my ($thing, $type, $opt) = @_;
-	die 'options are deprecated' if $opt;
-	if ($type eq 'error') { return complain($thing) }
-	elsif ($type eq 'debug') { return debug($thing) }
-	Zoidberg::Output::typed_output($type, $thing);
-}
+sub print { bug 'deprecated method, use Zoidberg::Utils qw/:output/' }
 
 # #################### #
 # information routines #
@@ -198,7 +182,7 @@ sub _reload_file {
 	my $self = shift;
 	my $file = shift;
 	local($^W)=0;
-	$self->print("reloading $file",'message');
+	message "reloading $file";
 	eval "do '$file'";
 }
 
@@ -231,8 +215,7 @@ sub AUTOLOAD {
 	my $call = (split/::/,$AUTOLOAD)[-1];
 
 	local $ERROR_CALLER = 1;
-	error "Undefined subroutine &Zoidberg::$call called"
-		unless ref $self;
+	error "Undefined subroutine &Zoidberg::$call called" unless ref $self;
 	debug "Zoidberg::AUTOLOAD got $call";
 
 	if (exists $self->{objects}{$call}) {
@@ -240,7 +223,11 @@ sub AUTOLOAD {
 		*{ref($self).'::'.$call} = sub { return $self->{objects}{$call} };
 		goto \&{$call};
 	}
-	else { error "Zoidberg could not AUTOLOAD $call" }
+	else { # Shell like behaviour
+		debug 'No such object, trying to shell() it';
+		@_ = ([$call, @_]); # force words parsing
+		goto \&Zoidberg::Shell::shell;
+	}
 }
 
 # ############# #
@@ -264,14 +251,14 @@ sub round_up {
 				$self->{objects}{$n}->round_up;
 			}
 		}
-		Zoidberg::ZoidParse::round_up($self);
+		Zoidberg::Parser::round_up($self);
 
 		f_save_cache($self->{settings}{cache_dir}.'/zoid_path_cache');
 
 		undef $self->{round_up};
 	}
 	delete $Objects{"$self"};
-	return $self->{exec_error} unless $self->{settings}{interactive}; # FIXME check this
+	return $self->{error} unless $self->{settings}{interactive}; # FIXME check this
 }
 
 sub DESTROY {
@@ -315,6 +302,7 @@ sub get_hist { return (undef, '', 0); }
 
 package Zoidberg::stub::commands;
 use base 'Zoidberg::stub';
+use Zoidberg::Utils qw/:output/;
 sub parse {
 	if ($_[1] eq 'quit') { $_[0]->c_quit; }
 	return "";
@@ -322,7 +310,7 @@ sub parse {
 sub list { return ['quit']; }
 sub c_quit {
 	my $self = shift;
-	if ($_[0]) {$self->{parent}->print($_[0]) }
+	if ($_[0]) { output $_[0] }
 	$self->{parent}->History->del_one_hist; # leave no trace
 	$self->{parent}->exit;
 }
@@ -392,7 +380,7 @@ will be initialised when tested.
 
 =item C<print($ding, $type, $options)>
 
-I<DEPRECATED - in time this will be moved to a package Zoidberg::Output>
+I<DEPRECATED - in time this will be moved to a package Zoidberg::Utils::Output>
 
 I<Use this in secondary objects and plugins.> 
 
@@ -409,7 +397,7 @@ C<$options> is an string containing chars as option switches.
 
 =item C<ask($question)>
 
-I<DEPRECATED - in time this will be moved to a package Zoidberg::Output>
+I<DEPRECATED - in time this will be moved to a package Zoidberg::Utils::Output>
 
 Prompts C<$question> to user and returns answer
 

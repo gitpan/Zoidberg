@@ -1,12 +1,12 @@
 package Zoidberg::Fish::History;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use IO::File();
 use Data::Dumper;
 use Storable qw/dclone/;
-
+use Zoidberg::Utils qw/message/;
 use base 'Zoidberg::Fish';
 
 # @{$self->{data}{hist}} = [ [command, \@_, \%prop], .. ]
@@ -45,7 +45,7 @@ sub open_log {
 	if ($self->{config}{log_file}) {
 		$self->{log} = IO::File->new('>>'.$self->{config}{log_file}) || die $!;
 	}
-	else { $self->print("No hist log found.", 'warning'); }
+	else { message "No hist log found." }
 }
 
 sub close_log {
@@ -57,7 +57,7 @@ sub close_log {
 		print OUT map {$self->log_record($_)."\n"} grep {@{$_->[0]}} reverse @{$self->{data}{hist}};
 		close OUT;
 	}
-	else { $self->print("No hist log found.", 'warning'); }
+	else { message "No hist log found." }
 }
 
 sub log_record {
@@ -185,15 +185,12 @@ Zoidberg::Fish::History - History plugin for the Zoidberg shell
 This module is a Zoidberg plugin,
 see Zoidberg::Fish for details.
 
-=head1 ABSTRACT
-
-  This module provides history functionality for
-  the zoidberg shell.
-
 =head1 DESCRIPTION
 
-This module provides history functionality for the
-zoidberg shell. It is a core plugin.
+This module provides a history log for the
+zoidberg shell.
+
+FIXME OUT OF DATE DOC !
 
 =head2 EXPORT
 

@@ -1,35 +1,23 @@
-package Zoidberg::ZoidParse;
+package Zoidberg::Contractor;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use POSIX ();
 use Config;
-use Zoidberg::Utils qw/:output complain read_data_file/;
+use Zoidberg::Utils qw/:error :output/;
 use Zoidberg::Eval;
-use Zoidberg::Error;
-use Zoidberg::StringParse;
-use Zoidberg::FileRoutines qw/is_exec_in_path abs_path/;
+
+sub new { init(bless {}, shift) }
 
 sub init {
 	my $self = shift;
 
-	# add some commands and events
+	## add some commands and events
 	$self->{commands}{$_} = $_  for qw/fg bg kill jobs/;
-	$self->{events}{precmd} = '->_reap_jobs';
+	$self->{events}{precmd} = '->reap_jobs';
 
-	#### parser stuff ####
-	$self->{_pending} = [];
-	my $coll = read_data_file('grammar');
-	$self->{StringParser} = Zoidberg::StringParse->new($coll->{_base_gram}, $coll);
-
-	#### context stuff ####
-	# {contexts}{$context} exists of word_list block_filter intel and handler
-	my %contexts;
-	tie %contexts, 'Zoidberg::DispatchTable', $self;
-	$self->{contexts} = \%contexts;
-
-	#### jobs stuff ####
+	## jobs stuff
 	$self->{jobs} = [];
 	$self->{_sighash} = {};
 	$self->{terminal} = fileno(STDIN);
@@ -38,7 +26,7 @@ sub init {
 	my @sna = split/[, ]/,$Config{sig_name};
 	$self->{_sighash}{$sno[$_]} = $sna[$_] for (0..$#sno);
 
-	if ($self->{settings}{interactive}) {
+	if ($self->{settings}{interactive}) { # FIXME bad for recursiveness
 		# Loop until we are in the foreground.
 		while (POSIX::tcgetpgrp($self->{terminal}) != ($self->{pgid} = getpgrp)) {
 			kill (21, -$self->{pgid}); # SIGTTIN , 
@@ -47,216 +35,40 @@ sub init {
 		# ignore interactive and job control signals
 		$SIG{$_} = 'IGNORE' for qw/INT QUIT TSTP TTIN TTOU/;
 		# Put ourselves in our own process group, just to be sure.
-		# And get terminal control
 		$self->{pgid} = $$;
 		POSIX::setpgid(0, $self->{pgid});
+		# And get terminal control
 		POSIX::tcsetpgrp($self->{terminal}, $self->{pgid});
 		$self->{tmodes} = POSIX::Termios->new;
 		$self->{tmodes}->getattr;
 	}
 
-	#### setup eval namespace ####
-	$self->{_eval} = Zoidberg::Eval->_new($self);
+	## setup eval namespace
+	$self->{eval} = Zoidberg::Eval->_new($self);
+
+	return $self;
 }
 
-sub round_up {
-	my $self = shift;
-	
-	for (@{$self->{jobs}}) {
-		kill(1, -$_->{pgid})
-			if    $_->{procs}
-			and ! $_->{nohup};
-	}
+sub round_up { # FIXME usage of procs is not transparent
+	kill(1, -$_->{pgid})
+		for grep { $_->{procs} } @{$_[0]->{jobs}};
 }
 
-# ############### #
-# Parser routines #
-# ############### #
+sub shell_job { todo }
 
-sub do {
-	my $self = shift; 
-	my ($re, @list);
-
-	my $zref = $ENV{ZOIDREF};
-	$ENV{ZOIDREF} = $self;
-
-	eval {
-		unless (ref $_[0]) { @list = eval { $self->parse(@_) } }
-		else { @list = grep {defined $_} map {ref($_) ? $self->parse_block($$_) : $_} @_ }
-	};
-	return complain if $@ || ! @list;
-	$re = $self->do_list(\@list);
-
-	$ENV{ZOIDREF} = $zref;
-	return $re;
-}
-
-sub parse {
-	my $self = shift;
-	my @tree = $self->{StringParser}->split('script_gram', @_);
-	if (my $e = $self->{StringParser}->error) { error $e }
-	debug 'raw parse tree: ', \@tree;
-        @tree = grep {defined $_} map { ref($_) ? $self->parse_block($$_) : $_} @tree;
-	debug 'parse tree: ', \@tree;
-        return @tree;
-}
-
-sub parse_block  { # mag schoner, doch werkt
-	# args: string, broken_bit (also known as "Intel bit")
-	my ($self, $string, $bit) = @_;
-	my $ref = [ { broken => $bit }, $string ];
-
-	# check block contexts
-	debug 'trying custom block contexts';
-	for (keys %{$self->{contexts}}) {
-		next unless exists $self->{contexts}{$_}{block_filter};
-		@$ref = $self->{contexts}{$_}{block_filter}->(@$ref);
-		last if length $$ref[0]{context};
-	}
-
-	unless (length $$ref[0]{context} or $self->{settings}{_no_hardcoded_context}) {
-		debug 'trying default block contexts';
-		@$ref = $self->_block_context(@$ref)
-	}
-
-	# check word contexts
-	unless (length $$ref[0]{context}) {
-		my @words = ($#$ref > 1) 
-			? @$ref[1 .. $#$ref]
-			: $self->_split_words($$ref[1], $$ref[0]{broken});
-		$ref = [$$ref[0], @words];
-
-		if ($$ref[0]{broken} && $#words < 1) { # default for intel
-			$$ref[0]{context} = '_WORDS';
-			return $ref;
-		}
-
-		@$ref = $self->parse_words(@$ref);
-
-		unless (length $$ref[0]{context}) {
-			return undef
-				if $string !~ /\S/
-				or $self->{settings}{_no_hardcoded_context};
-			$$ref[0]{context} = 'SH'; # hardcoded default
-		}
-	}
-
-	$$ref[0]{string} = $string; # attach _original_ string
-	return $ref;
-}
-
-sub _block_context {
-	my ($self, $meta, $block) = @_;
-	my $perl_regexp = join '|', @{$self->{settings}{perl_keywords}};
-	if (
-		$block =~ s/^\s*(\w*){(.*)}(\w*)\s*$/$2/s
-		or $$meta{broken} && $block =~ s/^\s*(\w*){(.*)$/$2/s
-	) {
-		$$meta{context} = uc($1) || 'PERL';
-		$$meta{opts} = $3;
-		if (lc($1) eq 'zoid') {
-			$$meta{context} = 'PERL';
-			$$meta{dezoidify} = 1;
-		}
-		elsif (
-			$$meta{context} eq 'SH' or $$meta{context} eq 'CMD'
-			or exists $self->{contexts}{$$meta{context}}{word_list}
-		) {
-			$block = [ $self->_split_words($block, $$meta{broken}) ];
-			$$meta{context} = '_WORDS' if $$meta{broken} and $#$block < 1;
-		}
-	}
-	elsif ( $block =~ /^\s*(->|[\$\@\%\&\*\xA3]\S|\w+\(|($perl_regexp)\b)/s ) {
-		$$meta{context} = 'PERL';
-		$$meta{dezoidify} = 1;
-	}
-	
-	return($meta, $block);
-}
-
-sub parse_words {
-	my ($self, $meta, @words) = @_;
-
-	# parse redirections
-	unless (
-		$self->{settings}{_no_redirection}
-		|| ($#words < 2)
-		|| $words[-2] !~ /^(\d?)(>>|>|<)$/
-	) {
-		# FIXME what about escapes ? (see posix spec)
-		my $num = $1 || ( ($2 eq '<') ? 0 : 1 );
-		$$meta{fd}{$num} = [pop(@words), $2];
-		pop @words;
-	}
-
-	# check builtin cmd and sh context
-	unless ( $self->{settings}{_no_hardcoded_context} ) {
-		debug 'trying default word contexts';
-#		no strict 'refs';
-		if (
-#			defined *{"Zoidberg::Eval::$words[0]"}{CODE} or
-			exists $self->{commands}{$words[0]}
-		) { $$meta{context} = 'CMD' }
-		elsif (
-			($words[0] =~ m!/! and -x $words[0] and ! -d $words[0])
-			or is_exec_in_path($words[0])
-		) { $$meta{context} = 'SH' }
-		$$meta{_is_checked}++ if $$meta{context};
-	}
-
-	# check dynamic word contexts
-	unless (length $$meta{context}) {
-		debug 'trying custom word contexts';
-		for (keys %{$self->{contexts}}) {
-			next unless exists $self->{contexts}{$_}{word_list};
-			my $r = $self->{contexts}{$_}{word_list}->($meta, @words);
-			next unless $r;
-			$meta = $r if ref $r;
-			$$meta{context} ||= $_;
-			last;
-		}
-	}
-
-	return($meta, @words);
-}
-
-sub _split_words {
-	my ($self, $string, $broken) = @_;
-	my @words = grep {length $_} $self->{StringParser}->split('word_gram', $string);
-	# grep length instead of defined to remove empty parts resulting from whitespaces
-	# FIXME this causes intel to strip spaces from begin of string
-	unless ($broken) { @words = $self->__do_aliases(@words) }
-	else { push @words, '' if (! @words) || ($string =~ /(\s+)$/ and $words[-1] !~ /$1$/) }
-	return @words; # filter out empty fields
-}
-
-sub __do_aliases {
-	my ($self, $key, @rest) = @_;
-	if (exists $self->{aliases}{$key}) {
-		my $alias = $self->{aliases}{$key};
-		# TODO Should we support other data types ?
-		@rest = $self->__do_aliases(@rest)
-			if $alias =~ /\s$/; # recurs - see posix spec
-		unshift @rest, 
-			($alias =~ /\s/)
-			? ( grep {$_} $self->{StringParser}->split('word_gram', $alias) )
-			: ( $alias );
-		return @rest;
-	}
-	else { return ($key, @rest) }
-}
-
-sub do_list {
-	my ($self, $ref) = @_;
+sub shell_list {
+	my ($self, @list) = @_;
+	return unless grep {defined $_} @list;
 	my $prev_sign = '';
-	while (scalar @{$ref}) {
-		my ($pipe, $sign) = $self->_next_statement($ref);
-		if ( defined($self->{exec_error}) ? ($prev_sign eq 'AND') : ($prev_sign eq 'OR') ) {
+	while (@list) {
+		my ($pipe, $sign) = $self->_next_statement(\@list);
+		if ( defined($self->{error}) ? ($prev_sign eq 'AND') : ($prev_sign eq 'OR') ) {
 			$prev_sign = $sign if $sign =~ /^(EOS|BGS)$/;
 			next;
 		}
 		else {
 			$prev_sign = $sign;
+			next unless @$pipe; # skipping empty pipes
 			Zoidberg::Job->exec(
 				tree => $pipe,
 				zoid => $self,
@@ -280,25 +92,6 @@ sub _next_statement {
 	return \@r, $sign;
 }
 
-# ############### #
-# funky interface #
-# ############### #
-
-sub source { 
-	my $self = shift;
-	my $zref = $ENV{ZOIDREF};
-	$ENV{ZOIDREF} = $self;
-	for (@_) {
-		my $file = abs_path($_);
-		error "source: no such file: $file" unless -f $file;
-		debug "going to source: $file";
-		# FIXME more intelligent behaviour -- see bash man page
-		eval q{package Main; do $file; die $@ if $@ };
-		complain if $@;
-	}
-	$self = $zref;
-}
-
 # ############ #
 # Job routines #
 # ############ #
@@ -306,7 +99,7 @@ sub source {
 sub jobs { 
 	my $self = shift;
 	my $j = scalar(@_) ? \@_ : $self->{jobs};
-	$_->print_status for grep {$_->{bg}} @$j;
+	$_->print_status for grep {$_->{bg} || $_->{stopped}} @$j;
 }
 
 sub bg {
@@ -461,7 +254,7 @@ sub _current_job {
 	return( wantarray ? @r : $r[0] );
 }
 
-sub _reap_jobs {
+sub reap_jobs {
 	my $self = shift;
 	debug 'gonna reap me some jobs';
 	my (@completed, @running);
@@ -479,14 +272,13 @@ package Zoidberg::Job;
 use strict;
 use IO::File;
 use POSIX qw/:sys_wait_h :signal_h/;
-use Zoidberg::Error;
-use Zoidberg::Utils qw/debug complain/;
+use Zoidberg::Utils qw/:error debug/;
 
 sub exec { # like new() but runs immediatly
 	my $self = ref($_[0]) ? shift : &new;
 
 	eval { $self->run };
-	$@ ? complain : undef $self->{zoid}{exec_error};
+	$@ ? complain : undef $self->{zoid}{error};
 
 	return $self->{id};
 }
@@ -552,7 +344,7 @@ sub run {
 			$self->{zoid}{round_up} = 0; # FIXME this bit has to many uses
 			$ENV{ZOIDPID} = $zoidpid;
 			eval { $self->_run_child($proc, $stdin, $stdout) };
-			exit $@ ? complain($@) : 0; # exit child process
+			exit complain || 0; # exit child process
 		}
 
 		POSIX::close($stdin)  unless $stdin  == fileno STDIN ;
@@ -564,7 +356,7 @@ sub run {
 	# postrun
 	POSIX::tcsetpgrp($self->{zoid}{terminal}, $self->{zoid}{pgid});
 	my $exit_status = $self->{procs}[-1]->{status};
-	error {silent => 1}, $exit_status if $exit_status;
+	error {printed => 1}, $exit_status if $exit_status; # silent error
 }
 
 sub _run_child {
@@ -591,7 +383,7 @@ sub _run_child {
     	$self->{zoid}->silent;
 
 	# here we go ... finally
-	$self->{zoid}{_eval}->_eval_block($proc->{block});
+	$self->{zoid}{eval}->_eval_block($proc->{block});
 }
 
 # ################ #
@@ -603,7 +395,7 @@ sub do_redirect {
 	my @save_fd;
 	for my $fd (keys %{$block->[0]{fd}}) {
 		my @opt = @{$block->[0]{fd}{$fd}};
-		($opt[0]) = $self->{zoid}{_eval}->$_($opt[0])
+		($opt[0]) = $self->{zoid}{eval}->$_($opt[0])
 			for @Zoidberg::Eval::_shell_expand;
 		debug "redirecting fd $fd to $opt[1]$opt[0]";
 		my $fh = ref($opt[0]) ? $opt[0] : IO::File->new(@opt);
@@ -732,7 +524,7 @@ sub print_status {
 package Zoidberg::Job::builtin;
 
 use strict;
-use Zoidberg::Error;
+use Zoidberg::Utils qw/:error message/;
 
 our @ISA = qw/Zoidberg::Job/;
 
@@ -745,9 +537,7 @@ sub run {
 	if ($self->{settings}{interactive}) {
 		my $ii = 0;
 		$SIG{INT} = sub {
-			if (++$ii < 3) {
-				$self->{zoid}->print("[$self->{id}] instruction terminated by SIGINT", 'message')
-			}
+			if (++$ii < 3) { message "[$$self{id}] instruction terminated by SIGINT" }
 			else { die "Got SIGINT 3 times, killing native scuddle\n" }
 		};
 	}
@@ -757,7 +547,7 @@ sub run {
 	my $save_fd = $self->do_redirect($block);
 
 	# here we go !
-	eval { $self->{zoid}{_eval}->_eval_block($block) }; # VUNZig om hier een eval te moeten gebruiken
+	eval { $self->{zoid}{eval}->_eval_block($block) }; # VUNZig om hier een eval te moeten gebruiken
 	die if $@; 
 
 	# restore file descriptors
@@ -777,7 +567,7 @@ package Zoidberg::Job::meta;
 
 use strict;
 use vars qw/$AUTOLOAD/;
-use Zoidberg::Error;
+use Zoidberg::Utils qw/:error/;
 
 # sign: XF ==> Xargs Forward
 #       XB <== Xargs Backwards
@@ -834,7 +624,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::ZoidParse - Execute and/or eval statements
+Zoidberg::Contractor - Module to manage jobs
 
 =head1 SYNOPSIS
 
@@ -843,16 +633,15 @@ TODO
 =head1 DESCRIPTION
 
 This module is not intended for external use ... yet.
-Zoidberg inherits from this module, it the 
-handles parsing and executing of command input.
+Zoidberg inherits from this module, it manages jobs.
 
-It uses Zoidberg::StringParse and Zoidberg::Eval.
+It uses Zoidberg::StringParser and Zoidberg::Eval.
 
-Also it defines Zoidberg::Job and subclasses
+Also it defines Zoidberg::Job and subclasses.
 
 =head1 SEE ALSO
 
-L<Zoidberg>, L<Zoidberg::StringParse>, L<Zoidberg::Eval>
+L<Zoidberg>, L<Zoidberg::StringParser>, L<Zoidberg::Eval>
 
 =head1 AUTHORS
 

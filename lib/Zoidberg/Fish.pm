@@ -1,6 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 sub new {
 	my ($class, $zoid, $name) = @_;
@@ -22,11 +22,6 @@ sub init {}
 sub parent {
     my $self = shift;
     return $self->{parent};
-}
-
-sub print {
-    my $self = shift;
-    $self->{parent}->print(@_);
 }
 
 sub config {
@@ -124,12 +119,6 @@ or setting defaults here.
 
 These methods return a reference to the attributes by the same name.
 
-=item C<print()>
-
-Prefered output method.
-
-FIXME this one might move to helper library
-
 =item C<broadcast_event($event_name, @_)>
 
 Broadcast an event to whoever might be listening.
@@ -172,10 +161,8 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Zoidberg>
-
-L<Zoidberg::Help>
-
+L<Zoidberg>,
+L<Zoidberg::Utils>,
 L<http://zoidberg.sourceforge.net>
 
 =cut

@@ -4,66 +4,40 @@ zoiddevel - Development documentation for zoid
 
 =head1 DESCRIPTION
 
+=head2 Debugging
+
+If you switch on the global debug bit and the verbose bit both your input
+and debug information are echoed to STERR. Thus by piping both STDOUT and
+STDERR to a file you get a detailed log of what is happening.
+
+To set both bits type:
+
+ zoid> set debug
+ zoid> set verbose
+
+or start zoid with:
+
+ $ zoid -vD
+
+You can also get debug information from just one module by setting a global
+variable $DEBUG in the module's namespace.
+
+If you set the debug variable to a number higher than 1, you get a stack trace
+of that number of frames for each exception thrown using the C<error()> method.
+
 =head2 Structure
 
-I<Currently changing -- TODO>
+On the website can be found a PDF document with a more detailed overview.
 
-The general structure of the Zoidberg shell has three kinds of 
-objects: the engine, the plugins and libraries.
 
-=over 4
-
-=item Engine
-
-=over 4
-
-=item * Zoidberg:	Main object, event and plugin management
-
-=item * ZoidParse:	Parsing, Job control & POSIX stuff
-
-=item * Eval:		Namespace for command execution
-
-=back
-
-=item Libraries
-
-=over 4
-
-=item * FileRoutines:	File handling routines
-
-=item * StringParse:	Simple syntax parser
-
-=item * Error:		Object Oriented error handling
-
-=item * DistpatchTable:	enforces zoid's dispatch style
-
-=item * Utils:          generic interface
-
-=back
-
-=item Plugins
-
-=over 4
-
-=item * Fish:		Base class for plugins
-
-=item * Core objects:	Provide default interface.
-
-=item * User defined:	extensions
-
-=back
-
-=back
-
-=head3 scheme
-
-                 StringParse
+                 Zoidberg::Contractor ----- Zoidberg::Job::*
+		     |
                      |
-                  ZoidParse
-                     |  |
-                     |  |__________________ Job::*
-                     |
- zoid       ____  Zoidberg _____ Eval
+                  Zoidberg::Parser ----- Zoidberg::StringParser
+                     | 
+                     |  _____________ Zoidberg::Shell
+                     | |
+ zoid       ____  Zoidberg _____ Zoidberg::Eval
  executable       Engine
                      |
                      |
@@ -72,33 +46,14 @@ objects: the engine, the plugins and libraries.
                      |___ {settings} Options and config hashes
                      |___ {events}   DispatchTable with events
                      |___ {commands} DispatchTable with commands
+		     |___ {aliases}  Alias definitions
 
-=head3 Engine
 
-=head3 Configuration
-
-TODO
-
-=head3 Events
-
-TODO
-
-=head3 Libraries
-
-In time Zoidberg::Utils should become the generic interface to multiple 
-library classes.
-
-TODO
-
-=head3 Plugins
-
-TODO
+FIXME some text explaning the desing in more details
 
 =head2 Parse tree
 
 This part describes the form of a parse tree as used between the various Zoidberg objects.
-
-FIXME first field should always be a hash ref
 
 =head3 Example
 
@@ -109,10 +64,10 @@ FIXME first field should always be a hash ref
  # Would be parsed to:
  
  [ 
-	[qw/SH ls -al/],
-	[ [qw/PERL abc/], q{ while (<STDIN>) { print $_ } } ],
+	[{context => 'SH'}, qw/ls -al/],
+	[{context => 'PERL', opts => 'abc'}, q{ while (<STDIN>) { print $_ } } ],
 	'AND',
-	[qw/SH echo done/]
+	[{context => 'SH'}, qw/echo done/]
  ]
  
  
@@ -124,11 +79,11 @@ FIXME first field should always be a hash ref
  # Would be parsed to:
  
  [
-	[qw/CMD cd ../],
+	[{context => 'CMD'}, qw/cd ../],
 	'AND',
-	[qw/SH ls -al/],
+	[{context => 'SH'}, qw/ls -al/],
 	'EOS',	# End Of Statement
-	[qw{SH cp dus ~/tmp/}],
+	[{context => 'SH'}, qw{cp dus ~/tmp/}],
 	'BGS'	# BackGround Statement
  ]
   
@@ -140,17 +95,36 @@ A parse tree is an array consisting of blocks and tokens. A block can be any kin
 a nested array. Blocks directly following each other are supposed to be a pipeline. A token is a delimiter 
 between blocks.
 
-The first field of a block contains information about the block, all other field in a block make up the content.
+The first field of a block is a hash which contains information about the block, 
+all other field in a block make up the content.
 The most important information about a block is the context, which tells the parser how to execute the block.
-This first field can be: 
-
- a scalar       ==> it is the context name
- a nested hash  ==> the key 'context' contains the context name
-
 You are  free to store all kinds of specific information in this first field, but some
 key names are reserved.
 
 FIXME reserved meta fields
+
+=head3 Pseudo parse trees
+
+These are forms that can be used with the C<shell()> function provided by L<Zoidberg::Shell>.
+Just as by the real parse tree blocks of code are references and tokens are plain
+scalars. A block that is a scalar reference will be parsed completely (although expected to be one block).
+A block that is a array referenc will be considered completely parsed if the first element
+is a hash reference, else it is considered a word list.
+
+	# for example ls -al | perl{ while (<STDIN>) { print $_ }  }abc && echo done
+	# can executed as :
+	
+	shell(
+		[qw/ls -al/], 
+		\'perl{ while (<STDIN>) { print $_ }  }abc', 
+		'AND'
+		[{context => 'SH'}, qw/echo done/]
+	);
+
+Using this kind of pseudo trees only makes sense if you are lazy or you don't know exactly what
+the command is but you have some clues.
+
+FIXME explain which kind of (pseudo) parse tree fits in each of the Parser and Contractor routines
 
 =head2 PluginConf
 
@@ -212,4 +186,3 @@ should use this hash to convert strings back to references.
 =head1 SEE ALSO
 
 L<perl(1)>, L<http://zoidberg.sourceforge.net>
-

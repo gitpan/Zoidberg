@@ -1,7 +1,7 @@
 
 # Hic sunt leones.
 
-package Zoidberg::StringParse::grammar;
+package Zoidberg::StringParser::grammar;
 
 # Adapted Tie-Hash-Stack-0.09 by Michael K. Neylon 
 # to do more specific stuff for us, like avoiding 
@@ -140,7 +140,7 @@ sub _prepare_gram {
 		my $t = ref $ref->{$_};
 		croak q/Brances of grammars can't be scalar/ unless $t;
 		if (grep {$t eq $_} qw/HASH ARRAY/) {
-			my $c =  'Zoidberg::StringParse::'. lc($t);
+			my $c =  'Zoidberg::StringParser::'. lc($t);
 			$ref->{$_} = $c->new($ref->{$_});
 		}
 		# else do nothing -- assume it to be a well behaved object
@@ -155,7 +155,7 @@ sub _prepare_gram {
 	return $ref;
 }
 
-package Zoidberg::StringParse::array;
+package Zoidberg::StringParser::array;
 
 use strict;
 
@@ -180,7 +180,7 @@ sub fetch {
 	return $ref->[1];
 }
 
-package Zoidberg::StringParse::hash;
+package Zoidberg::StringParser::hash;
 
 use strict;
 
@@ -196,16 +196,16 @@ sub fetch {
 	return $self->[1]{$key};
 }
 
-package Zoidberg::StringParse;
+package Zoidberg::StringParser;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 no warnings; # can't stand the nagging
 use Carp;
 use Zoidberg::Utils qw/debug/;
 
-import Zoidberg::StringParse::grammar;
+import Zoidberg::StringParser::grammar;
 
 sub new {
 	my $class = shift;
@@ -236,7 +236,7 @@ sub set {
 		} @$gram ];
 	}
 	my %gram;
-	tie %gram, 'Zoidberg::StringParse::grammar', $self->{base_gram}, $gram;
+	tie %gram, 'Zoidberg::StringParser::grammar', $self->{base_gram}, $gram;
 	$self->{grammar} = \%gram;
 
 	$self->{string} = shift unless ref $_[0]; # speed hack
@@ -263,7 +263,7 @@ sub get { # get next block
 	if (ref $self->{broken}) { ($block, $_gref) = @{$self->{broken}} }
 	else { $_gref = $self->{grammar} }
 #	my %gram = %{$_gref};
-	tie my %gram, 'Zoidberg::StringParse::grammar', $_gref;
+	tie my %gram, 'Zoidberg::StringParser::grammar', $_gref;
 
 	my ($token, $type, $sign);
 	while (  !$token &&
@@ -438,7 +438,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::StringParse - simple string parser
+Zoidberg::StringParser - simple string parser
 
 =head1 SYNOPSIS
 
@@ -450,7 +450,7 @@ Zoidberg::StringParse - simple string parser
 	    },
 	};
 
-	my $parser = Zoidberg::StringParse->new($base_gram);
+	my $parser = Zoidberg::StringParser->new($base_gram);
 
 	my @blocks = $parser->split(
 	    qr/\|/, 

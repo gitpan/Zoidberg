@@ -1,7 +1,7 @@
 package Zoidberg::Fish::Buffer::Select;
 use Term::ANSIColor;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use base 'Zoidberg::Fish::Buffer';

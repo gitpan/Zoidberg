@@ -1,26 +1,21 @@
 
-package Zoidberg::Error;
+package Zoidberg::Utils::Error;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use Carp;
 use UNIVERSAL qw/isa/;
-use Exporter::Tidy
-	default => [qw/error bug todo/];
+use Exporter::Tidy default => [qw/error bug todo/];
 use overload
 	'""' => \&stringify,
 	'eq' => sub { return $_[0] };
 
+our $Scope = 'zoid';
+
 # ################ #
 # Exported methods #
 # ################ #
-
-our %_caller = (
-	'package' => 0,
-	'file'    => 1,
-	'line'    => 2,
-); # more ?
 
 sub error {
 	my %error;
@@ -30,18 +25,26 @@ sub error {
 		@caller = caller(${$caller[0].'::ERROR_CALLER'}) 
 			if ${$caller[0].'::ERROR_CALLER'};
 
-		if (${$caller[0].'::DEBUG'}) {
-			$error{debug} = ${$caller[0].'::DEBUG'};
+		if ( # debug code
+			$error{debug} = ${$caller[0].'::DEBUG'} 
+				|| $ENV{ZOIDREF}{settings}{debug}
+		) {
 			$error{stack} = [];
-			push @{$error{stack}}, [ (caller($_))[0..2] ]
-				for (1..${$caller[0].'::DEBUG'});
+			push @{$error{stack}}, [ (caller $_)[0..2] ]
+				for (1..$error{debug});
 		}
 	}
 	@error{qw/package file line/} = @caller;
+	
+	if (defined $Scope) { # Code to fake caller
+		$error{scope} = ref($Scope) ? $Scope  : [$Scope, undef];
+		$error{scope}[1] += $error{line} if defined $error{scope}[1];
+	}
+	
 
 	die PROPAGATE($@, @error{qw/file line/}) if $@ && !@_; # make it work more like die
 
-	for (@_) {
+	for (@_) { # compiling the error here
 		unless (ref $_) { $error{string} .= $_ }
 		elsif (isa $_, 'HASH') { %error = (%error, %$_) }
 		else { croak "subroutine error can't handle argument: $_" }
@@ -76,8 +79,10 @@ sub stringify {
 	my %opt = @_;
 	my $string;
 	if ($opt{format} eq 'gnu') {
-		# TODO output cmd name + input line number
-		$string = join(': ', map {$self->{$_}} qw/package line string/) ."\n";
+		$string = join ': ', grep {defined $_} ( $$self{scope} 
+			? ( @{$$self{scope}}, $$self{string} )
+			: ( @$self{qw/package line string/}  ) );
+		$string .= "\n";
 	}
 	else { $string = $self->_perl_string }
 	for (qw/bug todo/) { $string = uc($_) .': '.$string if $self->{'is_'.$_} }
@@ -88,7 +93,8 @@ sub _perl_string {
 	my $self = shift;
 	my $string = $self->{string};
 	$string .= qq# at $self->{file} line $self->{line}\n# unless $string =~ /\n$/;
-	for (@{$self->{propagated}}) { $string = PROPAGATE($string, $_->{file}, $_->{line}) }
+	$string = PROPAGATE($string, $_->{file}, $_->{line})
+		for @{$self->{propagated}}; # recurs
 	return $string;
 }
 
@@ -113,11 +119,11 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Error - error handling module
+Zoidberg::Utils::Error - OO error handling
 
 =head1 SYNOPSIS
 
-	use Zoidberg::Error;
+	use Zoidberg::Utils qw/:error/;
 	
 	sub some_command {
 		error("Wrong number of arguments")
@@ -134,21 +140,13 @@ These methods raise an exception but passing a object containing both the error 
 and caller information. Thus, when the exception is caught, more subtle error messages can be produced
 depending on for example verbosity settings.
 
-=head1 TODO 
-
-More tracing stuff:
-We could use for example an environment variable to control
-verbosity, see C<caller()>. Or on global in the caller package.
-
-Carp and croak like funtions (use other names to avoid confusion)
-
-Maybe a function that traces till the top level input line is found ?
-This is very croak like, but just a little different. Possibly this 
-needs an oo interface, or an global in the caller package ...
+Although when working within the Zoidberg framework this module should be used through
+the L<Zoidberg::Utils> interface, it also can be used on it's own.
 
 =head1 EXPORT
 
-By default C<error()>, C<bug()> and C<todo()>.
+By default C<error()>, C<bug()> and C<todo()>. When using the L<Zoidberg::Utils> interface
+you also get C<complain()>, which in reality belongs to L<Zoidberg::Utils::Output>.
 
 =head1 METHODS
 
@@ -193,7 +191,7 @@ The format 'perl' is the default.
 
 Is automaticly called by C<die()> when you use for example:
 
-	use Zoidberg::Error;
+	use Zoidberg::Utils::Error;
 
 	eval { error 'test' }
 	die if $@; # die is called without explicit argument !
@@ -212,6 +210,12 @@ The exception raised can have the folowing attributes:
 
 Original error string.
 
+=item scope
+
+The global C<$Zoidberg::Utils::Error::Scope> at the time of the exception.
+This is used to hide the real caller information in the gnu formatted
+error string with for example the name of a builtin command.
+
 =item package
 
 Calling package.
@@ -227,6 +231,11 @@ Line in source file where the exception was raised.
 =item debug
 
 The calling package had the global variable C<$DEBUG> set to a non-zero value.
+
+=item stack
+
+When debug was in effect, the caller stack is traced for a number of frames 
+equal to the value of the debug variable and put in the stack attribute.
 
 =item is_bug
 
@@ -259,7 +268,9 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Zoidberg>, L<http://zoidberg.sourceforge.net>,
+L<Zoidberg>, 
+L<Zoidberg::Utils>,
+L<http://zoidberg.sourceforge.net>,
 L<http://www.gnu.org/prep/standards_15.html#SEC15>
 
 =cut

@@ -1,15 +1,15 @@
 
-use Zoidberg::Shell qw/:zoidrc/;
+use Zoidberg::Shell qw/:all/;
 
 # set environment
-%default_env = (
+%env = (
 	EDITOR	=> 'vim',
 	MAILER	=> '',
 	PAGER	=> 'less',
 	BROWSER	=> 'lynx',
 #	PS1	=> '[\u@\h(\L) \W]',
 );
-$ENV{$_} ||= $default_env{$_} for keys %default_env;
+$ENV{$_} ||= $env{$_} for keys %env;
 
 # Some programs expect this var to point to a fully posix compliant shell.
 # Since zoid doesn't use this var, no harm is done.
@@ -22,7 +22,7 @@ alias( {
 	ll       => 'ls --color=auto -l',
 	up       => 'cd ..',
 	bye      => 'exit',
-	( ($> == 0)
+	( ($> == 0) # root gets other aliases
 		? ( perldoc => 'perldoc -U', perlfunc => 'perldoc -Uf' )
 		: ( perlfunc => 'perldoc -f' )
 	),
@@ -30,8 +30,6 @@ alias( {
 
 # set default settings
 # set( );
-
-# $shell->do('use Data::Dumper');
 
 __END__
 

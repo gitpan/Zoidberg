@@ -1,6 +1,6 @@
 
 use Zoidberg::Utils qw/read_file/;
-use Zoidberg::StringParse;
+use Zoidberg::StringParser;
 
 require Test::More;
 
@@ -64,7 +64,7 @@ my @test_data2 = (
 import Test::More tests => scalar(@test_data1) + scalar(@test_data2) + 1;
 
 my $collection = read_file('./share/data/grammar.pd');
-my $parser = Zoidberg::StringParse->new($collection->{_base_gram}, $collection);
+my $parser = Zoidberg::StringParser->new($collection->{_base_gram}, $collection);
 
 print "# script grammar\n";
 

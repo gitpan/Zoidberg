@@ -1,6 +1,6 @@
 package Zoidberg::DispatchTable;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use Carp;
@@ -50,12 +50,22 @@ sub STORE {
 
 sub FETCH {
 	my ($self, $key) = @_;
-	return undef unless $self->EXISTS($key);
-
-	$self->[0]{$key}[-1] = $self->convert($self->[0]{$key}[-1])
-		unless ref($self->[0]{$key}[-1]) eq 'CODE'
-		or     ref($self->[0]{$key}[-1]) eq 'HASH';
-	return $self->[0]{$key}[-1];
+	if ($self->EXISTS($key)) {
+		$self->[0]{$key}[-1] = $self->convert($self->[0]{$key}[-1])
+			unless ref($self->[0]{$key}[-1]) eq 'CODE'
+			or     ref($self->[0]{$key}[-1]) eq 'HASH';
+		return $self->[0]{$key}[-1];
+	}
+	elsif ($self->EXISTS('_AUTOLOAD')) {
+		my $sub;
+		for (@{$self->[0]{_AUTOLOAD}}) {
+	        	$sub = $_->($key);
+        		next unless $sub;
+		        $self->STORE($key, $sub);
+        		return $self->FETCH($key);
+		}
+	}
+	return undef;
 }
 
 sub convert {

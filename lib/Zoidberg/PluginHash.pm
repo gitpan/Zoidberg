@@ -1,11 +1,9 @@
 package Zoidberg::PluginHash;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
-use Zoidberg::Error;
-use Zoidberg::FileRoutines qw/get_dir/;
-use Zoidberg::Utils qw/complain read_file merge_hash/;
+use Zoidberg::Utils qw/:error read_file merge_hash get_dir/;
 use Zoidberg::DispatchTable qw/wipe/;
 use UNIVERSAL qw/isa/;
 
@@ -241,7 +239,7 @@ modify it under the same terms as Perl itself.
 =head1 SEE ALSO
 
 L<Zoidberg>,
-L<Zoidberg::Utils>
+L<Zoidberg::Utils>,
 L<Zoidberg::Fish>,
 L<Zoidberg::DispatchTable>,
 L<http://zoidberg.sourceforge.net>

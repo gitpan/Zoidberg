@@ -1,5 +1,5 @@
 use Test::More tests => 19;
-use Zoidberg::StringParse;
+use Zoidberg::StringParser;
 
 my $simple_gram = {
 	esc => '\\',
@@ -30,7 +30,7 @@ my $array_gram = {
 	},
 };
 
-my $parser = Zoidberg::StringParse->new({}, {simple => $simple_gram, array => $array_gram });
+my $parser = Zoidberg::StringParser->new({}, {simple => $simple_gram, array => $array_gram });
 
 $parser->set('');
 my @r = $parser->get;
@@ -100,7 +100,7 @@ for (
 # test caching
 
 ok(
-	$simple_gram->{_prepared} && ref($simple_gram->{quotes}) eq 'Zoidberg::StringParse::hash',
+	$simple_gram->{_prepared} && ref($simple_gram->{quotes}) eq 'Zoidberg::StringParser::hash',
 	'grammars are cached' );
 
 # test error
@@ -123,22 +123,22 @@ my $base_gram = {
     },
 };
 
-$parser = Zoidberg::StringParse->new($base_gram);
+$parser = Zoidberg::StringParser->new($base_gram);
 @blocks = $parser->split(qr/\|/, qq{ls -al | cat > "somefile with a pipe | in it"} );
 @i_want = ('ls -al ', ' cat > "somefile with a pipe | in it"');
 is_deeply(\@blocks, \@i_want, 'base gram works');
 
 # testing settings
 
-$parser = Zoidberg::StringParse->new($base_gram, {}, { no_split_intel => 1 });
+$parser = Zoidberg::StringParser->new($base_gram, {}, { no_split_intel => 1 });
 @blocks = $parser->split(qr/\|/, qq{ls -al | cat > "somefile with a pipe | in it"} );
 @i_want = (\'ls -al ', \' cat > "somefile with a pipe | in it"');
 is_deeply(\@blocks, \@i_want, 'no_split_intel setting works');
 
-$parser = Zoidberg::StringParse->new({}, { simple => $simple_gram }, { allow_broken => 1 });
+$parser = Zoidberg::StringParser->new({}, { simple => $simple_gram }, { allow_broken => 1 });
 @blocks = $parser->getline('simple', 'some  { syntax ', 'and } more');
 ok( ! $parser->error && scalar(@blocks) == 1 , 'allow_broken works' );
 
-$parser = Zoidberg::StringParse->new({}, { simple => $simple_gram }, { raise_error => 1 });
+$parser = Zoidberg::StringParser->new({}, { simple => $simple_gram }, { raise_error => 1 });
 eval { $parser->split('simple', 'some broken { syntax') };
 ok( $@ eq "Unmatched nest at end of input: {\n", 'raise_error works');

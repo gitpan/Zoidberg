@@ -1,10 +1,10 @@
 package Zoidberg::Fish::Prompt;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 
-use Zoidberg::Utils qw/read_data_file/;
+use Zoidberg::Utils qw/read_data_file output/;
 use Storable qw/dclone/; # hehe tooo late now, fix it later
 
 use base 'Zoidberg::Fish';
@@ -18,7 +18,7 @@ sub init {
 
 sub dump {
     my $self = shift;
-    $self->print($self->{config});
+    output $$self{config};
 }
 
 sub children {

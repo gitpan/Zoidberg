@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use Data::Dumper;
@@ -9,11 +9,9 @@ use Storable qw/dclone/;
 use Term::ReadKey;
 use Term::ANSIColor;
 use Term::ANSIScreen qw/:screen :cursor/;
-#use Zoidberg::StringParse;
-# use Zoidberg::StringParse::Syntax;
-use Zoidberg::Error;
-use Zoidberg::Utils qw/read_data_file debug/;
-use Zoidberg::FileRoutines qw/unique_file/;
+#use Zoidberg::StringParser;
+# use Zoidberg::StringParser::Syntax;
+use Zoidberg::Utils qw/:error :output debug read_data_file unique_file/;
 use Zoidberg::DispatchTable;
 #use Zoidberg::FormatedString;
 
@@ -24,8 +22,8 @@ $| = 1;
 sub init {
 	my $self = shift;
 	$self->{tab_string} = $self->{config}{tab_string} || "    ";
-#	$self->{parser} = Zoidberg::StringParse->new($self->parent->{grammar}, 'buffer_gram');
-#	$self->{syntax_parser} = Zoidberg::StringParse::Syntax->new($self->parent->{grammar}{syntax}, 'PERL', $self->parent->{grammar}{ansi_colors});
+#	$self->{parser} = Zoidberg::StringParser->new($self->parent->{grammar}, 'buffer_gram');
+#	$self->{syntax_parser} = Zoidberg::StringParser::Syntax->new($self->parent->{grammar}{syntax}, 'PERL', $self->parent->{grammar}{ansi_colors});
 
 	$self->{char_table} = read_data_file('char-table');
 
@@ -148,7 +146,7 @@ sub rub_out {
 
 }
 
-sub bell { print "\007" if $_[0]->{config}{bell} }
+sub bell { $_[0]->{config}{bell}->(@_) }
 
 sub respawn {
 	my $self = shift;
@@ -253,17 +251,20 @@ sub _read_key { # TODO clean up
 
 		#<VUNZIG> this will cause bugs
 		if ($chr eq "\e") {
-			my $str = (ReadKey(0.01));
+			my $str = ReadKey(0.01);
 			if ($str) {
 				my @poss = grep /^\Q$str\E/, keys %{$self->{char_table}{esc}};
-				while ($#poss >= 0 && (length($str) < length($poss[0]))) {
+				while (@poss) {
 					my $my_chr;
-					while (not defined ($my_chr = ReadKey(0.05))) { $self->broadcast_event($self->{state}) }
+					while ( not defined ($my_chr = ReadKey(0.05)) ) {
+						$self->broadcast_event($self->{state})
+					}
 					$str .= $my_chr;
 					@poss = grep /^\Q$str\E/, keys %{$self->{char_table}{esc}};
+					last if @poss == 1 and $poss[0] eq $str;
 				}
-				if ($#poss == 0) { $chr = $poss[0];}
-				else { $chr .= $str;} # dunno
+				if (@poss == 1) { $chr = $poss[0] }
+				else { $chr = 'esc_'.$str }
 			} # else just char = \e
 		}
 		#</VUNZIG>
@@ -281,7 +282,7 @@ sub _read_key { # TODO clean up
 		elsif ($ord < 32) { $chr = 'ctrl_'.(chr $ord + 64); }
 		elsif ($ord == 127) { $chr = 'delete'; }
 	}
-	elsif ($self->{char_table}{esc}{$chr}) {$chr = $self->{char_table}{esc}{$chr}; }
+	elsif ($self->{char_table}{esc}{$chr}) {$chr = $self->{char_table}{esc}{$chr} }
     
 	return $chr;
 }
@@ -375,8 +376,8 @@ sub probe {
 sub bind {
 	my $self = shift;
 	my $e = 'Usage: bind($char_name, $sub_name, $modus) -- $modus is optional';
-	my $chr = shift || $self->parent->print($e, 'error');
-	my $sub = shift || $self->parent->print($e, 'error');
+	my $chr = shift || complain $e, 'error';
+	my $sub = shift || complain $e, 'error';
 	my $modus = shift || $self->{config}{default_modus};
 	$self->{bindings}{$modus}{$chr} = $sub;
 }
@@ -392,7 +393,7 @@ sub help {
 
 sub k_ctrl_d {
 	my $self = shift;
-	if ($self->{settings}{ignoreeof}) { $self->print('Setting \'ignoreeof\' in effect.', 'warning') }
+	if ($self->{settings}{ignoreeof}) { message 'Setting \'ignoreeof\' in effect.' }
 	elsif (join '', @{$self->{fb}}) { $self->bell } # make accidental ^d less harmfull
 	else {
 		$self->reset;
@@ -620,7 +621,7 @@ sub expand { # TODO fix tab_exp_back for expansion in het midden van de string
 		if ($self->{config}{max_expand} && scalar(@{$ref}) > $self->{config}{max_expand}) {
 			print "More then $self->{config}{max_expand} matches\n";
 		}
-		else { $self->{parent}->print($ref) }
+		else { output $ref }
 	}
 
 	$self->respawn;
@@ -796,9 +797,8 @@ see Zoidberg::Fish for details.
 
 =head1 DESCRIPTION
 
-This module generates a more dynamic input
-buffer for the Zoidberg shell. It is a
-core object for Zoidberg.
+This module provides a dynamic input
+buffer for the Zoidberg shell.
 
 =head2 EXPORT
 
@@ -806,30 +806,7 @@ None by default.
 
 =head1 METHODS
 
-=head2 read()
-
-  Get input from prompt
-
-=head2 read_question($question)
-
-  Get input from custom prompt
-
-=head2 k_*
-
-  Methods to bind keys to
-
-=head2 set_string
-
-  Put a string on the prompt non-interactively.
-  This can be used for demo routines etc.
-
-=head2 probe()
-
-  Interactive probe key bindings
-
-=head2 help()
-
-  Output keybindings
+FIXME
 
 =head1 AUTHOR
 

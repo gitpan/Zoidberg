@@ -26,6 +26,9 @@ suppress default behavior.
 Be aware that these source scripts are expected to be Perl scripts and are
 B<NOT> interpreted or executed the same way as normal input.
 
+This document only describes the commandline script B<zoid>, see L<zoiduser(1)>
+and L<zoidfaq(1)> for help on using the zoidberg shell.
+
 =head1 OPTIONS
 
 =over 4

@@ -35,11 +35,11 @@ Kind of, as long as you don't try too fancy stuff with too many privileges.
 
 =head3 What's with the single arrow ?
 
-When you type perl code without brackets around it, zoid does a little source filtering making a arrow 'C<< -> >>' (the dereference operator) at the start of a word an alias for 'C<< $self-> >>'. Where 'C<< $self >>' is the main shell object. 
+When you type perl code without brackets around it, zoid does a little source filtering making a arrow 'C<< -> >>' (the dereference operator) at the start of a word an alias for 'C<< $shell-> >>'. Where 'C<< $shell >>' is the main shell object. 
 
  zoid$ ->Commands->cd(q/../)
  # is the same as
- zoid$ $self->Comamnds->cd(q/../)
+ zoid$ $shell->Commands->cd(q/../)
 
 
 =head2 Unexpected behaviour
@@ -68,7 +68,7 @@ Take a look at the file "key-bindings.pd" in your zoidberg directory. If, for ex
 in the nested hash called 'insert' in "key-bindings.pd".
 You can also bind command sequences to a key like this:
 
-  ctrl_b => '->do(q{perl Makefile.PL && make && make test install})'
+  ctrl_b => '->shell(q{perl Makefile.PL && make && make test install})'
 
 =head3 How to write a "hello world" plugin ?
 
@@ -82,23 +82,17 @@ Next create a module, for example :
   use Zoidberg::Fish;
   our @ISA = qw/Zoidberg::Fish/;
 
+  # Zoidberg::Utils provides the output method
+  use Zoidberg::Utils;
+
   # no need for a constructor, bootstrap with init
-  sub init {
-    my $self = shift;
-    $self->{config}{string} ||= "Hello world !";
-  }
+  sub init { $$_[0]{config}{string} ||= "Hello world !" }
 
   # and in this sub we actually print the string
-  sub hello_world {
-    my $self = shift;
-    $self->parent->print( $self->{config}{string} );
-  }
+  sub hello_world { output $$_[0]{config}{string} }
 
   # this will be called when the plugin is unloaded
-  sub round_up {
-     my $self = shift;
-     $self->parent->print( "someone help me" );
-  }
+  sub round_up { output "someone help me" }
 
   1; # keep require happy
 

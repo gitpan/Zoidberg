@@ -1,30 +1,20 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 use strict;
 use vars qw/$AUTOLOAD/;
 use Carp;
-use Zoidberg::Error;
-use Zoidberg::FileRoutines qw/abs_path/;
-use Zoidberg::Utils qw/:output/;
+use Zoidberg::Utils qw/:error :output abs_path/;
 use Exporter::Tidy
 	default	=> [qw/AUTOLOAD shell/],
-	zoidrc	=> [qw/alias unalias set setting shell/],
-	other	=> [qw/shell_string shell_tree  exec_error/];
+	other	=> [qw/alias unalias set setting source/];
+use UNIVERSAL qw/isa/;
 
+sub new { return $ENV{ZOIDREF} }
 # TODO unless ref($ENV{ZOIDREF}) start ipc
 
-sub new {
-	my ($class, $ref) = @_;
-	unless ($ref) {
-		return unless ref($ENV{ZOIDREF}); # make use_ok test happy :((
-		$ref = $ENV{ZOIDREF};
-	}
-	bless {zoid => $ref}, $class;
-}
-
-sub _self { (ref($_[0]) eq __PACKAGE__) ? shift : {zoid => $ENV{ZOIDREF}} }
+sub _self { (isa $_[0], __PACKAGE__) ? shift : $ENV{ZOIDREF} }
 
 # ################ #
 # Parser interface #
@@ -36,29 +26,39 @@ sub AUTOLOAD {
 	return undef if $cmd eq 'DESTROY';
 	shift if ref($_[0]) eq __PACKAGE__;
 	debug "Zoidberg::Shell::AUTOLOAD got $cmd";
-	unshift @_, $cmd;
+	@_ = ([$cmd, @_]); # force words
 	goto \&shell;
 }
 
 sub shell {
 	my $self = &_self;
-	my $tree = [];
-	unless (ref $_[0]) { @$tree = [ $self->{zoid}->parse_words({}, @_) ] }
-	else { @$tree = map {ref($_) ? [$self->{zoid}->parse_words({}, @$_)] : $_ } @_ }
-	$self->{zoid}->do_list($tree);
+	my @tree;
+	if (grep {ref $_} @_) {
+		@tree = map {
+			my $t = ref $_;
+			unless ($t) { $_ }
+			elsif ($t eq 'ARRAY') {
+				(ref $$_[0]) ? $_ : 
+					[$self->parse_words({}, @$_)]
+			}
+			else { $self->parse_block($$_) }
+		} @_ ;
+	}
+	elsif (@_ > 1) { @tree = [ $self->parse_words({}, @_) ] }
+	else { @tree = $self->parse(@_) }
+	$self->shell_list(@tree);
 	# TODO use wantarray
 }
 
-sub shell_string { 
+sub system {
+	# quick parser independent way of calling system commands
+	# not exported to avoid conflict with perlfunc system
 	my $self = &_self;
-	$self->{zoid}->do(@_);
-}
-
-sub shell_tree { todo }
-
-sub exec_error { 
-	my $self = &_self;
-	return $self->{zoid}{exec_error}
+	open CMD, '|-', @_ or error "Could not open pipe to: $_[0]";
+	my @re = (<CMD>);
+	close CMD;
+	return wantarray ? @re : join('', @re);
+	# FIXME where does the error code of cmd go?
 }
 
 # ############# #
@@ -69,7 +69,7 @@ sub alias {
 	my $self = &_self;
 	if (ref($_[0]) eq 'HASH') { # perl style, merge hashes
 		error 'alias: only first argument is used' if $#_;
-		%{$self->{zoid}{aliases}} = ( %{$self->{zoid}{aliases}}, %{$_[0]} );
+		%{$self->{aliases}} = ( %{$self->{aliases}}, %{$_[0]} );
 	}
 	else { error q/alias: can't handle input data type: /.ref($_[0]) }
 }
@@ -78,7 +78,7 @@ sub unalias {
 	my $self = &_self;
 	for (@_) {
 		error "alias: $_: not found"
-			unless delete $self->{zoid}{aliases}{$_};
+			unless delete $self->{aliases}{$_};
 	}
 }
 
@@ -86,17 +86,32 @@ sub set {
 	my $self = &_self;
 	if (ref($_[0]) eq 'HASH') { # perl style, merge hashes
 		error 'set: only first argument is used' if $#_;
-		%{$self->{zoid}{settings}} = ( %{$self->{zoid}{settings}}, %{$_[0]} );
+		%{$self->{settings}} = ( %{$self->{settings}}, %{$_[0]} );
 	}
 	elsif (ref $_[0]) { error 'set: no support for data type'.ref($_[0]) }
 	else {
-		for (@_) { $self->{zoid}{settings}{$_}++ }
+		for (@_) { $self->{settings}{$_}++ }
 	}
 }
 
 sub setting {
 	my $self = &_self;
-	return $self->{zoid}{settings}{shift()} || undef;
+	my $key = shift;
+	return exists($$self{settings}{$key}) ? $$self{settings}{$key}  : undef;
+}
+
+sub source {
+	my $self = &_self;
+	local $ENV{ZOIDREF} = $self;
+	for (@_) {
+		my $file = abs_path($_);
+		error "source: no such file: $file" unless -f $file;
+		debug "going to source: $file";
+		# FIXME more intelligent behaviour -- see bash man page
+		eval q{package Main; do $file; die $@ if $@ };
+		# FIXME wipe Main
+		complain if $@;
+	}
 }
 
 1;
@@ -110,17 +125,17 @@ Zoidberg::Shell - a scripting interface to the Zoidberg shell
 =head1 SYNOPSIS
 
         use Zoidberg::Shell;
-	my $SHELL = Zoidberg::Shell->new();
+	my $shell = Zoidberg::Shell->new();
        
 	# Order parent shell to 'cd' to /usr
 	# If you let your shell do 'cd' that is _NOT_ the same as doing 'chdir'
-        $SHELL->shell(qw{cd /usr});
+        $shell->shell(qw{cd /usr});
 	
 	# Let your parent shell execute a logic list with a pipeline
-	$SHELL->shell([qw{ls -al}], [qw{grep ^d}], 'OR', [qw{echo some error happened}]);
+	$shell->shell([qw{ls -al}], [qw{grep ^d}], 'OR', [qw{echo some error happened}]);
 	
 	# Create an alias
-	$SHELL->alias({'ls' => 'ls --color=auto'});
+	$shell->alias({'ls' => 'ls --color=auto'});
 	
 	# since we use Exporter::Tidy you can also do this:
 	use Zoidberg::Shell _prefix => 'zoid_', qw/shell alias unalias/;
@@ -139,22 +154,30 @@ Only the subs C<AUTOLOAD> and C<shell> are exported by default.
 C<AUTOLOAD> works more or less like the one from F<Shell.pm> by Larry Wall, but it 
 includes zoid's builtin functions and commands (also it just prints output to stdout see TODO).
 
-The other methods (except C<new>) can be exported on demand. 
+All other methods except C<new> and C<system> can be exported on demand. 
 Be aware of the fact that methods like C<alias> can mask "plugin defined builtins" 
-with the same name, but with an other interface. If instead of exporting these methods
-the L</AUTOLOAD> method is used, different behaviour can be expected.
+with the same name, but with an other interface. This can be confusing but the idea is that
+methods in this package have a scripting interface, while the like named builtins have
+a commandline interface. The reason the C<system> can't be exported is because it would mask the 
+perl function C<system>, also this method is only included so zoid's DispatchTable's can use it.
 
 =head1 METHODS
 
-B<Be aware:> All commands are executed in the B<parent> shell environment, 
-so if a command changes the environment these changes will change 
-the environment of the parent shell, even when the script has long finished.
+B<Be aware:> All commands are executed in the B<parent> shell environment.
 
 =over 4
 
 =item C<new()>
 
-Simple constructor.
+Simple constructor. Doesn't actually construct a new object but just returns
+the current L<Zoidberg> object, which in turn inherits from this package.
+
+=item C<system($command, @_)>
+
+Opens a pipe to a system command and returns it's output. Intended for when you want
+to call a command B<without> using zoid's parser and job management. This method
+has absolutely B<no> intelligence (no expansions, builtins,  etc.), you can only call
+external commands with it.
 
 =item C<shell($command, @_)>
 
@@ -168,27 +191,22 @@ If you just want the output of a system command use the L<system> method.
 If you want to make I<sure> you get a built-in command use L<builtin>, you might
 prevent some strange bugs.
 
-=item C<shell([$command, @_], [..], 'AND', [..])>
+=item C<shell($string)>
 
-Create a logic list and/or pipeline. Available tokens are 'AND', 'OR' and
-'EOS' (End Of Statement, ';').
-
-=item C<shell_string($string)>
-
-Parse B<and> execute C<$string> like it was entered from the commandline.
+Parse and execute C<$string> like it was entered from the commandline.
 You should realise that the parsing is dependent on grammars currently in use,
 and also on things like aliases etc.
 
 I<Using this form in a source script _will_ attract nasty bugs>
 
-=item C<shell_tree([$context, @_], [..],'AND',[..])>
+=item C<shell([$command, @_], [..], 'AND', [..])>
 
-=item C<< shell_tree([ {context => $context}, @_ ]) >>
+Create a logic list and/or pipeline. Available tokens are 'AND', 'OR' and
+'EOS' (End Of Statement, ';').
 
-Like C<shell()> but lets lets you pass more meta data to the parse tree. 
-This can be considered an "expert mode", see parser documentation/source elsewhere.
-
-TODO - not yet implemented
+C<shell()> allows for other kinds of pseudo parse trees, these can be considered
+as a kind of "expert mode". See L<zoiddevel(1)> for more details.
+You might not want to use these without good reason.
 
 =item C<set(..)>
 
@@ -198,7 +216,13 @@ Update settings in parent shell.
 	set( { noglob => 0 } );
 	
 	# set these bits to true
-	set( qw/hide_private_method hide_hidden_files/);
+	set( qw/hide_private_method hide_hidden_files/ );
+
+See L<zoiduser(1)> for a description of the several settings.
+
+=item C<setting($setting)>
+
+Returns the current value for a setting.
 
 =item C<alias(\%aliases)>
 
@@ -206,37 +230,38 @@ Merge C<%aliases> with current alias hash.
 
 	alias( { ls => 'ls ---color=auto' } )
 
-FIXME point to docs on aliases
-
 =item C<unalias(@aliases)>
 
 Delete all keys listed in C<@aliases> from the aliases table.
 
-=item C<exec_error()>
+=item C<source($file)>
 
-Returns the error caused by the last executed command, or undef is all is well.
+Run another perl script, possibly also interfacing with zoid.
 
-=item AUTOLOAD
+FIXME more documentation on zoid's source scripts
+
+=item C<AUTOLOAD>
 
 All calls that get autoloaded are passed directly to the C<shell()> method.
+This allows you to use nice syntax like :
+
+	$shell->cd('..');
 
 =back
 
 =head1 TODO
 
-Not all routines that are documented are implemented yet
-
-Currently stdout isn't captured if wantarray
+Currently stdout isn't captured if wantarray in shell()
 
 An interface to create background jobs
 
 An interface to get input
 
-Merge this interface with Zoidberg::Fish ?
-
 Can builtins support both perl data and switches ?
 
 Test script
+
+More syntactic sugar :)
 
 =head1 AUTHOR
 
@@ -248,7 +273,8 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Shell>, L<Zoidberg>, L<http://zoidberg.sourceforge.net>
+L<Shell>, L<Zoidberg>, L<Zoidberg::Utils>,
+L<http://zoidberg.sourceforge.net>
 
 =cut
 

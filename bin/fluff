@@ -13,7 +13,7 @@
 
 use strict;
 use Cwd qw/cwd/;
-our $VERSION = '0.40';
+our $VERSION = '0.41';
 
 # ############### #
 # set environment #
@@ -103,10 +103,11 @@ for (@inc, $Zoidberg::Config::ScriptDir) { $_ = "$cwd/$_" unless m!^/! }
 unshift @INC, @inc;
 
 # load some packages - force runtime eval to get includes right
-for (qw/Zoidberg Zoidberg::Config/) {
+for (qw/Zoidberg Zoidberg::Config Zoidberg::Utils/) {
 	eval "require $_";
 	die $@ if $@;
 }
+Zoidberg::Utils->import(':output');
 
 $conf{rcfiles} = $args{rcfile} if $args{rcfile};
 $Zoidberg::Config::settings{cache_dir} = $conf{cache_dir} if $conf{cache_dir};
@@ -174,27 +175,28 @@ my $cube = Zoidberg->new( {
 	}
 } );
 
-$cube->print("--[ This is the Zoidberg shell ]--[ Version $Zoidberg::VERSION ]--", 'message');
-$cube->print("### This is a development version, consider it unstable", 'warning');
+message( 
+"--[ This is the Zoidberg shell ]--[ Version $Zoidberg::VERSION ]--
+### This is a development version, consider it unstable" );
 
-$cube->source($_) for grep {-f $_} @{$cube->{settings}{rcfiles}}, @ARGV;
+$cube->source( grep {-f $_} @{$cube->{settings}{rcfiles}}, @ARGV );
 
-if ($exec_string) { 
+if ($exec_string) {
 #	if ($args{command}) { $cube->{ipc}->do($exec_string) }
 #	else { 
-		$cube->do($exec_string)
+		$cube->shell_string($exec_string)
 #	}
 }
 
 if ( $args{stdin} || -p STDIN || (!$interact && !$exec_string) ) {
-	while (<STDIN>) { $cube->do($_) } 
-	# FIXME built this in the api ? something like "parse_from_pipe()"
-	# or simply do(HANDLE) ?
+	while (<STDIN>) { $cube->shell_string($_) }
+	# FIXME do something like set nobuffer and let zoid read STDIN
+	# then it can also pull from it
 }
 
 $cube->main_loop if $interact;
 
-$cube->print("--[ CU ]--[ Please report all bugs ]--  ", 'message');
+message("--[ CU ]--[ Please report all bugs ]--");
 
 my $exit = $cube->round_up ? 1 : 0;
 
