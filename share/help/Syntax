@@ -1,0 +1,29 @@
+
+  They Zoidberg syntax consists of blocks
+  seperated by redirection signs.
+
+    <block> | <block> >> <block>
+
+  A block can be one of the folowing:
+
+  Some executable on your system followed by args
+
+    example> mplayer -vo sdl -ao sdl my_favorite_movie.avi
+
+  Perl code between brackets
+
+    example> { print "This is perl code."; }
+
+  A subroutine call to a object loaded in zoidberg
+
+    example> ->Help->help
+      -or-
+    example> Help->help('objects')
+
+  A zoidberg command preceded by an underscore
+
+    example> _cd /usr/local
+    example> _back
+    
+  Any other syntax can be realized by using aliases
+  or adding rules to the parser.

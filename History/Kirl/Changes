@@ -1,6 +1,0 @@
-Revision history for Perl extension Zoidberg::History::Kirl.
-
-0.01  Thu Nov 14 02:01:26 2002
-	- original version; created by h2xs 1.22 with options
-		-AX -n Zoidberg::History::Kirl
-

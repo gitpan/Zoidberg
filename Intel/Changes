@@ -1,6 +1,0 @@
-Revision history for Perl extension Zoidberg::Intel.
-
-0.01  Wed Sep 25 18:21:43 2002
-	- original version; created by h2xs 1.21 with options
-		-AX -n Zoidberg::Intel
-
