@@ -14,13 +14,12 @@ $Data::Dumper::Purity=1;
 $Data::Dumper::Deparse=1;
 $Data::Dumper::Indent=1;
 
-
 push @{Makefile::ISA}, 'Exporter';
 @{Makefile::EXPORT_OK} = qw/
 	get_version get_version_from compare_version
-	path_copy file_copy
-	rmdir_force dir_copy pd_read chdir
-	pd_write
+	check_mtime path_copy file_copy
+	make_dir rmdir_force dir_copy
+	pd_read pd_write
 /;
 
 our %default_config = (
@@ -451,44 +450,42 @@ sub get_version_from {
 }
 
 sub path_copy {
-	my $e = 'usage: path_copy $from, $to';
-	my $to = pop @_ || die $e;
-	my $from = pop @_ || die $e;
-	unless (-e $from) { confess "no such thing \"$from\" to copy"; }
-
-	# create dir tee
-	if ($to =~ m/^(.*)\/(.*)/) {
-		my @tree = split(/\//, $1);
-		my $dir = '';
-		while (@tree) {
-			$dir .= (shift @tree).'/';
-			unless (-d $dir) { mkdir $dir }
-		}
-	}
-
+	my ($from, $to) = @_;
+	confess "no such thing \"$from\" to copy" unless -e $from;
+	if ($to =~ /(.*)\/(.*)/) { make_dir($1) }
 	return file_copy($from, $to);
 }
 
-sub file_copy {
-	my $e = 'usage: file_copy $from, $to;';
-	my $to = pop @_ || die $e;
-	my $from = pop @_ || die $e;
-	unless (-e $from) { die "no such thing \"$from\" to copy"; }
+sub make_dir {
+	my $dir = pop;
+	# create dir tee
+	my @tree = split(/\//, $dir);
+	$dir = '';
+	while (@tree) {
+		$dir .= shift(@tree).'/';
+		mkdir $dir, 0755 || die "Could not make dir $dir\n"
+			unless -d $dir;
+	}
+}
 
-	if (
-		( [stat $from]->[9] == [stat $to]->[9] )
-		&& ( -s $from == -s $to )
-	) { return 1 }
-        
+sub file_copy {
+	my ($from, $to) = @_;
+	confess "no such thing \"$from\" to copy" unless -e $from;
+
 	open IN, $from || die "==> Could not open file $from\n";
-	open OUT, ">$to" || die "==> Could not open file $to\n";
-	while (<IN>) { print OUT $_; }
+	open OUT, '>', $to || die "==> Could not open file $to\n";
+	print OUT $_ for (<IN>);
 	close IN;
 	close OUT || die "==> Could not write file $to\n";
-    # set new file's mtime
-    utime(@{[stat$from]}[8,9],$to);
+
+	chmod -x $from ? 0755 : 0644, $to;
+
+	# set new file's mtime
+	utime undef, undef, $to;
 	return 1;
 }
+
+sub check_mtime { (-s $_[1] && [stat $_[0]]->[9] <= [stat $_[1]]->[9]) ? 1 : 0 }
 
 sub rmdir_force {
 	my $dir = pop || die 'usage: rmdir_force $dir;';
@@ -503,14 +500,11 @@ sub rmdir_force {
 }
 
 sub dir_copy {
-	# dir from, dir to
-	my $e = 'usage: dir_copy $from, $to;';
-	my $to = pop || die $e;
-	my $from = pop || die $e;
+	my ($from, $to, $make) = @_;
 
 	$from =~ s/\/?$/\//;
 	$to =~ s/\/?$/\//;
-	unless (-e $to) { mkdir($to) || die "Could not make dir $to\n"; }
+	make_dir($to) unless -d $to;
 
 	opendir FROM, $from || die "Could not open dir $from\n";
 	my @files = grep {$_ !~ m/^\.\.?$/} readdir FROM;
@@ -518,9 +512,13 @@ sub dir_copy {
 
 	my @done = @files;
 
-	foreach my $file (grep {-f $from.$_} @files) { file_copy($from.$file, $to.$file) }
+	foreach my $file (grep {-f $from.$_} @files) {
+		next if $make && check_mtime($from.$file, $to.$file);
+		file_copy($from.$file, $to.$file);
+	}
 	foreach my $dir (grep {-d $from.$_} @files) {
-		push @done, dir_copy( $from.$dir, $to.$dir ); #recurs
+		push @done, map "$dir/$_",
+			dir_copy( $from.$dir, $to.$dir ); #recurs
 	}
 
 	return @done;
@@ -747,6 +745,15 @@ Get version of an installed module.
 Get version declared in file. This uses the same regex as L<ExtUtils::MakeMaker> uses for
 "VERSION_FROM" this is: C</([\$*])(([\w\:\']*)\bVERSION)\b.*\=/> . See docs MM for more details.
 
+=item C<check_mtime($from, $to)> [non oo method]
+
+If this method returns true one can assume that the file $to
+doesn't need updating from $from ( think make(1) ).
+
+=item C<make_dir($dir)> [non oo method]
+
+Create all directories in the path of $dir.
+
 =item C<path_copy($from, $to)> [non oo method]
 
 Copy file $from to file $to, create directories if needed.
@@ -760,9 +767,11 @@ Copy file $from to file $to, create directories if needed.
 Like C<rm -fr dir>, used to rm non-empty dir trees.
 I<Use with care>.
 
-=item C<dir_copy($from, $to)> [non oo method]
+=item C<dir_copy($from, $to, $make)> [non oo method]
 
-Copy contents of dir $from to dir $to
+Copy contents of dir $from to dir $to. If 
+$make is set true files will only be copied if
+L<check_mtime> failes.
 
 =back
 

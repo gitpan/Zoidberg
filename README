@@ -1,4 +1,4 @@
- Zoidberg - a modular perl shell, version 0.3c
+ Zoidberg - a modular perl shell, version 0.40
 ===============================================
 
 ** Laziness, Impatience, Hubris ! **
@@ -33,8 +33,7 @@ BUGS AND LIMITATIONS
 
   Since we are still in alpha/development fase there will be a lot of bugs.
 
-  Please report bugs through the bug tracker on the sourceforge project page
-  <www.sourceforge.net/projects/zoidberg>.
+  Visit the web page to submit bug reports.
 
   The Zoidberg shell is being developed for GNU/Linux. It will be tested for
   other UNIX variants - but we garuantee nothing. It is not (yet) (really)
@@ -54,8 +53,8 @@ BUGS AND LIMITATIONS
 
 AUTHORS
 
-  Jaap Karssenberg || Pardus [Larus] <j.g.karssenberg@student.utwente.nl>
-  R.L. Zwart, <carl0s@users.sf.net>
+  Jaap Karssenberg || Pardus [Larus] <pardus@cpan.org>
+  R.L. Zwart, <rlzwart@cpan.org>
 
 COPYRIGHT AND LICENCE
 
@@ -65,8 +64,9 @@ COPYRIGHT AND LICENCE
 
   This program is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See either
-  the GNU General Public License or the Artistic License for more details.
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See either
+  the GNU General Public License or the Artistic License for
+  more details.
 
-  See: <http://www.perl.com/language/misc/Artistic.html> and
-  <http://www.gnu.org/copyleft/gpl.html>
+  http://www.perl.com/language/misc/Artistic.html
+  http://www.gnu.org/copyleft/gpl.html

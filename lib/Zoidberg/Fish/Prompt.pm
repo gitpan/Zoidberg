@@ -1,17 +1,17 @@
 package Zoidberg::Fish::Prompt;
 
-our $VERSION = '0.3c';
+our $VERSION = '0.40';
 
 use strict;
 
-use Zoidberg::PdParse;
+use Zoidberg::Utils qw/read_data_file/;
 use Storable qw/dclone/; # hehe tooo late now, fix it later
 
 use base 'Zoidberg::Fish';
 
 sub init {
 	my $self = shift;
-    $self->{lookup} = Zoidberg::Config::readfile($self->{config}{file});
+    $self->{lookup} = read_data_file('ps1');
     $self->{children} = [];
     $self->append(@{dclone($self->{config}{prompt})});
 }

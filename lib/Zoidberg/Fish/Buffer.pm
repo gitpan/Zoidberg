@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer;
 
-our $VERSION = '0.3c';
+our $VERSION = '0.40';
 
 use strict;
 use Data::Dumper;
@@ -11,8 +11,10 @@ use Term::ANSIColor;
 use Term::ANSIScreen qw/:screen :cursor/;
 #use Zoidberg::StringParse;
 # use Zoidberg::StringParse::Syntax;
-use Zoidberg::PdParse;
-#use Zoidberg::FileRoutines qw/abs_path unique_file %cache/;
+use Zoidberg::Error;
+use Zoidberg::Utils qw/read_data_file debug/;
+use Zoidberg::FileRoutines qw/unique_file/;
+use Zoidberg::DispatchTable;
 #use Zoidberg::FormatedString;
 
 use base 'Zoidberg::Fish';
@@ -21,32 +23,18 @@ $| = 1;
 
 sub init {
 	my $self = shift;
-    #print "debug: buffer config: ".Dumper($self->{config})."\n";
 	$self->{tab_string} = $self->{config}{tab_string} || "    ";
 #	$self->{parser} = Zoidberg::StringParse->new($self->parent->{grammar}, 'buffer_gram');
 #	$self->{syntax_parser} = Zoidberg::StringParse::Syntax->new($self->parent->{grammar}{syntax}, 'PERL', $self->parent->{grammar}{ansi_colors});
 
-#	my $default;
-#	eval( join("", (<DATA>)));
-	$self->{char_table} = Zoidberg::Config::readfile( $self->{config}{char_table_file} );
-#	$self->{char_table} = $default->{char_table} 
+	$self->{char_table} = read_data_file('char-table');
 
-	$self->{bindings} = Zoidberg::Config::readfile( $self->{config}{key_bindings_file} );
-#	$self->{bindings} = $default->{bindings}
+	my %bindings;
+	tie %bindings, 'Zoidberg::DispatchTable', $self, read_data_file('key-bindings');
+	$self->{bindings} = \%bindings;
 
 	$self->{fb} = ['']; # important -- define fb
 
-	$self->{modi} = { # HACK TODO FIXME ALERT
-		'insert' => 'Zoidberg::Fish::Buffer::Insert',
-		'meta' => 'Zoidberg::Fish::Buffer::Meta::Vim',
-		'multi_line' => 'Zoidberg::Fish::Buffer::Insert::MultiLine',
-		'vim_command' => 'Zoidberg::Fish::Buffer::Insert::VimCommand',
-		'select' => 'Zoidberg::Fish::Buffer::Select',
-		'search_hist' => 'Zoidberg::Fish::Buffer::Insert::SearchHist',
-	};
-	$self->{default_modus} = 'insert';
-
-	for (values %{$self->{modi}}) {eval "use $_;"}
 	$self->switch_modus;
 
 #	$self->{ps1} =	$ENV{PS1}
@@ -54,14 +42,6 @@ sub init {
 #			: ($> == 0) ? '#' : '$' ;
 
 	$self->{state} = 'idle';
-}
-
-sub round_up {
-	my $self = shift;
-#	if ($self->{config}{char_table_file}) {
-#		pd_write($self->{config}{char_table_file}, $self->{char_table});
-#	}
-#	else { $self->parent->print("no char table file defined", "error"); }
 }
 
 #######################
@@ -115,10 +95,32 @@ sub get_string {
 	return $fb;
 }
 
+sub ask {
+	my ($self, $quest, $default, $prompt) = @_;
+	unless ($prompt) {
+		$prompt = $quest;
+		$prompt .=
+			('Y' eq uc $default) ? ' [Yn] ' :
+			('N' eq uc $default) ? ' [yN] ' :
+			$default ? " [$default] " : ''  ;
+	}
+	my $string = $self->get_string($prompt);
+	chomp $string;
+	$string ||= $default;
+	if ($default =~ /^y|n$/i) {
+		return 1 if $string =~ /^y|yes$/i;
+		return 0 if $string =~ /^n|no$/i;
+		return $self->ask($quest, $default, $prompt); # recurs; try again
+	}
+	return $self->ask($quest, $default, $prompt)
+		unless length $string; # recurs; try again
+	return $string;
+}
+
 sub insert_string {
-	my $self = shift;
-	my $string = shift;
-	if ($self->{pos}[0] > length($self->{fb}[$self->{pos}[1]])) { $self->{pos}[0] = length($self->{fb}[$self->{pos}[1]]) }
+	my ($self, $string) = (@_);
+	$self->{pos}[0] = length($self->{fb}[$self->{pos}[1]])
+		if $self->{pos}[0] > length $self->{fb}[$self->{pos}[1]];
 	my @dus = split("\n", $string);
 	my $start = substr($self->{fb}[$self->{pos}[1]], 0, $self->{pos}[0], "");
 	my $end = $self->{fb}[$self->{pos}[1]];
@@ -146,7 +148,7 @@ sub rub_out {
 
 }
 
-sub bell { if ($_[0]->{config}{bell}) { print "\007"; } }
+sub bell { print "\007" if $_[0]->{config}{bell} }
 
 sub respawn {
 	my $self = shift;
@@ -162,7 +164,7 @@ sub reset {
 	$self->{tab_exp_back} = [ ["", ""] ];
 	$self->{fb} = [''];
 	$self->{state} = 'idle';
-	$self->switch_modus($self->{default_modus});
+	$self->switch_modus($self->{config}{default_modus});
 }
 
 sub refresh {
@@ -301,21 +303,18 @@ sub _do_key {
 	my $self = shift;
 	my $chr = shift;
 
-	my $sub;
-
-	if ($self->{bindings}{$self->{current_modus}}{$chr}) { 
-		$sub = $self->{bindings}{$self->{current_modus}}{$chr}; 
+	if (exists $self->{bindings}{$self->{current_modus}}{$chr}) {
+		$self->{bindings}{$self->{current_modus}}{$chr}->(@_);
 	}
-	elsif ($self->{bindings}{_all}{$chr}) { $sub = $self->{bindings}{_all}{$chr}; }
-	elsif ($self->can('k_'.$chr)) { $sub = 'k_'.$chr; }
-
-	if ($sub) { $self->_do_sub($sub) }
-	else { $self->default($chr) }
+	elsif (exists $self->{bindings}{_all}{$chr}) { 
+		$self->{bindings}{_all}{$chr}->(@_);
+	}
+	elsif ($self->can('k_'.$chr)) {
+		my $sub = 'k_'.$chr;
+		$self->$sub(@_);
+	}
+	else { $self->default($chr, @_) }
 }
-
-# overloadable hooks
-sub _switch_on {}
-sub _switch_off {}
 
 ##############################
 ## Binding related routines ##
@@ -323,16 +322,22 @@ sub _switch_off {}
 
 sub switch_modus {
 	my $self = shift;
-	my $modus = shift || $self->{default_modus};
-	if (my $class = $self->{modi}{$modus}) {
+	my $modus = shift || $self->{config}{default_modus};
+	if (my $class = $self->{config}{modi}{$modus}) {
+		eval "require $class";
+		error "Failed to load class: $class ($@)" if $@;
+		debug "entering '$modus' buffer mode using class $class";
 		$self->_switch_off(@_);
-		my $future_self = bless $self, $class;
-		$future_self->{current_modus} = $modus;
-		$future_self->_switch_on(@_);
-		*self = \$future_self;
+		bless $self, $class;
+		$self->{current_modus} = $modus;
+		$self->_switch_on(@_);
 	}
-	else { die "No class defined for buffer modus \"$modus\"" }
+	else { error "No class defined for buffer modus \"$modus\"" }
 }
+
+# overloadable hooks
+sub _switch_on {}
+sub _switch_off {}
 
 sub probe {
 	my $self = shift;
@@ -372,7 +377,7 @@ sub bind {
 	my $e = 'Usage: bind($char_name, $sub_name, $modus) -- $modus is optional';
 	my $chr = shift || $self->parent->print($e, 'error');
 	my $sub = shift || $self->parent->print($e, 'error');
-	my $modus = shift || $self->{default_modus};
+	my $modus = shift || $self->{config}{default_modus};
 	$self->{bindings}{$modus}{$chr} = $sub;
 }
 
@@ -421,20 +426,16 @@ sub clear {
 sub discard {
 	my $self = shift;
 	$self->history_add;
-	$self->submit(1);
+	$self->reset;
+	print "\n";
+	$self->respawn;
 }
 
-sub submit { # arg is 'discard bit'
-	my $self = shift;
-	unless ($_[0] || join('', @{$self->{fb}}) =~ /^\s*$/) { $self->{continu} = 0; }
-	else {
-                $self->reset;
-                print "\n";
-                $self->respawn;
-        }
-}
+sub submit { $_[0]->{continu} = 0 }
 
-sub history_add { if (join('', @{$_[0]->{fb}})) { $_[0]->{parent}->History->add($_[0]->{fb}, $_[0]->{tab_exp_back}); } }
+sub history_add { 
+
+if (join('', @{$_[0]->{fb}})) { $_[0]->{parent}->History->add($_[0]->{fb}, $_[0]->{tab_exp_back}); } }
 
 sub history_get {
 	my $self = shift;
@@ -491,13 +492,12 @@ sub editor {
 	my $self = shift;
 	my $ext = 'pl'; # TODO make this dynamic
 	my $editor = $self->parent->{settings}{utils}{editor};
-	my $tempfile = $self->parent->unique_file("/tmp/zoid-XXXX.".$ext);
+	my $tempfile = unique_file("/tmp/zoid-XXXX.".$ext);
 	#print "debug: editor used: $editor, tempfile: $tempfile\n";
 	open(TEMP,'>'.$tempfile);
 	print TEMP join("\n", @{$self->{fb}});
 	close TEMP;
-    $self->parent->Brannigan->speak("Captain's log, stardate ".time());
-	system($editor, $tempfile); # if this is parent->parse it's syntax dependend
+	system($editor, $tempfile);
 	open(TEMP,$tempfile);
 	@{$self->{fb}} = map {chomp $_; $_} (<TEMP>);
 	unless (@{$self->{fb}}) { @{$self->{fb}} = (''); }
@@ -620,7 +620,7 @@ sub expand { # TODO fix tab_exp_back for expansion in het midden van de string
 		if ($self->{config}{max_expand} && scalar(@{$ref}) > $self->{config}{max_expand}) {
 			print "More then $self->{config}{max_expand} matches\n";
 		}
-		else { $self->{parent}->print_list(@{$ref}) }
+		else { $self->{parent}->print($ref) }
 	}
 
 	$self->respawn;
@@ -640,7 +640,7 @@ sub highlight { # this belongs in a string util module or something
 
 	# do syntax highlighting
 
-=begin comment
+=cut
 
 	my $tree = $self->{parser}->parse($fb, 'pipe_gram', 1, 1);
 	my $error = $self->{parser}->{error};
@@ -653,9 +653,9 @@ sub highlight { # this belongs in a string util module or something
 		$string .= $ref->[1];
 		$self->{_last_context} = $ref->[2];
 	}
-=end comment
 
 =cut
+
 	my $string = $fb; my $error;
 
 	# display hack
@@ -817,7 +817,7 @@ None by default.
 =head2 k_*
 
   Methods to bind keys to
-  
+
 =head2 set_string
 
   Put a string on the prompt non-interactively.
@@ -833,7 +833,7 @@ None by default.
 
 =head1 AUTHOR
 
-Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
+Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
 Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
@@ -842,12 +842,7 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<perl>
-
-L<Zoidberg>
-
-L<Zoidberg::Fish>
-
-http://zoidberg.sourceforge.net
+L<Zoidberg>, L<Zoidberg::Fish>,
+L<http://zoidberg.sourceforge.net>
 
 =cut

@@ -2,24 +2,36 @@
 use Zoidberg::Shell qw/:zoidrc/;
 
 # set environment
-%ENV = (%ENV, (
+%default_env = (
 	EDITOR	=> 'vim',
 	MAILER	=> '',
 	PAGER	=> 'less',
-	BROWSER	=> 'mozilla',
+	BROWSER	=> 'lynx',
 #	PS1	=> '[\u@\h(\L) \W]',
-) );
+);
+$ENV{$_} ||= $default_env{$_} for keys %default_env;
 
 # Some programs expect this var to point to a fully posix compliant shell.
 # Since zoid doesn't use this var, no harm is done.
-$ENV{SHELL} = '/bin/bash';
+# Notice that even perl core utils like perldoc have expectations about it.
+$ENV{SHELL} = '/bin/sh';
 
 # set aliases
 alias( {
-	ls => 'ls --color=auto',
-	ll => 'ls --color -l',
-	up => 'cd ..',
+	ls       => 'ls --color=auto',
+	ll       => 'ls --color=auto -l',
+	up       => 'cd ..',
+	bye      => 'exit',
+	( ($> == 0)
+		? ( perldoc => 'perldoc -U', perlfunc => 'perldoc -Uf' )
+		: ( perlfunc => 'perldoc -f' )
+	),
 } );
+
+# set default settings
+# set( );
+
+# $shell->do('use Data::Dumper');
 
 __END__
 

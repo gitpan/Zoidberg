@@ -1,38 +1,30 @@
 package Zoidberg::Shell;
 
+our $VERSION = '0.40';
+
 use strict;
 use vars qw/$AUTOLOAD/;
-use Exporter;
 use Carp;
 use Zoidberg::Error;
 use Zoidberg::FileRoutines qw/abs_path/;
-
-our $VERSION = '0.3c';
-
-our $DEBUG	= 0;
-our @ISA	= qw/Exporter/;
-our @EXPORT	= qw/AUTOLOAD/;
-our @EXPORT_OK	= qw/
-	AUTOLOAD sh builtin system cmd exec_error 
-	alias unalias set setting
-/;
-our %EXPORT_TAGS = (
-	all	=> \@EXPORT_OK,
-	zoidrc	=> [qw/alias unalias set setting/],
-);
+use Zoidberg::Utils qw/:output/;
+use Exporter::Tidy
+	default	=> [qw/AUTOLOAD shell/],
+	zoidrc	=> [qw/alias unalias set setting shell/],
+	other	=> [qw/shell_string shell_tree  exec_error/];
 
 # TODO unless ref($ENV{ZOIDREF}) start ipc
 
-sub new { # undocumented for a reason
+sub new {
 	my ($class, $ref) = @_;
 	unless ($ref) {
 		return unless ref($ENV{ZOIDREF}); # make use_ok test happy :((
-		$ref = $ENV{ZOIDREF}->{zoid};
+		$ref = $ENV{ZOIDREF};
 	}
 	bless {zoid => $ref}, $class;
 }
 
-sub _self { (ref($_[0]) eq __PACKAGE__) ? shift : {zoid => $ENV{ZOIDREF}->{zoid}} }
+sub _self { (ref($_[0]) eq __PACKAGE__) ? shift : {zoid => $ENV{ZOIDREF}} }
 
 # ################ #
 # Parser interface #
@@ -40,55 +32,29 @@ sub _self { (ref($_[0]) eq __PACKAGE__) ? shift : {zoid => $ENV{ZOIDREF}->{zoid}
 
 sub AUTOLOAD {
 	## Code inspired by Shell.pm ##
-	my $cmd = (split/::/,$AUTOLOAD)[-1];
+	my $cmd = (split/::/, $AUTOLOAD)[-1];
 	return undef if $cmd eq 'DESTROY';
-	carp "You shouldn't autoload OO methods for this object" if ref($_[0]) eq __PACKAGE__;
-	print "debug: autoload got command: $cmd\n" if $DEBUG;
-	sh($cmd, @_);
+	shift if ref($_[0]) eq __PACKAGE__;
+	debug "Zoidberg::Shell::AUTOLOAD got $cmd";
+	unshift @_, $cmd;
+	goto \&shell;
 }
 
-sub sh {
+sub shell {
 	my $self = &_self;
 	my $tree = [];
-	unless (ref $_[0]) {
-		push @$tree, $self->{zoid}->parse_words(@_)
-			|| error "zoid: $_[0]: command not found" ;
-	}
-	else { todo 'pipeline form' }
-	for (@$tree) { $_->[0] = {context => $_->[0]} if ref($_) && ! ref($_->[0]) }
-	# TODO capture output
-	if (scalar(@$tree) == 1) { $self->{zoid}->do_job($tree, 'FG') }
-	else { $self->{zoid}->do_list($tree) }
+	unless (ref $_[0]) { @$tree = [ $self->{zoid}->parse_words({}, @_) ] }
+	else { @$tree = map {ref($_) ? [$self->{zoid}->parse_words({}, @$_)] : $_ } @_ }
+	$self->{zoid}->do_list($tree);
+	# TODO use wantarray
 }
 
-# Don't like the name - it masks CORE::system :((
-#sub system {
-#	my $self = &_self;
-#	open CMD, '-|', $cmd, @_;
-#	my @ret = (<CMD>);
-#	close CMD;
-#	$self->{zoid}{exec_error} = $?;
-#	if (wantarray) { return map {chomp; $_} @ret }
-#	else { return join('',@ret); }
-#}
-# reminder: error moet naar {zoid}{exec_error} so exec_error() will work transparently
-# or a similar hack has to be made for this
-# 
-#=item C<system($command, @_)>
-#
-#Like C<sh(..)> but but enforces C<$command> to be a system binary.
-#It is more efficient because it doesn't use the 
-#normal Zoidparse structure.
-#
-#This routine returns the result of the executed command either as scalar, or
-#-when in list context- as an array.
-#
-#No expansion of any kind will be done on the arguments.
+sub shell_string { 
+	my $self = &_self;
+	$self->{zoid}->do(@_);
+}
 
-
-sub builtin { todo }
-
-sub cmd { todo }
+sub shell_tree { todo }
 
 sub exec_error { 
 	my $self = &_self;
@@ -124,7 +90,7 @@ sub set {
 	}
 	elsif (ref $_[0]) { error 'set: no support for data type'.ref($_[0]) }
 	else {
-		for (@_) { $self->{zoid}{settings}{$_} = 1 }
+		for (@_) { $self->{zoid}{settings}{$_}++ }
 	}
 }
 
@@ -139,7 +105,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Shell - an interface to the Zoidberg shell
+Zoidberg::Shell - a scripting interface to the Zoidberg shell
 
 =head1 SYNOPSIS
 
@@ -148,13 +114,17 @@ Zoidberg::Shell - an interface to the Zoidberg shell
        
 	# Order parent shell to 'cd' to /usr
 	# If you let your shell do 'cd' that is _NOT_ the same as doing 'chdir'
-        $SHELL->sh(qw{cd /usr});
+        $SHELL->shell(qw{cd /usr});
 	
 	# Let your parent shell execute a logic list with a pipeline
-	$SHELL->sh([qw{ls -al}], [qw{grep ^d}], 'OR', [qw{echo some error happened}]);
+	$SHELL->shell([qw{ls -al}], [qw{grep ^d}], 'OR', [qw{echo some error happened}]);
 	
 	# Create an alias
-	$SHELL->alias({ 'ls' => 'ls --color=auto'});
+	$SHELL->alias({'ls' => 'ls --color=auto'});
+	
+	# since we use Exporter::Tidy you can also do this:
+	use Zoidberg::Shell _prefix => 'zoid_', qw/shell alias unalias/;
+	zoid_alias({'perlfunc' => 'perldoc -Uf'});
 
 =head1 DESCRIPTION
 
@@ -165,18 +135,16 @@ do with /.*sh/ environments.
 
 =head1 EXPORT
 
-Only the C<AUTOLOAD> sub is exported by default.
+Only the subs C<AUTOLOAD> and C<shell> are exported by default.
 C<AUTOLOAD> works more or less like the one from F<Shell.pm> by Larry Wall, but it 
-includes zoid's builtin functions and commands (also it just prints output to stdout).
+includes zoid's builtin functions and commands (also it just prints output to stdout see TODO).
 
 The other methods (except C<new>) can be exported on demand. 
 Be aware of the fact that methods like C<alias> can mask "plugin defined builtins" 
-with the same name, but with on other interface. If instead of exporting these methods
+with the same name, but with an other interface. If instead of exporting these methods
 the L</AUTOLOAD> method is used, different behaviour can be expected.
 
 =head1 METHODS
-
-FIXME tell about OO and non-OO use
 
 B<Be aware:> All commands are executed in the B<parent> shell environment, 
 so if a command changes the environment these changes will change 
@@ -188,7 +156,7 @@ the environment of the parent shell, even when the script has long finished.
 
 Simple constructor.
 
-=item C<sh($command, @_)>
+=item C<shell($command, @_)>
 
 If C<$command> is a built-in shell function (possibly defined by a plugin)
 or a system binary, it will be run with arguments C<@_>.
@@ -200,16 +168,25 @@ If you just want the output of a system command use the L<system> method.
 If you want to make I<sure> you get a built-in command use L<builtin>, you might
 prevent some strange bugs.
 
-=item C<sh([$command, @_], [..], 'AND', [..])>
+=item C<shell([$command, @_], [..], 'AND', [..])>
 
 Create a logic list and/or pipeline. Available tokens are 'AND', 'OR' and
 'EOS' (End Of Statement, ';').
 
-TODO - not yet implemented
+=item C<shell_string($string)>
 
-=item C<builtin($command, @_)>
+Parse B<and> execute C<$string> like it was entered from the commandline.
+You should realise that the parsing is dependent on grammars currently in use,
+and also on things like aliases etc.
 
-Like C<sh(..)>, but enforces C<$command> to be in the dispatch table for builtins.
+I<Using this form in a source script _will_ attract nasty bugs>
+
+=item C<shell_tree([$context, @_], [..],'AND',[..])>
+
+=item C<< shell_tree([ {context => $context}, @_ ]) >>
+
+Like C<shell()> but lets lets you pass more meta data to the parse tree. 
+This can be considered an "expert mode", see parser documentation/source elsewhere.
 
 TODO - not yet implemented
 
@@ -235,48 +212,13 @@ FIXME point to docs on aliases
 
 Delete all keys listed in C<@aliases> from the aliases table.
 
-=item C<cmd($string)>
-
-Parse B<and> execute C<$string> like it was entered from the commandline.
-You should realise that the parsing is dependent on grammars currently in use,
-and also on things like aliases etc.
-
-I<Using this form in a source script _will_ attract nasty bugs>
-
-TODO - not yet implemented
-
-=item C<cmd([$context, @_])>
-
-Pass C<@_> to the plugin for this context.
-
-TODO - not yet implemented
-
-=item C<cmd([$context, @_], [..],'AND',[..])>
-
-Create a logic list and/or pipeline.
-
-TODO - not yet implemented
-
-=item C<< cmd([ {context => $context}, @_ ]) >>
-
-This form lets you pass more meta data to the parse tree. This can be considered
-an "expert mode", see parser documentation/source elsewhere.
-
-TODO - not yet implemented
-
 =item C<exec_error()>
 
 Returns the error caused by the last executed command, or undef is all is well.
 
 =item AUTOLOAD
 
-All calls that get autoloaded are passe directly to the C<sh()> method.
-
-Using the AUTOLOADER in a object oriented way causes a warning, this is because
-using it in this way can cause a lot of confusion since the autoloaded
-commands will depend on the plugins currently in use and will not always
-behave the same. Maybe it should even C<die> at such occasion, but then you 
-wouldn't be able to pass a Zoidberg::Shell object to a command :S .
+All calls that get autoloaded are passed directly to the C<shell()> method.
 
 =back
 
@@ -284,7 +226,7 @@ wouldn't be able to pass a Zoidberg::Shell object to a command :S .
 
 Not all routines that are documented are implemented yet
 
-Currently stdout isn't captured
+Currently stdout isn't captured if wantarray
 
 An interface to create background jobs
 
@@ -292,21 +234,21 @@ An interface to get input
 
 Merge this interface with Zoidberg::Fish ?
 
+Can builtins support both perl data and switches ?
+
 Test script
 
 =head1 AUTHOR
 
-Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
+Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
 Copyright (c) 2003 Jaap G Karssenberg. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
-See L<http://www.perl.com/language/misc/Artistic.html>
-
 =head1 SEE ALSO
 
-L<perl>, L<Shell>, L<Zoidberg>, L<http://zoidberg.sourceforge.net>
+L<Shell>, L<Zoidberg>, L<http://zoidberg.sourceforge.net>
 
 =cut
 

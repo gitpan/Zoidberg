@@ -14,5 +14,7 @@ $VAR1 = {
 		_delete_object	_load_object	_hide
 		_unhide		quit		source
 		alias		unalias
+
+		dirs		popd		pushd
 	/],
 }

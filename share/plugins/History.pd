@@ -1,0 +1,8 @@
+use Zoidberg::Config; 
+$VAR1 = {
+	module => 'Zoidberg::Fish::History',
+	config => {
+		log_file => "$ENV{HOME}/.history.yaml",
+		max_hist => 100,
+	},
+}

@@ -18,11 +18,13 @@ $VAR1 = {
     'Zoidberg::Eval',
     'Zoidberg::Fish',
     'Zoidberg::FileRoutines',
+    'Zoidberg::Output',
     'Zoidberg::PdParse',
+    'Zoidberg::PluginHash',
     'Zoidberg::Shell',
     'Zoidberg::StringParse',
+    'Zoidberg::Utils',
     'Zoidberg::ZoidParse',
-    'Zoidberg',
-    'Exporter::Inheritor'
+    'Zoidberg'
   ]
 };

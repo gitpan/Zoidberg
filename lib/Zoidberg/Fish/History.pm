@@ -1,6 +1,6 @@
 package Zoidberg::Fish::History;
 
-our $VERSION = '0.3c';
+our $VERSION = '0.40';
 
 use strict;
 use IO::File();
@@ -32,18 +32,19 @@ sub open_log {
 	if ($self->{config}{log_file} && -s $self->{config}{log_file}) {
 		open IN, $self->{config}{log_file} || die "Could not open log file";
 		@{$self->{data}{hist}} = map {
-			m/(\d+)\s+\[hist\]\s(.*)/; 
-			[ 
-				[ split(/(?<!\\)\\n/, $2) ], # FIXME: escaping ain't right
+			m/-\s*\[\s*(\d+)\s*,\s*hist\s*,\s*"(.*?)"\s*\]\s*$/;
+			[
+				[ split /(?<!\\)\\n/, $2 ], # FIXME: escaping ain't right
 				[],
 				{ 't' => $1 },
 			]
 		} reverse (<IN>); # FIXME 'hist' type flexible
 		close IN;
-		if ($@) { $self->parent->print("while reading hist: $@", 'error'); }
 	}
 
-	if ($self->{config}{log_file}) { $self->{log} = IO::File->new('>>'.$self->{config}{log_file}) || die $!; }
+	if ($self->{config}{log_file}) {
+		$self->{log} = IO::File->new('>>'.$self->{config}{log_file}) || die $!;
+	}
 	else { $self->print("No hist log found.", 'warning'); }
 }
 
@@ -52,21 +53,21 @@ sub close_log {
 	if (ref($self->{log})) { $self->{log}->close; }
 	if ($self->{config}{log_file}) {
 		open OUT, '>'.$self->{config}{log_file} || die "Could not open hist file";
-		print OUT map {$self->log_record($_)."\n"} grep {$_->[0]} reverse @{$self->{data}{hist}};
+		print OUT "# This file is used by zoid(1)\n";
+		print OUT map {$self->log_record($_)."\n"} grep {@{$_->[0]}} reverse @{$self->{data}{hist}};
 		close OUT;
 	}
 	else { $self->print("No hist log found.", 'warning'); }
 }
 
-sub log_record { # recursive
-	my $self = shift;
-	my $ref = shift;
-	my $type = 'hist'; # FIXME
-	$ref->[2]{t}.' ['.$type.'] '.join('\n', @{$ref->[0]});
+sub log_record {
+	my ($self, $ref, $type) = (@_, 'hist');
+	"- [ $ref->[2]{t}, $type, \"".join('\n', @{$ref->[0]}).'" ]';
 }
 
 sub add {
 	my $self = shift; #print "debug hist got: ".Dumper(\@_);
+	return if $self->{parent}{settings}{no_hist}; # when hist becomes log, do this for default/hist type only
 	if (my $ding = shift) {
 		my @r = map {/\n/?split("\n", $_):$_} ref($ding) ? @{$ding} : ($ding);
 		unless (_arr_eq([@r], $self->{data}{hist}[0][0])) {
@@ -118,8 +119,10 @@ sub get {
 		}
 	}
 	#print "debug: point: -$self->{data}{hist_p}-\n";
-	my @record = ($self->{data}{hist_p} >= 0) ? @{$self->{data}{hist}[$self->{data}{hist_p}]} : ([''], [], {});
-	return @record;
+	my @record = ($self->{data}{hist_p} >= 0) 
+		? @{$self->{data}{hist}[$self->{data}{hist_p}]} 
+		: ([''], [], {});
+	return @{dclone \@record};
 }
 
 sub list {
@@ -257,7 +260,8 @@ TODO - should print hist nicely formatted
 
 =head1 AUTHOR
 
-Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
+Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
+
 R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
 Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
@@ -266,14 +270,7 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<perl>
-
-L<Zoidberg>
-
-L<Zoidberg::Fish>
-
-L<Zoidberg::Buffer>
-
+L<Zoidberg>, L<Zoidberg::Fish>, L<Zoidberg::Buffer>,
 L<http://zoidberg.sourceforge.net>
 
 =cut

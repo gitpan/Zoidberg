@@ -1,16 +1,16 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.3c';
+our $VERSION = '0.40';
 
 sub new {
-    my $class = shift;
-    my $self = {};
-    $self->{parent} = shift;
-    $self->{zoid_name} = shift;
-    $self->{settings} = $self->{parent}{settings};
-    $self->{config} = $self->{parent}{plugins}{$self->{zoid_name}}{config};
-    bless $self, $class;
-    $self;
+	my ($class, $zoid, $name) = @_;
+	my $self = {
+		parent => $zoid,
+		zoidname => $name,
+		settings => $zoid->{settings},
+		config => $zoid->{settings}{$name},
+	};
+	bless $self, $class;
 }
 
 sub init {}
@@ -38,52 +38,18 @@ sub config {
 #### event logic ####
 #####################
 
-sub event {
-	my $self = shift;
-	my $event = shift;
-	if ($self->can($event)) { $self->$event(@_); }
-}
-
 sub broadcast_event {
 	my $self = shift;
 	$self->{parent}->broadcast_event(@_);
 }
 
-sub register_event {
-	my $self = shift;
-	my $event = shift;
-	my $zoidname = shift || $self->{zoid_name};
-	unless (exists $self->{parent}{events}{$event}) { $self->{parent}{events}{$event} = [] }
-	push @{$self->{parent}{events}{$event}}, $zoidname;
+sub register_event { # DEPRECATED interface
+	my ($self, $event, $zoidname) = @_;
+	$zoidname ||= $self->{zoidname};
+	$self->{parent}{events}{$event} = ["->$zoidname->$event", $zoidname];
 }
 
-sub registered_events {
-	my $self = shift;
-	my $zoidname = shift || $self->{zoid_name};
-	my @events = ();
-	foreach my $event (keys %{$self->{parent}{events}}) {
-		if (grep {$_ eq $zoidname} @{$self->{parent}{events}{$event}}) { push @events, $event; }
-	}
-	return @events;
-}
-
-sub registered_objects {
-	my $self = shift;
-	my $event = shift;
-	return @{$self->{parent}{events}{$event}};
-}
-
-sub unregister_event {
-	my $self = shift;
-	my $event = shift;
-	my $zoidname = shift || $self->{zoid_name};
-	@{$self->{parent}{events}{$event}} = grep {$_ ne $zoidname} @{$self->{parent}{events}{$event}};
-}
-
-sub unregister_all_events {
-	my $self = shift;
-	foreach my $event (keys %{$self->{parent}{events}}) { $self->unregister_event($event, @_) }
-}
+sub unregister_event { todo() }
 
 ######################
 ### command logic ####
@@ -94,25 +60,6 @@ sub unregister_all_events {
 #####################
 #### other stuff ####
 #####################
-
-sub _do_sub {
-	my $self = shift;
-	my $ding = shift;
-	my @args = @_;
-	if (ref($ding) eq 'CODE') { $ding->($self, @args) }
-	elsif (ref($ding)) { die "Can't use a ".ref($ding)." reference as sub routine." }
-	else {
-		$ding =~ s/^\s*//;
-		unless ($ding =~ /^\$/) { 
-			$ding =~ s/^->/parent->/;
-			$ding = '$self->'.$ding;
-		}
-		
-		if ($ding =~ s/(\(.*\))\s*$//) { unshift @args, eval($1) }
-		my $sub = eval("sub { $ding(\@_) }");
-		return $sub->(@args);
-	}
-}
 
 sub help {
 	my $self = shift;
@@ -154,7 +101,7 @@ The B<developer manual> should describe this in more detail.
 
 =over 4
 
-=item C<new($parent, $zoid_name)>
+=item C<new($parent, $zoidname)>
 
 Simple constructor that bootstraps same attributes. When your module smells like fish
 Zoidberg will give it's constructor two arguments, a reference to itself and the name by
@@ -163,7 +110,7 @@ which your module is identified. From this all other config can be deducted.
 	# Default attributes created by this constructor:
  
 	$self->{parent}    # a reference to parent Zoidberg object
-	$self->{zoid_name} # name by which your module is identified
+	$self->{zoidname} # name by which your module is identified
 	$self->{settings}  # reference to hash with global settings
 	$self->{config}    # hash with plugin specific config
 
@@ -183,18 +130,6 @@ Prefered output method.
 
 FIXME this one might move to helper library
 
-=item C<_do_sub($thing)>
-
-Execute subroutine specified by string C<$thing> or execute C<$thing> directly
-when it's a CODE ref. It works the same way like Zoidberg executes commands, with the
-difference it takes the subroutine as base instead of the parent object. It is preferred 
-to use this for "command-like" configuration options.
-
-=item C<event($event_name, @_)>
-
-This method is called by the parent object when an event is broadcasted for which this
-plugin is registered.
-
 =item C<broadcast_event($event_name, @_)>
 
 Broadcast an event to whoever might be listening.
@@ -204,20 +139,13 @@ Broadcast an event to whoever might be listening.
 Register for an event by the parent object. When the event occurs, the C<event()> method 
 will be called.
 
+DEPRECATED
+
 =item C<unregister_event($event_name)>
 
 Unregister self for event C<$event_name>.
 
-=item C<unregister_all_events()>
-
-Unregister self for all events, this is by default called by C<round_up()>. It is good practice 
-to call this routine when a plugin signs off.
-
-FIXME this is what _should_ happen -- but events need to get more efficient
-
-=item C<registered_events()>
-
-List events self is registered for.
+DEPRECATED / TODO :S
 
 =item C<help()>
 
@@ -236,7 +164,7 @@ To be overloaded, do things like saving files or closing sockets here.
 
 R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
-Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
+Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
 Copyright (c) 2002 Raoul L. Zwart. All rights reserved.
 This program is free software; you can redistribute it and/or

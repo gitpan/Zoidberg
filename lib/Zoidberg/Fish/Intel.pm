@@ -1,15 +1,13 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.3c';
+our $VERSION = '0.40';
 
 use strict;
 use vars qw/$DEVNULL/;
 use base 'Zoidberg::Fish';
-use Devel::GetSymbols qw/symbols/;
 use Zoidberg::Error;
 use Zoidberg::FileRoutines qw/abs_path list_path get_dir $DEVNULL/;
-
-our $DEBUG = 0;
+use Zoidberg::Utils qw/debug/;
 
 sub init {
 	my $self = shift;
@@ -18,27 +16,28 @@ sub init {
 
 sub expand {
 	my ($self, $string, $i_feel_lucky) = @_;
-	print "\n" if $DEBUG;
 
 	# fetch block
 	my $l_block;
 	($string, $l_block) = $self->_get_last_block($string);
-	print "string is -->$string<--\nl_block is -->$l_block<--\n" if $DEBUG;
+	debug "string is -->$string<--\nl_block is -->$l_block<--\n";
 
 	# find context of block
 	my $block = $self->{parent}->parse_block($l_block, 'BROKEN');
-	unless ($block) { return ('', $string.$l_block, []) }
-	if ($#$block > 1) {
+	return '', $string.$l_block, [] unless $block;
+
+	if ($#$block > 0) {
 		# get pref right
 		$block->[0]{pref} = $l_block;
-		unless ( !length($block->[-1]) || $block->[0]{pref} =~ s/\Q$block->[-1]\E$//) {
+		unless ( ! length $block->[-1] or $block->[0]{pref} =~ s/\Q$block->[-1]\E$//) {
 			# probably escape chars make the match fail
 			my @words = $self->{parent}{StringParser}->split(
 				['word_gram', {no_esc_rm => 1}],
 				$l_block );
-			return ('', $string.$l_block, []) unless $block->[0]{pref} =~ s/\Q$words[-1]\E$//;
+			return '', $string.$l_block, []
+				unless $block->[0]{pref} =~ s/\Q$words[-1]\E$//;
 		}
-	} else { $block->[0]{pref} = '' }
+	}
 	$block->[0]{i_feel_lucky} = $i_feel_lucky;
 	$block->[0]{poss} = [];
 
@@ -125,18 +124,18 @@ sub remove_doubles {
 
 sub do {
 	my ($self, $block, $try, @try) = @_;
-	print "do is gonna try $try (".'i_'.lc($try).")\n" if $DEBUG;
+	debug "gonna try $try (".'i_'.lc($try).")";
 	return $block unless $try;
 	my @re;
 	if (ref($try) eq 'CODE') { @re = $try->($self, $block) }
-	elsif (exists $self->{parent}{contexts}{lc($try).'_intel'}) {
-		@re = $self->{parent}{contexts}{lc($try).'_intel'}->($self, $block)
+	elsif (exists $self->{parent}{contexts}{$try}{intel}) {
+		@re = $self->{parent}{contexts}{$try}{intel}->($self, $block)
 	}
 	elsif ($self->can('i_'.lc($try))) {
 		my $sub = 'i_'.lc($try);
 		@re = $self->$sub($block);
 	}
-	else { print $try.': no such expansion available' if $DEBUG }
+	else { debug $try.': no such expansion available' }
 
 	if (defined $re[0]) { ($block, @try) = (@re, @try) }
 	else { return scalar(@try) ? $self->do($block, @try) : $block } # recurs
@@ -165,7 +164,6 @@ sub i__zoid {
 	$code =~ s/->$//;
 	my $ding = eval($code);
 	my $type = ref $ding;
-#	print "\ndebug: pref -->$pref<-- arg -->$arg<-- code -->$code<-- ref -->$type<--\n";
 	return undef if $@ || ! $type;
 
 	my @poss;
@@ -186,7 +184,7 @@ sub i__zoid {
 
 			unless ($arg =~ /[\[\{]/) {
 				no strict 'refs';
-				my @m_poss = map { grep  m/$arg/, symbols('CODE', $_) } ($type, @{$type.'::ISA'});
+				my @m_poss = map { grep  m/$arg/, _subs($_) } ($type, @{$type.'::ISA'});
 				push @poss, remove_doubles(@m_poss);
 			}
 			$block->[0]{postf} = '(';
@@ -200,19 +198,25 @@ sub i__zoid {
 	return $block;
 }
 
+sub _subs { 
+	no strict 'refs';
+	grep defined *{"$_[0]::$_"}{CODE}, keys %{"$_[0]::"};
+}
+
 sub i__perl_data { return undef } # TODO
 
 sub i__words {
 	my ($self, $block) = @_;
 
 	my $arg = $block->[-1];
-	$block->[0]{poss} = [ grep /^\Q$arg\E/, $self->{parent}->list_commands ];
-	push @{$block->[0]{poss}}, grep( /^\Q$arg\E/, list_path() ) unless $arg =~ m#/#;
+	push @{$block->[0]{poss}}, grep /^\Q$arg\E/, keys %{$self->{parent}{aliases}};
+	push @{$block->[0]{poss}}, grep /^\Q$arg\E/, keys %{$self->{parent}{commands}};
+	push @{$block->[0]{poss}}, grep /^\Q$arg\E/, list_path() unless $arg =~ m#/#;
 
 	return ($block, qw/exec __more_words/);
 }
 
-sub i___more_words {
+sub i___more_words { # FIXME FIXME FIXME
 	my ($self, $block) = @_;
 	for (@{$self->{parent}{_word_lists}}) {
 		push @{$block->[0]{poss}}, $_->($block->[-1]) 
@@ -247,13 +251,16 @@ sub i_dirs_n_files { # TODO globbing tab :)
 		}
 	}
 	else {
-		$dir = ($arg =~ s!^(.*/)!!) ? abs_path($1) : '.';
-		$block->[0]{pref} .= _quote_file($1);
+		if ($arg =~ s!^(.*/)!!) { 
+			$dir = abs_path($1);
+			$block->[0]{pref} .= _quote_file($1);
+		}
+		else { $dir = '.' }
 		return undef unless -d $dir;
 		$dir = get_dir($dir);
 	}
-	print "Expanding files ($type) from dir: $dir->{path} with arg: -->$arg<--\n" if $DEBUG;
-	
+	debug "Expanding files ($type) from dir: $dir->{path} with arg: $arg";
+
 	my @poss = sort grep /^\Q$arg\E/, @{$dir->{files}};
 	@poss = grep { -x $dir->{path}.$_ } @poss if $type =~ /x/;
 
@@ -265,13 +272,13 @@ sub i_dirs_n_files { # TODO globbing tab :)
 	$block->[0]{_file_quote}++;
 	$block->[0]{poss} = \@poss;
 
-	print "Got ".scalar(@{$block->[0]{poss}})." matches\n" if $DEBUG;
+	debug 'Got ', scalar(@{$block->[0]{poss}}), ' matches';
 	return $block;
 }
 
 sub _quote_file { 
 	my $string = shift;
-	$string =~ s#([\[\]\(\)\s\?\!\#\;\:\"\'\{\}])#\\$1#g;
+	$string =~ s#([\[\]\(\)\s\?\!\#\&\|\;\:\"\'\{\}])#\\$1#g;
 	return $string;
 }
 
@@ -296,7 +303,7 @@ sub i_man_opts { # TODO caching (tie classe die ook usefull is voor FileRoutines
 	open SAVERR, '>&STDERR';
 	open STDERR, '>'.$DEVNULL;
 	
-	print "Going to open pipeline '-|', '$self->{config}{man_cmd}', '$block->[1]'\n" if $DEBUG;
+	debug "Going to open pipeline '-|', '$self->{config}{man_cmd}', '$block->[1]'";
 	open MAN, '-|', $self->{config}{man_cmd}, $block->[1];
 	my (%poss, @poss, $state, $desc);
 	# state 3 = new alinea
@@ -370,7 +377,7 @@ FIXME
 
 =head1 AUTHOR
 
-Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
+Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
 Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
 This program is free software; you can redistribute it and/or
@@ -378,9 +385,7 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<perl>,
-L<Zoidberg>,
-L<Zoidberg::Fish>,
+L<Zoidberg>, L<Zoidberg::Fish>,
 L<http://zoidberg.sourceforge.net>
 
 =cut

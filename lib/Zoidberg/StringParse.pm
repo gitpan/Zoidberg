@@ -11,10 +11,7 @@ package Zoidberg::StringParse::grammar;
 
 use strict;
 use Carp;
-require Exporter;
-
-our @ISA = qw/Exporter/;
-our @EXPORT = qw/pop_stack push_stack empty_stack/;
+use Exporter::Tidy default => [qw/pop_stack push_stack empty_stack/];
 
 sub TIEHASH {
 	my $class = shift;
@@ -201,15 +198,14 @@ sub fetch {
 
 package Zoidberg::StringParse;
 
-our $VERSION = '0.3c';
+our $VERSION = '0.40';
 
 use strict;
 no warnings; # can't stand the nagging
 use Carp;
+use Zoidberg::Utils qw/debug/;
 
 import Zoidberg::StringParse::grammar;
-
-our $DEBUG = 0;
 
 sub new {
 	my $class = shift;
@@ -223,7 +219,7 @@ sub new {
 	return $self;
 }
 
-sub set { print "--------------------\n" if $DEBUG;
+sub set {
 	my $self = shift;
 	$self->reset;
 	my $gram = shift || {};
@@ -261,7 +257,7 @@ sub more { return length($_[0]->{string}) || $_[0]->next_line }
 sub get { # get next block
 	my ($self, $no_pull) = @_;
 	
-	return undef unless $self->{string} || (!$no_pull && $self->more);
+	return undef unless length $self->{string} or ! $no_pull && $self->more;
 
 	my ($block, $_gref);
 	if (ref $self->{broken}) { ($block, $_gref) = @{$self->{broken}} }
@@ -285,7 +281,7 @@ sub get { # get next block
 		$block .= $1;
 		$sign = $2;
 
-		print STDERR "debug: block: -->$block<-- token: -->$sign<--\n" if $DEBUG;
+		debug "block: ==>$block<== token: ==>$sign<==";
 
 		if ($1 =~ /$gram{s_esc}$/) { # escaped token
 			$block =~ s/$gram{s_esc}$// unless $gram{no_esc_rm};
@@ -296,12 +292,9 @@ sub get { # get next block
 		last unless length($sign) || length($self->{string}); # catch the \z
 
 		my $i = 0;
-		for ($3, $4, $5) { # find type
-			last if $_ eq $2;
-			$i++;
-		}
+		($_ eq $2) ? last : $i++ for ($3, $4, $5);
 		$type = $gram{_elements}[$i];
-		print STDERR "debug: type: $type\n" if $DEBUG;
+		debug "type: $type";
 
 		if ($type eq 'd_esc') { $block .= $gram{no_esc_rm} ? $sign  : $gram{esc} }
 		elsif ($type eq 'tokens') {
@@ -336,13 +329,13 @@ sub get { # get next block
 
 	unless (empty_stack(\%gram)) { # broken
 		die q{This should never happen - died to prevent infinite loop} if $self->{string};
-		# FIXME - it will happen when you escape the \z
-		print "debug: stack not empty\n" if $DEBUG;
+		# FIXME - it will happen when you escape the \z ... i think
+		debug "stack not empty";
 		$self->{broken} = [$block, \%gram];
 		unless ($self->{settings}{allow_broken}) {
 			if ($self->more) { ($block, $token) = $self->get } # recurs
 			else {
-				print "debug: broken input\n" if $DEBUG;
+				debug "broken input";
 				$gram{_open}[1] =~ s/s$// ;
 				$self->error( qq#Unmatched $gram{_open}[1] at end of input: $gram{_open}[0]# );
 			}
@@ -375,12 +368,12 @@ sub getline {
 sub _bulk_get {
 	my ($self, $one_line, $no_ref) = @_;
 
-	return undef unless length($self->{string}) || $self->next_line;
+	return undef unless length $self->{string} or $self->next_line;
 
 	my (@blocks, $block, $sign);
 	while  (length $self->{string}) {
 		($block, $sign) = $self->get(1);
-		unless ( $no_ref || !defined($block) || ref($block) ) {
+		unless ( $no_ref or ! defined $block or ref $block ) {
 			my $tmp = $block; # vunzig zo te moeten copieren
 			$block = \$tmp;
 		}
@@ -395,7 +388,7 @@ sub _bulk_get {
 
 sub next_line {
 	my $self = shift;
-	#print "debug: next line\n";
+	debug 'fetching next line of input';
 	
 	my $source = shift || $self->{next_line};
 	my $broken = shift || (ref $self->{broken}) ? 1 : 0;
@@ -425,8 +418,6 @@ sub next_line {
 		$self->error(q{Can't fetch next line from reference type }.$type);
 		shift @{$source};
 	}
-	
-	#print "debug: type was: $type, succes: $succes, line: $line\n";
 	
 	$self->{string} .= $line;
 	return $succes;
@@ -613,20 +604,17 @@ FIXME splain error messages
 
 =head1 AUTHOR
 
-Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
+Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
 Copyright (c) 2003 Jaap G Karssenberg. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
-See L<http://www.perl.com/language/misc/Artistic.html>
-
-
 Contains some code derived from Tie-Hash-Stack-0.09 by Michael K. Neylon.
 
 =head1 SEE ALSO
 
-L<perl>, L<Zoidberg>, L<http://zoidberg.sourceforge.net>
+L<Zoidberg>
 
 =cut
 

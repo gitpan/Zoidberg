@@ -1,0 +1,19 @@
+$VAR1 = {
+	'module' => 'Zoidberg::Fish::Buffer',
+	'config' => {
+		'tab_string' => "    ",
+		'bell' => 1,
+		'info' => 0,
+		'title' => 'Zoidberg',
+		'max_expand' => 0,
+		'modi' => {
+			'insert' => 'Zoidberg::Fish::Buffer::Insert',
+			'meta' => 'Zoidberg::Fish::Buffer::Meta::Vim',
+			'multi_line' => 'Zoidberg::Fish::Buffer::Insert::MultiLine',
+			'vim_command' => 'Zoidberg::Fish::Buffer::Insert::VimCommand',
+			'select' => 'Zoidberg::Fish::Buffer::Select',
+			'search_hist' => 'Zoidberg::Fish::Buffer::Insert::SearchHist',
+		},
+		'default_modus' => 'insert',
+	},
+}

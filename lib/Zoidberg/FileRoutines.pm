@@ -1,32 +1,23 @@
 package Zoidberg::FileRoutines;
 
-our $VERSION = '0.3c';
+our $VERSION = '0.40';
 
+use strict;
 #use File::Spec;
 use Carp;
 use Env qw/@PATH/;
 use Storable qw(lock_store lock_retrieve);
-use Exporter;
 use File::Spec; # TODO make more use of this lib
-use strict;
-
-our @ISA = qw/Exporter/;
-our @EXPORT_OK = qw/
-	abs_path list_path get_dir read_dir unique_file f_index_path 
-	f_wipe_cache f_read_cache f_save_cache is_exec_in_path
-	$DEVNULL
-/;
-our %EXPORT_TAGS = (
-	engine => [qw/f_index_path f_wipe_cache f_read_cache f_save_cache/],
-	basic => [qw/abs_path list_path get_dir unique_file $DEVNULL/],
-	exec_scope  => [qw/abs_path get_dir list_path $DEVNULL/],
-);
+use Zoidberg::Utils qw/debug/;
+use Exporter::Tidy
+	engine     => [qw/index_path wipe_cache read_cache save_cache/],
+	basic      => [qw/abs_path list_path get_dir unique_file $DEVNULL/],
+	exec_scope => [qw/abs_path get_dir list_path $DEVNULL/],
+	other      => [qw/is_exec_in_path/];
 
 our $cache = {};
 our $cache_time = 300; # 5x60 -- 5 minutes
 our $dump_file = '';
-
-our $DEBUG = 0;
 
 our $DEVNULL = File::Spec->devnull();
 
@@ -78,7 +69,7 @@ sub get_dir {
 
 sub read_dir {
 	my $dir = shift;
-	print "(re-) scanning directory $dir\n" if $DEBUG;
+	debug "(re-) scanning directory: $dir";
 	if (-e $dir) {
 		my $no_wipe = shift || $cache->{dirs}{$dir}{no_wipe};
 		$cache->{dirs}{$dir} = {
@@ -122,9 +113,7 @@ sub is_exec_in_path {
 
 sub unique_file {
 	my $string = pop || "untitledXXXX";
-	my $file;
-	my $number = 0;
-	$file = $string;
+	my ($file, $number) = ($string, 0);
 	$file =~ s/XXXX/$number/;
 	while ( -e $file ) {
 		if ($number > 256) {
@@ -136,8 +125,9 @@ sub unique_file {
 			$file =~ s/XXXX/$number/;
 		}
 		$number++
-	}
-	unless (defined $file) { die "could not find any non-existent file for string \"$string\"" }
+	};
+	die qq/could not find any non-existent file for string "$string"/
+		unless defined $file;
 	return $file;
 }
 
@@ -145,9 +135,9 @@ sub unique_file {
 #### Engine routines ####
 #########################
 
-sub f_index_path { foreach my $dir (grep {-e $_} @PATH) { read_dir($dir, 1) } }
+sub index_path { foreach my $dir (grep {-e $_} @PATH) { read_dir($dir, 1) } }
 
-sub f_wipe_cache { 
+sub wipe_cache { 
 	foreach my $dir (keys %{$cache->{dirs}})  {
 		unless ($cache->{dirs}{$dir}{no_wipe}) {
 			my $diff = time - $cache->{dirs}{$dir}{cache_time};
@@ -156,12 +146,12 @@ sub f_wipe_cache {
 	}
 }
 
-sub f_read_cache {
+sub read_cache {
 	my $file = _shift_file(@_);
 	if (-s $file) { $cache = lock_retrieve($file); } # _our_ $cache
 }
 
-sub f_save_cache {
+sub save_cache {
 	my $file = _shift_file(@_);
 	lock_store($cache, $file);
 }
@@ -181,7 +171,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::FileRoutines
+Zoidberg::FileRoutines - file handling utils for Zoidberg
 
 =head1 DESCRIPTION
 
@@ -224,6 +214,18 @@ and is executable. If C<$cmd> can't be found or isn't executable undef is return
 
 This module could benefit from using C<tie()>.
 
+=head1 AUTHOR
+
+R.L. Zwart E<lt>rlzwart@cpan.orgE<gt>
+
+Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
+
+Copyright (c) 2003 Jaap G Karssenberg. All rights reserved.
+This program is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+L<Zoidberg>
+
 =cut
-
-

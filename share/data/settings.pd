@@ -1,0 +1,17 @@
+$VAR1 = {
+	output => {
+		warning => 'yellow',
+		error => 'red',
+		debug => 'green',
+		'sql-data' => 'yellow',
+	},
+	clothes => {
+		keys => [qw/settings vars exec_error commands aliases events/],
+		subs => [qw/do/],
+	},
+	perl_keywords => [qw/if unless for foreach while until print use sub/],
+	naked_zoid => 0,
+	cache_time => 300, # time in seconds -- 5min
+	hide_private_method => 1,
+	hide_hidden_files => 1,
+};

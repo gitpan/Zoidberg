@@ -1,6 +1,87 @@
 Revision history for Zoidberg -- a modular perl shell
 <http://zoidberg.sourceforge.net>
 
+0.40 Th Oct 30 2003
+	You may notice the numbering scheme changed, this was done to make the
+	numbering a little more CPAN friendly.
+        - Added regex to make statements starting with a sub routine calls
+        also default the context to perl
+        - Fixed bug that die'ing data files could kill zoid on init
+        - Fixed job notification
+	- Added 'events' en 'import' as keys for PluginConf
+
+     We Oct 29 2003
+        - Fixed some config issues in Fish::Buffer
+        - Rewrote Fish::Buffer::Meta::Vim
+
+     Mo Oct 27 2003
+        - Applied patch submitted by carl0s to fix a bug that at random caused 
+        jobs to hang. Seesm to work.
+
+     Sa Oct 25 2003
+        - Finished interface for custom contexts
+        - Fixed bug in Intel that appeared after upgrading to perl 5.8.1
+        - Double checked man1 docs
+
+     Fr Oct 24 2003
+        - Made Buffer use DispatchTable, tuned bindings for ^u and ^w
+        - Added support for custom contexts
+
+     Th Oct 23 2003
+        - Discovered and repaired a bug in DispatchTable's stack code
+        - Changed sub names in Zoidberg::Shell
+
+     We Oct 22 2003
+        - Fixed Config to work correctly with AppDir
+        - Fixed a bug in the hashing of plugins
+
+     Tu Oct 21 2003
+        - Fixed bug that zoidrc could kill zoid
+        - Fixed bug that aliases didn't show in expansion
+        - Made the DELETE function of DispatchTable actully pop it's stack
+	- Changed all uses of Exporter into Exporter::Tidy
+	- Removed Exporter::Inheritor and Devel::GetSymbols form cvs tree
+	- Cleaned up some documentation and updated faq
+
+     Su Oct 19 2003
+        - Added stack to error hash, callers  $DEBUG is used as stack lenght
+	- Changed ~/.history.log into ~/.history.yaml
+	- Fixed nasty bug in &Zoidberg::Eval::_dezoidify for 'arrow syntax'
+	- Cleaned up most debug code, also added '-DSome::Class' switch to fluff
+	- Added dir format for plugins
+
+     Sa Sep 13 till Su Oct 19 2003
+	Didn't record Changes for some time, so now I list what I remember
+	without specific dates -- bad project manager, no cookie ;)
+	- Created Zoidberg::PluginHash to tie $zoid->{objects}
+	- Patched DispatchTable to interact with PluginHash
+	- Made DispatchTable stacking so it can also be used for {events}
+	- Merged all config for fluff, plugins and Z::Config.pm into {settings}
+	- Revised some of the make process; creating appdirs goes more smoothly now
+	see also Install
+	- The dir ~/.zoid isn't used by default but can overload share/zoid
+	- Share doesn't contain a 'skel' subdir anymore but now has
+	the subdirs 'data' and 'plugins'
+	- Zoidberg.pm doesn't have a init() sub anymore, this fixed some 
+	bootstrap bugs between fluff and Zoidberg
+	- Started work on Zoidberg::Utils, this should ultimatly bundle all 
+	the library stuff
+	- added read_data_file() to Utils, should be used instead of pd_read
+	- Created Zoidberg::Output to contain output stuff to be bundled in Utils,
+	currently Zoidberg.pm has backward compatible code.
+	- Added Buffer->ask for later usage in plugins
+	- Moved a lot of unused modules out of cvs tree
+
+     Su Aug 03 2003 
+	- Added array support for sh-like syntax
+
+     Mo Jul 28 2003
+	- Added dirstack functionality to Fish::Commands
+
+     Su Jul 27 2003
+	- Added variable expansion for shell-like syntax
+	- Added fake arrays for shell-like syntax
+
 0.3c Fr Jul 18 2003
 	Minor release, some bugfixes, we wanted to have the latest
 	version available for YAPC::Europe.

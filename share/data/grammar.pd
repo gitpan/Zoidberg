@@ -1,0 +1,28 @@
+
+$VAR1 = {
+	_base_gram => {
+	        esc => '\\',
+	        nests => {
+	                '{' => '}',
+			'(' => ')',
+	        },
+	        quotes => {
+	                '"' => '"',
+	                "'" => "'",
+	        },
+	},
+	script_gram => {
+	        tokens => [
+			# TODO redirections  > < >> << and logic NOT (!)
+	                [ '&&', 'AND'  ],
+			[ '||', 'OR'   ],
+	                [ '|' , '_CUT' ],
+			[ ';' , 'EOS'  ],
+			[ '&' , 'BGS'  ],
+			[ '==>', 'XFW' ],
+			[ '<==', 'XBW' ],
+	        ],
+		no_esc_rm => 1,
+	},
+	word_gram => qr/\s+/,
+};

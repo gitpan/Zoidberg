@@ -1,0 +1,15 @@
+
+use strict;
+
+# find appdir
+my $zoid = $0;
+$zoid =~ s/AppRun$/zoid/;
+
+# exec terminal
+exec join ' ', $TERM, $zoid, @ARGV
+	if $ENV{DISPLAY};
+
+# if no display _or_ exec failed
+exec join ' ', $zoid, @ARGV;
+
+die "Could not exec zoid !?\n";

@@ -1,10 +1,10 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.3c';
+our $VERSION = '0.40';
 
 use strict;
 use Cwd;
-use Env qw/@CDPATH/;
+use Env qw/@CDPATH @DIRSTACK/;
 use Data::Dumper;
 use Zoidberg::Error;
 use base 'Zoidberg::Fish';
@@ -53,7 +53,8 @@ sub set {
 		shift;
 		$sw = $1;
 		my %args = ( # quoted is yet unsupported
-			#a => 'allexport',	b => 'notify',
+			#a => 'allexport',	
+			b => 'notify',
 			#C => 'noclobber',	e => 'errexit',
 			f => 'noglob',		#m => 'monitor',	
 			#n => 'noexec',		u => 'nounset',
@@ -75,7 +76,7 @@ sub set {
 	}
 	
 	$val = shift unless defined $val;
-	error "Setting $opt is a data structure" if ref $self->{settings}{$opt};
+	error "Setting $opt contains a data structure" if ref $self->{settings}{$opt};
 	
 	if ($sw eq '+') { delete $self->{settings}{$opt} }
 	else { $self->{settings}{$opt} = $val || 1 }
@@ -134,53 +135,38 @@ sub false { error {silent => 1} }
 
 sub true { 1 }
 
-sub cd {
+sub cd { # TODO [-L|-P] see man 1 bash
 	my $self = shift;
+	my ($dir, $browse_hack, $done);
 
-	# TODO [-L|-P] see man 1 bash
-	# FIXME remove '->' and '<-' and use '-b', '--back', '-f', '--forward' instead
-	# the /[<>-]+/ gives parsing issues with shell syntax
-	my ($dir, $browse_hack);
-	if ($_[0] =~ /^-|<-/) {
+	if ($_[0] =~ /^-[bf]?$/) {
 		$dir = $self->__get_dir_hist(@_);
-		# TODO seperated error for wrongly formatted input
 		error q{History index out of range} unless defined $dir;
 		$browse_hack++;
 	}
 	else { $dir = shift }
 
-	# due to things like autofs we must try every possibility
-	# instead of checking '-d'
-
-	my $done;
-	if ($dir) {
-		$dir =~ s{(?<!^)/$}{}; # cut trailing slash
-
+	unless ($dir) { $done = chdir() }
+	else {
+		# due to things like autofs we must try every possibility
+		# instead of checking '-d'
 		my @dirs = ($dir);
-		push @dirs, map {$_.'/'.$dir} @CDPATH unless $dir =~ m{^/};
+		push @dirs, map "$_/$dir", @CDPATH unless $dir =~ m#^\.{0,2}/#;
 
-		for (@dirs) {
-			$dir = abs_path($_);
-			# print "Denug: Trying dir --$dir--\n";
-			last if $done = chdir $dir;
-		}
+		for (@dirs) { last if $done = chdir abs_path($_) }
 	}
-	else { $done = chdir($self->parent->{_}) || chdir() }
 
-	if ($done) {
-		$ENV{OLDPWD} = $ENV{PWD};
-		$ENV{PWD} = getcwd;
-		$self->__add_dir_hist unless $browse_hack;
-	}
-	else { 
+	unless ($done) {
 		error $dir.': Not a directory' unless -d $dir;
 		error "Could not change to dir: $dir";
 	}
+
+	$self->__add_dir_hist unless $browse_hack;
 }
 
-##################
-#### Dir Hist ####
-##################
+# ######## #
+# Dir Hist #
+# ######## #
 
 sub __add_dir_hist {
 	my $self = shift;
@@ -200,19 +186,38 @@ sub __get_dir_hist {
 
 	my ($sign, $num);
 	if (scalar(@_) > 1) { ($sign, $num) = @_ }
-	elsif (@_) { 
-		$_[0] =~ /^\s*(-|->|<-)(\d*)\s*$/ || return undef;
-		($sign, $num) = ($1, $2 || 1);
-	}
+	elsif (@_) { ($sign, $num) = (shift(@_), 1) }
 	else { $sign = '-' }
 
 	if ($sign eq '-') { return $ENV{OLDPWD} }
-	elsif ($sign eq '->') { $self->{_dir_hist_i} -= $num }
-	elsif ($sign eq '<-') { $self->{_dir_hist_i} += $num }
+	elsif ($sign eq '-f') { $self->{_dir_hist_i} -= $num }
+	elsif ($sign eq '-b') { $self->{_dir_hist_i} += $num }
 	else { return undef }
 
 	return undef if $num < 0 || $num > $#{$self->{dir_hist}};
 	return $self->{dir_hist}[$num];
+}
+
+# ######### #
+# Dir stack #
+# ######### # 
+
+sub dirs { print join(' ', reverse @DIRSTACK) || $ENV{PWD}, "\n" } # FIXME some options - see man bash
+
+sub popd { # FIXME some options - see man bash
+	my $self = shift;
+	error 'popd: No other dir on stack' unless $#DIRSTACK;
+	pop @DIRSTACK;
+	my $dir = $#DIRSTACK ? $DIRSTACK[-1] : pop(@DIRSTACK);
+	$self->cd($dir);
+}
+
+sub pushd { # FIXME some options - see man bash
+	my ($self, $dir) = (@_);
+	$dir ||= $ENV{PWD};
+	$self->cd($dir);
+	@DIRSTACK = ($ENV{OLDPWD}) unless scalar @DIRSTACK;
+	push @DIRSTACK, $dir;
 }
 
 ##################
@@ -223,32 +228,26 @@ sub pwd {
 }
 
 sub _delete_object { # FIXME some kind of 'force' option to delte config, so autoload won't happen
-	my $self = shift;
-	if (my $zoidname = shift) {
-        	unless (ref($self->{parent}{objects}{$zoidname})) {
-			error "No such object: $zoidname";
-		}
-		$self->unregister_all_events($zoidname);
-		if ($self->{parent}{objects}{$zoidname}->isa('Zoidberg::Fish')) {
-			$self->{parent}{objects}{$zoidname}->round_up;
-		}
-		delete $self->{parent}{objects}{$zoidname};
-	}
-	else { error 'Usage: $command $object_name' }
+	my ($self, $zoidname) = @_;
+	error 'Usage: $command $object_name' unless $zoidname;
+	error "No such object: $zoidname"
+		unless exists $self->{parent}{objects}{$zoidname};
+	delete $self->{parent}{objects}{$zoidname};
 }
 
 sub _load_object {
-	my $self = shift;
-	if (my $name = shift) {
-		if (my $class = shift) { $self->{parent}->init_object($name, $class, @_) }
-		return 0;
-	}
-	error 'Usage: $command $object_name $class_name';
+	my ($self, $name, $class) = (shift, shift, shift);
+	error 'Usage: $command $object_name $class_name' unless $name && $class;
+	$self->{parent}{objects}{$name} = { 
+		module       => $class,
+		init_args    => \@_,
+		load_on_init => 1 ,
+	};
 }
 
 sub _hide {
 	my $self = shift;
-	my $ding = shift || $self->{parent}->{_};
+	my $ding = shift || $self->{parent}{topic};
 	if ($ding =~ m/^\{(\w*)\}$/) {
 		@{$self->{settings}{clothes}{keys}} = grep {$_ ne $1} @{$self->{settings}{clothes}{keys}};
 	}
@@ -259,8 +258,8 @@ sub _hide {
 
 sub _unhide {
 	my $self = shift;
-	my $ding = shift || $self->{parent}->{_};
-	$self->{parent}->{_} = '->'.$ding;
+	my $ding = shift || $self->{parent}{topic};
+	$self->{parent}->{topic} = '->'.$ding;
 	if ($ding =~ m/^\{(\w*)\}$/) { push @{$self->{settings}{clothes}{keys}}, $1; }
 	elsif (($ding =~ m/^\w*$/)&& $self->parent->can($ding) ) {
 		push @{$self->{settings}{clothes}{subs}}, $ding;
@@ -318,7 +317,7 @@ None by default.
 
 =head1 AUTHOR
 
-Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
+Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
 Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
@@ -327,6 +326,6 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<perl>, L<Zoidberg>, L<Zoidberg::Fish>, L<http://zoidberg.sourceforge.net>
+L<Zoidberg>, L<Zoidberg::Fish>, L<http://zoidberg.sourceforge.net>
 
 =cut

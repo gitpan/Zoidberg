@@ -13,16 +13,16 @@ in Perl. It aspires to be a fully operational login shell with all the features
 one normally expects. But it also gives direct access to Perl objects and data
 structures from the command line, and allows you to run Perl code within the
 scope of your commandline. Although Zoidberg does not do the language
-interpreting itself -- it uses perl to do this -- it supplies powerfull language
+interpreting itself -- it uses perl to do this -- it supplies powerful language
 extensions aimed at creating an easy to use interface.
 
-By default zoid runs an interactive commandline when both STDIN and STDOUT
+By default B<zoid> runs an interactive commandline when both STDIN and STDOUT
 are terminal devices, or reads from STDIN till End Of Line and execute each 
 line like it was entered interactively. 
 When an I<action> is specified by one of the commandline options this will 
-suppress the default behaviour and exit after executing that action.
+suppress the default behavior and exit after executing that action.
 If any file names are given, these will be interpreted as source scripts and 
-suppress default behaviour. 
+suppress default behavior. 
 Be aware that these source scripts are expected to be Perl scripts and are
 B<NOT> interpreted or executed the same way as normal input.
 
@@ -35,7 +35,7 @@ B<NOT> interpreted or executed the same way as normal input.
 Execute a string as interpreted by zoidberg. If non-interactive exits with
 exit status of command string. Multiple commands may be given to build up 
 a multi-line script.  Make sure to use semicolons where you would in a 
-normal multiline script.
+normal multi-line script.
 
 =item B<-c> I<command>, B<--command>=I<command> 
 
@@ -49,7 +49,7 @@ Print a help message and exits.
 
 =item B<-I>I<dir>[,I<dir>]
 
-The specified directories are prepended to the module search path  
+The specified directories are added to the module search path  
 C<@INC>.
 
 =item B<-i>, B<--interactive>
@@ -59,17 +59,21 @@ supplied.
 
 =item B<-l>, B<--login>
 
-Force login behaviour, this will reset your current working directory.
+Force login behavior, this will reset your current working directory.
 This variable is also available to plugins and scripts, which might act on it.
 
 =item B<-s>, B<--stdin>
 
-read input from stdin. This is the default if no other options are supplied and 
+Read input from stdin. This is the default if no other options are supplied and 
 neither stdin or stdout are terminal devices.
 
 =item B<-r> I<file>, B<--rcfile>=I<file>
 
 Use an alternative rcfile.
+
+=item B<-v>, B<--verbose>
+
+Sets the shell in verbose mode. This will cause each command to be echoed to STDERR.
 
 =item B<--norc>
 
@@ -78,6 +82,13 @@ Skip all rcfiles.
 =item B<-C>, B<--config>
 
 Print a list of configuration variable of this installation and exit.
+Most importantly this tells you where B<zoid> will search for it's configuration
+and data files.
+
+=item B<-D>, B<-D>I<Class> B<--debug>
+
+Set either the global debug bit or set the debug bit for the given class.
+Using the global variant makes B<zoid> output a lot of debug information.
 
 =item B<-V>, B<--version>
 
@@ -87,11 +98,36 @@ Display version information.
 
 =head1 ENVIRONMENT
 
-FIXME
+Apart from the standard variables like $HOME and $USER, B<zoid> uses the 
+following environment variables:
+
+=over 4
+
+=item $XDG_CACHE_HOME
+
+Defines the directory to write temporary files, it defaults to F<$HOME/.cache>.
+
+=item $ZOID
+
+Contains the filename by which B<zoid> was executed. For 'sh-shells' this would
+be $SHELL, but due to this some programs expect $SHELL contain the path to a fully
+POSIX compliant shell.
+
+=item $ZOIDPID
+
+Contains the process id of the current B<zoid>, used for IPC.
+
+=item $ZOIDREF
+
+Contains either a reference or a string representation of the current Zoidberg 
+object, used for IPC.
+
+=back
 
 =head1 FILES
 
-FIXME
+Zoidberg uses rc files, data files and plugin files, use the B<--config> switch
+to check the search paths in use for a particular installation.
 
 =head1 DIAGNOSTICS
 
@@ -108,31 +144,27 @@ See also L<splain(1)>.
 
 Source files and command input are I<NOT> interpreted the same way.
 
-Use B<-e> or B<-c>, do not mix them.
+Use B<-e> _or_ B<-c>, do not mix them.
 
 =head1 BUGS
 
 Known bugs are listed in the F<BUGS> file, which is included in the source
-package. Please report bugs through the bug tracker on the Sourceforce project
-page L<http://sourceforge.net/projects/zoidberg> or mail pardus
-E<lt>pardus@users.sf.netE<gt>.
-
-=head1 DOCUMENTATION
-
-More elaborate documentation on the Zoidberg shell can be found online at
-L<http://zoidberg.sourceforge.net/doc> or on your local system, probably in
-F</usr/doc/zoid/> or in F</usr/local/doc/zoid/>. In interactive mode
-C<help> should be available by entering the command C<help>.
+package. Visit the web page to submit bug reports or mail the author.
 
 =head1 SEE ALSO
 
-L<perl(1)>, L<Zoidberg(3)>, L<http://zoidberg.sourceforge.net>
+L<perl(1)>,
+L<zoiduser(1)>,
+L<zoiddevel(1)>,
+L<zoidfaq(1)>,
+L<Zoidberg(3)>,
+L<http://zoidberg.sourceforge.net>
 
 =head1 AUTHORS
 
-Jaap Karssenberg || Pardus [Larus] E<lt>pardus@users.sf.netE<gt>
+Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
-R.L. Zwart, E<lt>carl0s@users.sf.netE<gt>
+R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 
@@ -142,8 +174,10 @@ redistribute it and/or modify it under the same terms as Perl.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See either
+the GNU General Public License or the Artistic License for
+more details.
 
-See L<http://www.perl.com/language/misc/Artistic.html> and
+L<http://www.perl.com/language/misc/Artistic.html>
 L<http://www.gnu.org/copyleft/gpl.html>
 

@@ -1,4 +1,4 @@
-use Test::More tests => 18;
+use Test::More tests => 19;
 use Zoidberg::StringParse;
 
 my $simple_gram = {
@@ -40,6 +40,9 @@ $parser->set('simple', 'dit is een "quoted | pipe" | dit niet');
 
 is_deeply([$parser->get], ['dit is een "quoted | pipe" ', 'PIPE'], 'simple get');
 is_deeply([$parser->get], [' dit niet'], 'another get');
+
+$parser->set('simple', 0);
+is_deeply([$parser->get], ['0'], 'null value');
 
 for (
 	[

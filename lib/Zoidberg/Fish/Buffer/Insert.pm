@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer::Insert;
 
-our $VERSION = '0.3c';
+our $VERSION = '0.40';
 
 use strict;
 use base 'Zoidberg::Fish::Buffer';
@@ -16,7 +16,7 @@ sub k_backspace { # TODO clean up -- make rub_out multiline
 		while ( (substr($self->{fb}[$self->{pos}[1]], $self->{pos}[0]-1, 1) ne ' ') && ($self->{pos}[0] > 0)) {
 			$self->rub_out(-1);
 		}
-		$self->rub_out(-1);
+		$self->rub_out(-1) unless $self->{pos}[0] == 0;
 	}
 	elsif ($self->{pos}[0] > 0) {
 		my $exp_length = length($self->{tab_exp_back}[-1][0]);
@@ -41,6 +41,11 @@ sub k_backspace { # TODO clean up -- make rub_out multiline
 		}
 	}
 	else { $self->bell; }
+}
+
+sub kill_line {
+	$_[0]->reset;
+	$_[0]->respawn;
 }
 
 sub k_return { $_[0]->submit }

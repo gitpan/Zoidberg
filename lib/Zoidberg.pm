@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.3c';
+our $VERSION = '0.40';
 our $LONG_VERSION =
 "Zoidberg $VERSION
 
@@ -13,85 +13,93 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 http://zoidberg.sourceforge.net";
-our $DEVEL = 1;
 
 use strict;
-use vars qw/$AUTOLOAD %ZoidConf/;
-use utf8;
+use vars qw/$AUTOLOAD/;
 use Carp;
 use Data::Dumper;
-use Term::ANSIColor;
-use POSIX qw/floor ceil/;
-use Cwd;
+use Cwd ();
 use Zoidberg::Config;
-use Zoidberg::PdParse;
-use Zoidberg::FileRoutines qw/:engine get_dir/;
-use Zoidberg::DispatchTable;
+use Zoidberg::FileRoutines 'get_dir', '_prefix' => 'f_', ':engine';
+use Zoidberg::DispatchTable _prefix => 'dt_', 'stack';
 use Zoidberg::Error;
+use Zoidberg::Utils qw/:output complain read_data_file merge_hash/;
+use Zoidberg::PluginHash;
 #use Zoidberg::IPC;
 
 use base 'Zoidberg::ZoidParse';
 
-our @core_objects = qw/Buffer Intel Prompt Commands History/;
-
-our @ansi_colors = qw/
-	clear rest bold underline underscore blink
-	black red green yellow blue magenta cyan white
-	on_black on_red on_green on_yellow on_blue
-	on_magenta on_cyan on_white
-/; # this also belongs in some future output package
-
-sub new {
-	my $class = shift;
-	my $self = {};
-
-	$self->{settings}	= {};	# global configuration
-	$self->{events}		= {};	# hash used for broadcasting events
-	$self->{objects}	= {};	# plugins as blessed objects
-	$self->{vars}		= {};	# persistent vars
-
-	$self->{settings} = { 'silent' => { 'debug' => 1, }, }; # This is a good default :)
-
-	$self->{round_up} = 1;
-	$self->{_} = ''; # formely known as "exec_topic"
-
-	bless($self, $class);
+BEGIN { 
+	*CORE::GLOBAL::chdir = sub { # FIXME this has to go
+		my $oldpwd = $ENV{PWD};
+		CORE::chdir($_[0]) || return;
+		$ENV{OLDPWD} = $ENV{PWD};
+		$ENV{PWD} = Cwd::cwd();
+		return 1;
+	}
 }
 
-sub init {
-	my $self = shift;
-	my %input;
-	if (ref($_[0]) eq 'HASH') { %input = %{shift @_} }
-	else { %input = @_ }
-	%{$self} = (%{$self}, %input);
+our %Objects; # used to store refs to ALL Zoidberg objects
+our @core_objects = qw/Buffer Intel Prompt Commands History/; # DEPRECATED
 
-	# print welcome message
-	$self->print("## This is the Zoidberg shell Version $VERSION ##  ", 'message');
+sub new {
+	my ($class, $self) = @_;
+	$self ||= {};
+	$self->{$_} ||= {} for qw/settings commands aliases events objects vars/;
+	$self->{round_up}++;
+	$self->{topic} ||= '';
 
-	Zoidberg::ZoidParse::init($self);
+	bless($self, $class);
 
-	# TODO hide more functions in Zoidberg::Config (for example defaults etc.)
-	$self->{settings} = pd_merge($self->{settings}, Zoidberg::Config::readfile('settings_file') );
+	$Objects{"$self"} = $self;
+	$ENV{ZOIDREF} = $self unless ref $ENV{ZOIDREF};
 
-	# init various objects:
-	$self->rehash_plugins;
-	foreach my $plug (@{$self->{settings}{init_plugins}}) { 
-		$self->init_object($plug) || $self->print("Could not initialize plugin '$plug'", 'error'); 
-	}
+	## settings
+	my %default = %Zoidberg::Config::settings;
+	$self->{settings}{$_} ||= $default{$_} for keys %default;
+	$self->{settings}{$_} || error "You should at least set a config value for $_"
+		for qw/data_dirs cache_dir/;
+	$self->{settings} = merge_hash( read_data_file('settings'), $self->{settings} );
+
+	my $cache_dir = $self->{settings}{cache_dir};
+	mkdir $cache_dir, 0700 || error "Could not create $cache_dir"
+		unless -d $cache_dir;
+
+	## commands
+	my %commands;
+	tie %commands, 'Zoidberg::DispatchTable', $self, {
+		reload	=> '->reload',
+		exit	=> '->exit',
+		( %{$self->{commands}} )
+	};
+	$self->{commands} = \%commands;
+
+	## events
+	my %events;
+	tie %events, 'Zoidberg::DispatchTable', $self, $self->{events};
+	$self->{events} = \%events;
+
 #    $self->{ipc} = Zoidberg::IPC->new($self);
 #    $self->{ipc}->init;
 
-	# init self
-	my $file_cache = $ZoidConf{var_dir}.'/file_cache' ;
+	## parser 
+	Zoidberg::ZoidParse::init($self);
+
+	## plugins
+	my %objects;
+	tie %objects, 'Zoidberg::PluginHash', $self;
+	$self->{objects} = \%objects;
+
+	## path cache
+	my $file_cache = "$cache_dir/zoid_path_cache" ;
 	if (-s $file_cache) { f_read_cache($file_cache) }
 	else {
 		$self->print("Initializing PATH cache.", 'message');
 		&f_index_path;
 	}
-	$self->{events}{precmd} = [] unless ref($self->{events}{precmd});
-	push @{$self->{events}{precmd}}, \&f_wipe_cache;
-	
-	if ($DEVEL) { $self->print("This is a development version -- consider it unstable.", 'warning'); }
+	$self->{events}{precmd} = \&f_wipe_cache;
+
+	return $self;
 }
 
 
@@ -102,47 +110,52 @@ sub init {
 sub main_loop { # FIXME use @input_methods instead of buffer
 	my $self = shift;
 	
-	$self->init_object('Buffer');
-	if ($self->{objects}{Buffer}) { $self->{continue} = 1 }
-	else { $self->print("Could not initialize plugin 'Buffer'", 'error') }
+	error "Could not initialize plugin 'Buffer'" unless $self->{objects}{Buffer};
+	$self->{_continue}++;
 	
-	while ($self->{continue}) {
+	my $counter;
+	while ($self->{_continue}) {
 		$self->broadcast_event('precmd');
 
 		my $cmd = eval { $self->Buffer->get_string };
-		last unless $self->{continue}; # buffer can call exit
+		last unless $self->{_continue}; # buffer can call exit
 		if ($@) {
 			$self->print("\nBuffer died. \n$@", 'error');
+			sleep 1; # infinite loop protection
 			next;
 		}
+		else { $counter = 0 }
 
 		$self->broadcast_event('cmd', $cmd);
 		print STDERR $cmd if $self->{settings}{verbose}; # posix spec
 
 		$self->do($cmd);
-
-		#### Update Environment ####
-		$ENV{PWD} = getcwd;
 	}
+}
+
+### Backward compatible temporary code ###
+
+require Zoidberg::Output;
+
+sub print {
+	shift;
+	my ($thing, $type, $opt) = @_;
+	die 'options are deprecated' if $opt;
+	if ($type eq 'error') { return complain($thing) }
+	elsif ($type eq 'debug') { return debug($thing) }
+	Zoidberg::Output::typed_output($type, $thing);
 }
 
 # #################### #
 # information routines #
 # #################### #
 
-sub list_objects {
-	my $self = shift;
-	my %objects;
-	for (keys %{$self->{plugins}}) { $objects{$_}++; }
-	for (keys %{$self->{objects}}) { $objects{$_}++; }
-	return [sort keys %objects];
-}
+sub list_objects { [sort keys %{$_[0]{objects}}] }
 
 sub test_object {
-	my $self = shift;
-	my $zoidname = shift;
-	my $class = shift || '';
-	if (my $ding = $self->object($zoidname, 1)) { if (ref($ding) =~ /$class$/) { return 1; } }
+	my ($self, $zoidname, $class) = @_;
+	return 1 if exists $self->{objects}{$zoidname};
+	# FIXME also check class
 	return 0;
 }
 
@@ -160,126 +173,6 @@ sub list_clothes { # includes $self->{vars}
 
 sub list_vars { return [map {'{'.$_.'}'} sort keys %{$_[0]->{vars}}]; }
 
-# ########### #
-# Output subs #
-# ########### #
-
-# These will probably move to Zoidberg::Output or something like that
-
-sub print {	# TODO term->no_color bitje s{\e.*?m}{}g
-	my $self = shift;
-	my $ding = shift;
-	my $type = shift || 'output';
-	unless (-t STDOUT && -t STDIN) { $self->silent } # FIXME what about -p ??
-	my $options = shift; # options: m => markup, n => no_newline, s => sql =>array of arrays of scalars formatting
-	my ($succes, $error) = (0,0);
-	unless ($self->{settings}{silent}{$type}) {
-
-		if ($type eq 'error') { $self->print_error($ding) && return 1 }
-
-		my $colored = 1;
-		unless ($self->{settings}{interactive}) { $colored = 0; }
-		elsif ($self->{settings}{print}{colors}{$type}) { print color($self->{settings}{print}{colors}{$type}); }
-		elsif (grep {$_ eq $type} @ansi_colors) { print color($type); }
-		else { $colored = 0; }
-
-		if (($options =~ m/s/) && (ref($ding) eq 'ARRAY')) { $succes = $self->print_sql_list(@{$ding}); }
-		elsif ((ref($ding) eq 'ARRAY') && !(grep {ref($_)} @{$ding})) {
-			if ($#{$ding} == 0) {
-				unless ($options =~ m/n/) { $ding->[0] =~ s/\n?$/\n/; }
-				$succes = print $ding->[0];
-			}
-			else { $succes = $self->print_list(@{$ding}); }
-		}
-		elsif (ref($ding)) {
-			my $string = Dumper($ding);
-			$string =~ s/^\s*\$VAR1\s*\=\s*//;
-			$succes = print $string
-		}
-		else {
-			unless ($options =~ m/n/) { $ding =~ s/\n?$/\n/; }
-			$succes = print $ding;
-		}
-
-		if ($colored) { print color('reset'); }
-	}
-	1;
-}
-
-sub print_list {
-	my $self = shift;
-	my @strings = @_;
-	my $width = ($self->Buffer->size)[0];
-	if (!$self->{settings}{interactive} || !defined $width) { return (print join("\n", @strings)."\n"); }
-	my $longest = 0;
-	map {if (length($_) > $longest) { $longest = length($_);} } @strings;
-	unless ($longest) { return 0; }
-	$longest += 2; # we want two spaces to saperate coloms
-	my $cols = floor(($self->Buffer->size)[0] / $longest);
-	unless($cols > 1) { for (@strings) { print $_."\n"; } }
-	else {
-		my $rows = ceil(($#strings+1) / $cols);
-		@strings = map {$_.(' 'x($longest - length($_)))} @strings;
-
-		foreach my $i (0..$rows-1) {
-			for (0..$cols) { print $strings[$_*$rows+$i]; }
-			print "\n";
-		}
-	}
-	return 1;
-}
-
-sub print_sql_list {
-	my $self = shift;
-	my $width = ($self->Buffer->size)[0];
-	if (!$self->{settings}{interactive} || !defined $width) { return (print join("\n", map {join(', ', @{$_})} @_)."\n"); }
-	my @records = @_;
-	my @longest = ();
-	@records = map {[map {s/\'/\\\'/g; "'".$_."'"} @{$_}]} @records; # escape quotes + safety quotes
-	foreach my $i (0..$#{$records[0]}) {
-		map {if (length($_) > $longest[$i]) {$longest[$i] = length($_);} } map {$_->[$i]} @records;
-	}
-	#print "debug: records: ".Dumper(\@records)." longest: ".Dumper(\@longest);
-	my $record_length = 0; # '[' + ']' - ', '
-	for (@longest) { $record_length += $_ + 2; } # length (', ') = 2
-	if ($record_length <= $width) { # it fits ! => horizontal lay-out
-		my $cols = floor($width / ($record_length+2)); # we want two spaces to saperate coloms
-		my @strings = ();
-		for (@records) {
-			my @record = @{$_};
-			for (0..$#record-1) { $record[$_] .= ', '.(' 'x($longest[$_] - length($record[$_]))); }
-			$record[$#record] .= (' 'x($longest[$#record] - length($record[$#record])));
-			if ($cols > 1) { push @strings, "[".join('', @record)."]"; }
-			else { print "[".join('', @record)."]\n"; }
-		}
-		if ($cols > 1) {
-			my $rows = ceil(($#strings+1) / $cols);
-			foreach my $i (0..$rows-1) {
-				for (0..$cols) { print $strings[$_*$rows+$i]."  "; }
-				print "\n";
-			}
-		}
-	}
-	else { for (@records) { print "[\n  ".join(",\n  ", @{$_})."\n]\n"; } } # vertical lay-out
-	return 1;
-}
-
-sub print_error {
-	my $self = shift;
-	my $error = shift;
-	if (ref($error) eq 'Zoidberg::Error') {
-		return if $error->{silent}++;
-		$error = $error->stringify(format => 'gnu') unless $error->debug;
-	}
-	if (ref $error) {
-		$error = Dumper $error;
-		$error =~ s/^\$VAR1 = /Error: /;
-	}
-	$error .= "\n" unless $error =~ /\n$/;
-	$error = color('red') . $error . color('reset') if -t STDERR; # && niet setting no_color
-	print STDERR $error;
-}
-
 # ############## #
 # some functions #
 # ############## #
@@ -287,26 +180,26 @@ sub print_error {
 sub silent { # FIXME -- more general solutions for switching modes
 	my $self = shift;
 	my $option = shift;
-	$self->{settings}{silent}{message} = 1;
-	$self->{settings}{silent}{warning} = 1;
+	$self->{settings}{output}{message} = 'mute';
+	$self->{settings}{output}{warning} = 'mute';
 	if ($option eq 'no_roundup') { $self->{settings}{round_up} = 0; }
 }
 
 sub reload {
-    my $self = shift;
-    my $ding = shift;
-    unless ($ding) { $ding = 'Zoidberg' }
-    map {
-        $self->_reload_file($INC{$_});
-    } grep {-e $INC{$_}} grep /$ding/, keys %INC;
+	my $self = shift;
+	my $ding = shift;
+	unless ($ding) { $ding = 'Zoidberg' }
+	map {
+		$self->_reload_file($INC{$_});
+	} grep {-e $INC{$_}} grep /$ding/, keys %INC;
 }
 
 sub _reload_file {
-    my $self = shift;
-    my $file = shift;
-    local($^W)=0;
-    $self->print("reloading $file",'message');
-    eval "do '$file'";
+	my $self = shift;
+	my $file = shift;
+	local($^W)=0;
+	$self->print("reloading $file",'message');
+	eval "do '$file'";
 }
 
 sub dev_null {} # does absolutely nothing
@@ -315,163 +208,39 @@ sub dev_null {} # does absolutely nothing
 # Event logic #
 # ########### #
 
-sub broadcast_event { # eval because we don't want to mess up our caller's stack
-	my $self = shift;
-	my $event = shift;
-	foreach my $reg (@{$self->{events}{$event}}) { #there was a weird $_ booboo here
-		if (ref($reg) eq 'CODE') { eval { $reg->($self, $event, @_) }; if ($@) { error("$reg died on event $event: '$@'") } }
-		else { 
-            unless (ref($self->{objects}{$reg})) {
-                error("$reg is not an object!\n");
-            }
-            else {
-                eval { $self->{objects}{$reg}->event($event, @_) };
-                if ($@) { error("$reg died on event $event: '$@'") }
-            }
-        }
+sub broadcast_event { # eval to be sure we return
+	my ($self, $event) = @_;
+	return unless exists $self->{events}{$event};
+	debug "Broadcasting event '$event'";
+	for my $sub (dt_stack($self->{events}, $event)) {
+		eval { $sub->($self, $event, @_) };
+		complain("$sub died on event $event ($@)") if $@;
 	}
-}
-
-sub register_event {
-    my $self = shift;
-    my $ev = shift;
-    my $sub = shift;
-    unless (exists $self->{events}{$ev}) {
-        $self->{events}{$ev} = [];
-    }                      
-    push @{$self->{events}{$ev}}, $sub;
 }
 
 # more glue for using events can be found in the Zoidberg::Fish class
 
-# ############# #
-# object loader #
-# ############# #
+# ########### #
+# auto loader #
+# ########### #
 
-sub object {
+our $ERROR_CALLER;
+
+sub AUTOLOAD {
 	my $self = shift;
-	my $name = shift;
-	my $silence_bit = shift;
-	if ($self->{objects}{$name}) { return $self->{objects}{$name}; } #speed is vital
-	unless ($self->{plugins}{$name}) { $self->rehash_plugins }
+	my $call = (split/::/,$AUTOLOAD)[-1];
 
-	if  ($self->{plugins}{$name}) { # check loadable plugins
-		$self->init_object($name) 
-		&& return $self->{objects}{$name};
+	local $ERROR_CALLER = 1;
+	error "Undefined subroutine &Zoidberg::$call called"
+		unless ref $self;
+	debug "Zoidberg::AUTOLOAD got $call";
+
+	if (exists $self->{objects}{$call}) {
+		no strict 'refs';
+		*{ref($self).'::'.$call} = sub { return $self->{objects}{$call} };
+		goto \&{$call};
 	}
-	
-	if (grep {lc($_) eq lc($name)} @Zoidberg::core_objects) { # use stub
-		my $pack = 'Zoidberg::stub::'.lc($name);
-		$self->{objects}{$name} = $pack->new($self);
-		return $self->{objects}{$name};
-	}
-
-	unless ($silence_bit) {
-		my @caller = caller;
-		error "No such object \'$name\' as requested by $caller[1] line $caller[2]";
-	}
-	return 0;
-}
-
-sub rehash_plugins { 
-	# TODO make this a command to force rehashing
-	# what about skipping existing plugins ??
-	my $self = shift;
-	my @done; # FIXME you could drop an ignore list in here 
-	for my $dir (split /:/, $ZoidConf{plugin_dirs}) {
-		next unless -d $dir;
-		for (@{ get_dir($dir)->{files} }) {
-			next if /^\./; # skip hiden files
-			my $plug = $_;
-			$plug =~ s/(\.\w+)+$//; # cut _all_ extensions
-			next if grep {$plug eq $_} @done; # next if ref($self->{plugins}{$plug}) ??
-			$self->{plugins}{$plug} = Zoidberg::Config::readfile($dir.'/'.$_);
-	
-			if ($self->{plugins}{$plug}{events}) { # Register events
-				for (@{$self->{plugins}{$plug}{events}}) {
-					unless ($self->{events}{$_}) { $self->{events}{$_} = [] }
-					push @{$self->{events}{$_}}, $plug;
-				}
-			}
-			if ($self->{plugins}{$plug}{commands}) { # Register commands
-				for (keys %{$self->{plugins}{$plug}{commands}}) {
-					my $string = $self->{plugins}{$plug}{commands}{$_};
-					$string =~ s/^(\w)/->$_->$1/;
-					$self->{commands}{$_} = [$string, $plug];
-				}
-			}
-			if ($self->{plugins}{$plug}{export}) {
-				for (@{$self->{plugins}{$plug}{export}}) {
-					$self->{commands}{$_} = [$plug.'->'.$_, $plug];
-				}
-			}
-			
-			$self->{plugins}{$plug}{config} ||= {};
-			push @done, $plug;
-		}
-	}
-									
-}
-
-sub init_object {
-	my $self = shift;
-	my $zoidname = shift;
-	my $class = shift || $self->{plugins}{$zoidname}{module} || 'Zoidberg::stub';
-
-	if ($class eq 'Zoidberg::stub') {
-		$self->{objects}{$zoidname} = $class->new($self, $self->{plugins}{$zoidname}{config}, $zoidname);
-		return 1;
-	}
-	
-	unless ($self->require_postponed($class)) { return 0 }
-
-	if ($class->isa('Zoidberg::Fish')) {
-		$self->{objects}{$zoidname} = $class->new($self, $zoidname);
-		$self->{objects}{$zoidname}->init(@_);
-	}
-	elsif ($class->can('new')) { 
-		my $object = $class->new(@_); 
-		if(ref($object)) { $self->{objects}{$zoidname} = $object } 
-		else { 
-			$self->print("$class->new did not return a reference, refusing to load void object", 'error');
-			return 0;
-		}
-	}
-	else {
-		$self->print('This module seems not to be Object Oriented - wait for future release.', 'error'); 
-		return 0;
-	}
-
-	return 1;
-}
-
-sub require_postponed {
-	my ($self, $mod) = @_;
-	my $file = $mod.".pm";
-	$file =~ s{::}{/}g; #/
-	unless ($INC{$file}) { require $file || die "Failed to include \"$file\"" }
-	1;
-}
-
-sub AUTOLOAD {# print "Debug: autoloader got: ".join('--', @_)." autoload: $AUTOLOAD\n";
-    my $method = (split/::/,$AUTOLOAD)[-1];
-
-    my @caller = caller;
-    die "No such subroutine: $method on ".$caller[0]." line ".$caller[2]."\n" unless ref $_[0];
-    $_[0]->print("AUTOLOAD $method as requested by ".$caller[0]." line ".$caller[2], 'debug');
-
-    if ( $_[0]->object($method, 1) ) {
-	no strict 'refs';
-	*{ref($_[0])."::".$method} = sub {# hack it in the namespace
-		my $self = shift;
-		if ($self->{objects}{$method}) { return $self->{objects}{$method}; } # speed is vital
-		else { return $self->object($method); }
-	};
-	goto \&{$method};
-    }
-    else {
-	$_[0]->print("failed to AUTOLOAD $method as requested by ".$caller[0]." line ".$caller[2], 'error');
-    }
+	else { error "Zoidberg could not AUTOLOAD $call" }
 }
 
 # ############# #
@@ -481,7 +250,7 @@ sub AUTOLOAD {# print "Debug: autoloader got: ".join('--', @_)." autoload: $AUTO
 sub exit {
 	my $self = shift;
 	$self->Buffer->bell;
-	$self->{continue} = 0;
+	$self->{_continue} = 0;
 	# FIXME this should force the Buffer to quit
 	return 0;
 }
@@ -496,20 +265,20 @@ sub round_up {
 			}
 		}
 		Zoidberg::ZoidParse::round_up($self);
-		my $cache_file = $ZoidConf{var_dir}.'/file_cache';
-		if ($cache_file) { f_save_cache($cache_file) } # FIXME -- see init
-		$self->{round_up} = 0;
-		$self->print("# ### CU - Please report all bugs ### #  ", 'message');
+
+		f_save_cache($self->{settings}{cache_dir}.'/zoid_path_cache');
+
+		undef $self->{round_up};
 	}
+	delete $Objects{"$self"};
 	return $self->{exec_error} unless $self->{settings}{interactive}; # FIXME check this
 }
 
 sub DESTROY {
 	my $self = shift;
-	if ($self->{round_up}) { # something went wrong -- unsuspected die
-		$self->round_up;
-		$self->print("Zoidberg was not properly cleaned up.", "error");
-	}
+	$self->round_up;
+	warn "Zoidberg was not properly cleaned up.\n"
+		if $self->{round_up};
 }
 
 # ############ #
@@ -581,7 +350,7 @@ FIXME
 
 =head1 DESCRIPTION
 
-I<This is devel documentation, if you're looking for user documentation start with man page zoid(1)>
+I<This page contains devel documentation, if you're looking for user documentation start with the zoid(1) man page>
 
 This class provides an event and plugin engine.
 
@@ -675,7 +444,7 @@ a C<round_up()> method will be called recursively.
 
 =head1 AUTHOR
 
-Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
+Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
 R.L. Zwart, E<lt>carl0s@users.sourceforge.netE<gt>
 
@@ -684,9 +453,10 @@ This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
 See L<http://www.perl.com/language/misc/Artistic.html>
-
+and L<http://www.gnu.org/copyleft/gpl.html>
+  
 =head1 SEE ALSO
 
-L<perl>, L<http://zoidberg.sourceforge.net>
+L<http://zoidberg.sourceforge.net>
 
 =cut

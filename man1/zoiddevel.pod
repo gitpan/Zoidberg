@@ -1,0 +1,215 @@
+=head1 NAME
+
+zoiddevel - Development documentation for zoid
+
+=head1 DESCRIPTION
+
+=head2 Structure
+
+I<Currently changing -- TODO>
+
+The general structure of the Zoidberg shell has three kinds of 
+objects: the engine, the plugins and libraries.
+
+=over 4
+
+=item Engine
+
+=over 4
+
+=item * Zoidberg:	Main object, event and plugin management
+
+=item * ZoidParse:	Parsing, Job control & POSIX stuff
+
+=item * Eval:		Namespace for command execution
+
+=back
+
+=item Libraries
+
+=over 4
+
+=item * FileRoutines:	File handling routines
+
+=item * StringParse:	Simple syntax parser
+
+=item * Error:		Object Oriented error handling
+
+=item * DistpatchTable:	enforces zoid's dispatch style
+
+=item * Utils:          generic interface
+
+=back
+
+=item Plugins
+
+=over 4
+
+=item * Fish:		Base class for plugins
+
+=item * Core objects:	Provide default interface.
+
+=item * User defined:	extensions
+
+=back
+
+=back
+
+=head3 scheme
+
+                 StringParse
+                     |
+                  ZoidParse
+                     |  |
+                     |  |__________________ Job::*
+                     |
+ zoid       ____  Zoidberg _____ Eval
+ executable       Engine
+                     |
+                     |
+                     |___ {objects}  Plugins
+                     |___ {contexts} Plugin defined contexts
+                     |___ {settings} Options and config hashes
+                     |___ {events}   DispatchTable with events
+                     |___ {commands} DispatchTable with commands
+
+=head3 Engine
+
+=head3 Configuration
+
+TODO
+
+=head3 Events
+
+TODO
+
+=head3 Libraries
+
+In time Zoidberg::Utils should become the generic interface to multiple 
+library classes.
+
+TODO
+
+=head3 Plugins
+
+TODO
+
+=head2 Parse tree
+
+This part describes the form of a parse tree as used between the various Zoidberg objects.
+
+FIXME first field should always be a hash ref
+
+=head3 Example
+
+ # Commandline input:
+ 
+ $ ls -al | perl{ while (<STDIN>) { print $_ }  }abc && echo done
+ 
+ # Would be parsed to:
+ 
+ [ 
+	[qw/SH ls -al/],
+	[ [qw/PERL abc/], q{ while (<STDIN>) { print $_ } } ],
+	'AND',
+	[qw/SH echo done/]
+ ]
+ 
+ 
+ 
+ # Commandline input:
+ 
+ $ cd .. && ls -al ; cp dus ~/tmp/ &
+ 
+ # Would be parsed to:
+ 
+ [
+	[qw/CMD cd ../],
+	'AND',
+	[qw/SH ls -al/],
+	'EOS',	# End Of Statement
+	[qw{SH cp dus ~/tmp/}],
+	'BGS'	# BackGround Statement
+ ]
+  
+ # FIXME an example with redirections
+
+=head3 Basics
+
+A parse tree is an array consisting of blocks and tokens. A block can be any kind of code and is stored in
+a nested array. Blocks directly following each other are supposed to be a pipeline. A token is a delimiter 
+between blocks.
+
+The first field of a block contains information about the block, all other field in a block make up the content.
+The most important information about a block is the context, which tells the parser how to execute the block.
+This first field can be: 
+
+ a scalar       ==> it is the context name
+ a nested hash  ==> the key 'context' contains the context name
+
+You are  free to store all kinds of specific information in this first field, but some
+key names are reserved.
+
+FIXME reserved meta fields
+
+=head2 PluginConf
+
+A plugin configuration file can use the following keys:
+
+=over 4
+
+=item module
+
+The class to bless the plugin object in.
+
+=item config
+
+Hash with plugin specific config stuff. For plugins that inherit from
+Zoidberg::Fish this will automaticly become the C<{config}> attribute.
+
+=item commands
+
+Hash linking command names to subroutines.
+
+FIXME link to dispatch string format
+
+=item export
+
+Array with commands automaticly linking to a subroutine of the same name 
+in the plugin object.
+
+=item events
+
+Like C<commands> but specifying events the plugin wants to have.
+
+=item import
+
+Like C<export> but used for events.
+
+=back
+
+=head1 ENVIRONMENT
+
+The following environment variables are used be Zoidberg.
+
+=over 4
+
+=item ZOIDPID
+
+Contains the process id of the above zoid, intended to be used for an IPC mechanism.
+
+=item ZOIDREF
+
+This variable should contain a reference to the Zoidberg object
+currently in charge. This is mainly used for obtaining settings 
+from the parent object behind non-OO interfaces (like builtin shell commands).
+
+In (non-forked) child processes this variable contains a stringyfied version.
+The parent process will has a global hash C<%Zoidberg::Objects> which uses these
+strings as keys to the original references. It is intended that an IPC mechanism
+should use this hash to convert strings back to references.
+
+=head1 SEE ALSO
+
+L<perl(1)>, L<http://zoidberg.sourceforge.net>
+

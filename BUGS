@@ -1,43 +1,29 @@
-Known bugs for the Zoidberg project
+
+# This file is automaticly generated from the wiki page.
+# Don't edit this file, use the wiki.
+
+Known bugs for the Zoidberg project <http://zoidberg.sourceforge.net>
+Visit the web page to submit bug reports.
 
 Disclaimer: some of this might be in dutch
 
-Please report new bugs through the bug tracker.
-<http://sourceforge.net/projects/zoidberg/>
+----
 
-__BUGS__
+* Pipeline from STDIN problem, see t/90_full.t
+When zoid runs in non-interactive mode and gets its commands from STDIN, it can
+happen that when a command is a pipeline some child processes keep listening to
+the parents STDIN after they should have been terminated.
 
-See pipeline from STDIN problem in t/90_something.t
+* perl code containing stuff like q/}/ can make StringParse trow an error 
+because StringParse doesn't recognise q// as quoting.
 
-perl code containing stuff like q/}/ will make StringParser trow an error
+* Source scripts can pollute each others namespace.
+In theory 'do filename' should create a clean namespace 'main' for each script,
+but do to a bug in perl versions older then 5.8.1 we can't use this construct.
+Thus all scripts are in the namespace 'Main' that isn't cleaned.
 
-Help.pm is broken -- share/zoid/help ==> share/doc/zoid/pod
+* A literal '\n' vanishes after re-reading history
 
-C<forw> == C<{ cd('->') }> seems to be buggy
+* The Buffer tends to overwrite the last line if it didn't end with a "\n"
 
-.pd files can't loop or use each other
-
-color off (fixed by stringformat ? ) - make this Zoidberg::Output
-
-source scripts can pollute each others namespace
-
-fluff
-	C< zoid --command=ls > should wait for child processes / jobs
-
-History
-	A literal "\n" vanishes after re-reading history
-
-Buffer
-	Buffer tends to overwrite the last line if it didn't end with a \n -- do we really need a seperate process to capture STDOUT to fix this :(( ??
-
-
-Intel:  
-        expansie in multi line gaat fout (?)
-	expansie over de regel breedte gaat soms fout
-	
-	[pardus@Captain moviez] mplayer The.Matrix.Reloaded.TS.REAL.PROPER-APM/CD*/<TAB>
-	Buffer died. 
-	Can't use an undefined value as an ARRAY reference at /home/pardus/local_zoid//lib/Zoidberg/Fish/Intel.pm line 58.
-
-	when expanding subroutines of class Zoidberg they get wrong postfixes
-
+* when expanding subroutines of class Zoidberg they get wrong postfixes

@@ -1,5 +1,3 @@
-#!/usr/bin/perl
-my $APPDIR = '';
 
 # ############################################################## #
 # Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.    #
@@ -9,22 +7,21 @@ my $APPDIR = '';
 # This script is a frontend to the Zoidberg module, it starts    #
 # the Zoidberg perl shell.                                       #
 #                                                                #
-# mailto:j.g.karssenberg@student.utwente.nl                      #
+# mailto:pardus@cpan.org                                         #
 # http://zoidberg.sourceforge.net                                #
 # ############################################################## #
 
 use strict;
-use vars qw/%ZoidConf/;
-
-our $VERSION = '0.3c';
+use Cwd qw/cwd/;
+our $VERSION = '0.40';
 
 # ############### #
 # set environment #
 # ############### #
 
 my @user_info = getpwuid($>);
-$ENV{USER} = $user_info[0];
-$ENV{HOME} = $user_info[7];
+$ENV{USER} ||= $user_info[0];
+$ENV{HOME} ||= $user_info[7];
 $ENV{ZOID} = $0; # _Don't_ change this to ENV{SHELL} !
 
 # ########## #
@@ -44,16 +41,16 @@ my %opts = (
 	'stdin'		=> ['s'],
 	'rcfile'	=> ['r', 1],
 	'norc'		=> [undef],
-	'debug'		=> ['D'], # FIXME, use this switch to switch $DEBUG
+	'debug'		=> ['D'],
+	'verbose'	=> ['v'],
 	# TODO -M use module etc.
 	# -q
 	#     Quiet (usually without argument). Suppress normal result or 
 	#     diagnostic output. This is very common. Examples: ci(1), co(1), make(1).
 	#
-	#-v verbose (as opposed to -q)
 );
 my %conf;
-my @conf_opts = qw/data-dirs plugin-dirs settings-file grammar-file rcfiles var-dir/; 
+my @conf_opts = qw/data-dirs rcfiles cache-dir/; 
 	# FIXME undocumented options -- see Zoidberg::Config
 
 while ((@ARGV) && ($ARGV[0] =~ /^-/)) {
@@ -61,6 +58,7 @@ while ((@ARGV) && ($ARGV[0] =~ /^-/)) {
 	if ($opt =~ /^--?$/) { last; }
 	# specials
 	elsif ($opt =~ s/^-I//) { $args{inc} .= ($args{inc} ? ',' : '').$opt }
+	elsif ($opt =~ /^-D(.+)/) { no strict 'refs'; ${$1.'::DEBUG'}++ }
 	# default
 	elsif ($opt =~ s/^--([\w-]+)(?:=['"]?(.*)['"]?)?/$1/) {
 		if (grep {$opt eq $_} @conf_opts) {
@@ -85,7 +83,8 @@ while ((@ARGV) && ($ARGV[0] =~ /^-/)) {
 			unless ($key) { complain($o) }
 
 			if ($opts{$key}[1]) { 
-				my $arg = shift @ARGV || complain('--'.$opt, 2);
+				my $arg = shift @ARGV;
+				complain('-'.$o, 2) unless defined $arg;
 				$args{$key} .= ( $args{$key} ? ' ' : '' ).$arg; # join with whitespace
 			}
 			else { $args{$key}++; }
@@ -95,37 +94,47 @@ while ((@ARGV) && ($ARGV[0] =~ /^-/)) {
 }
 
 # parse includes
-unshift @INC, $APPDIR.'/lib' if $APPDIR;
-unshift @INC, split(/\,/, $args{inc}) if $args{inc}; 
+my $cwd = cwd;
+my @inc = split /\,/, $args{inc};
+$0 =~ m!(.*/)!;
+$Zoidberg::Config::ScriptDir = $1;
+push @inc, "$1/lib" if -d "$1/lib";
+for (@inc, $Zoidberg::Config::ScriptDir) { $_ = "$cwd/$_" unless m!^/! }
+unshift @INC, @inc;
 
 # load some packages - force runtime eval to get includes right
 for (qw/Zoidberg Zoidberg::Config/) {
-	eval "use $_";
+	eval "require $_";
 	die $@ if $@;
 }
 
 $conf{rcfiles} = $args{rcfile} if $args{rcfile};
-$conf{rcfiles} = '' if $args{norc};
-for (keys %conf) { $ZoidConf{$_} = $conf{$_} }
+$Zoidberg::Config::settings{cache_dir} = $conf{cache_dir} if $conf{cache_dir};
+for (qw/data_dirs rcfiles/) {
+	next unless $conf{$_};
+	$Zoidberg::Config::settings{$_} = [ split /:/, $conf{$_} ];
+}
+$Zoidberg::Config::settings{rcfiles} = [] if $args{norc};
 
-if ($args{help} || $args{usage}) { 
+if ($args{help} || $args{usage}) {
 	print (<DATA>);
 	exit 0;
 }
-elsif ($args{version}) { 
-	if ($VERSION) { print "zoid $VERSION\n" }
-	print $Zoidberg::LONG_VERSION."\n";
+elsif ($args{version}) {
+	print "zoid $VERSION\n$Zoidberg::LONG_VERSION\n";
 	exit 0;
 }
-elsif ($args{config}) { 
-	Zoidberg::Config->output();
+elsif ($args{config}) {
+	while ( my ($k,$v) = each %Zoidberg::Config::settings) {
+		print $k, ' = ', ref($v) ? join(', ', @$v) : $v, "\n";
+	}
 	exit 0;
 }
 
 my $exec_string = $args{exec} || $args{command} || '';
 
 # rest ARGV should be files
-for (@ARGV) { complain($_, 3) unless -f $_ } 
+for (@ARGV) { complain($_, 3) unless -f $_ }
 
 my $interact;
 if ($args{interactive}) { $interact = 1; }
@@ -137,20 +146,11 @@ else { $interact = 0; }
 # prepare for launch #
 # ################## #
 
-# copy skel
-my ($dir, $prefix) = @ZoidConf{'data_dirs', 'prefix'}; # FIXME ugly ugly hack
-$dir =~ s/\/?$/\//;
-unless (-e $dir) {
-	dircopy($prefix.'/share/zoid/skel', $dir);
-	for (qw/var lib cmd plugins/) {
-		my $s_dir = $dir.$_;
-		unless (-d $s_dir) { mkdir $s_dir }
-	}
-}
-
 # check for login shell
-my $login;
-if (!$ENV{PWD} || $args{login}) {
+$args{login} = 1 unless $ENV{PWD};
+if ($args{login}) {
+	$ENV{USER} = $user_info[0];
+	$ENV{HOME} = $user_info[7];
 	$ENV{PWD} = $ENV{HOME} || '/';
 	chdir $ENV{PWD} ;
 }
@@ -159,15 +159,25 @@ if (!$ENV{PWD} || $args{login}) {
 # AND Lift-off ! #
 # ############## #
 
-my $cube = Zoidberg->new;
+my $cube = Zoidberg->new( {
+	settings => {
+		login       => $args{login},
+		interactive => $interact,
+		output => {
+			( $interact ? () : (
+				message => 'mute',
+				warning => 'mute',
+			) ),
+		},
+		verbose => $args{verbose},
+		debug   => $args{debug},
+	}
+} );
 
-unless ($interact) { $cube->silent }		# FIXME -- this should be done internally - this api is wrong
-$cube->{settings}{login} = $login;		#   *idem*
-$cube->{settings}{interactive} = $interact;	#   *idem*
+$cube->print("--[ This is the Zoidberg shell ]--[ Version $Zoidberg::VERSION ]--", 'message');
+$cube->print("### This is a development version, consider it unstable", 'warning');
 
-$cube->init();
-
-$cube->source($_) for grep {-f $_} (split(/:/, $ZoidConf{rcfiles}), @ARGV);
+$cube->source($_) for grep {-f $_} @{$cube->{settings}{rcfiles}}, @ARGV;
 
 if ($exec_string) { 
 #	if ($args{command}) { $cube->{ipc}->do($exec_string) }
@@ -176,19 +186,15 @@ if ($exec_string) {
 #	}
 }
 
-#if (-e $dir.'/.first_time' && $interact) {
-#	$cube->print("## Type help to get on your feet", 'message'); # FIXME help is currently broken
-#	$cube->print("## Try typing \"->Buffer->probe\" if keybindings fail", 'message');
-#	unlink $dir.'/.first_time';
-#}
-
 if ( $args{stdin} || -p STDIN || (!$interact && !$exec_string) ) {
 	while (<STDIN>) { $cube->do($_) } 
 	# FIXME built this in the api ? something like "parse_from_pipe()"
 	# or simply do(HANDLE) ?
 }
 
-if ($interact) { $cube->main_loop }
+$cube->main_loop if $interact;
+
+$cube->print("--[ CU ]--[ Please report all bugs ]--  ", 'message');
 
 my $exit = $cube->round_up ? 1 : 0;
 
@@ -210,31 +216,6 @@ sub complain {
 	
 	if ($m < 3) {print "\nTry '$bn --help' for more information.\n"}
 	exit $m;	
-}
-
-
-sub dircopy {
-	# dir from, dir to
-	my ($from, $to) = @_;
-	$from =~ s/\/?$/\//;
-	$to =~ s/\/?$/\//;
-	print "Copying $from to $to\n";
-	unless (-e $to) { mkdir($to) || die "Could not create dir $to"; }
-	opendir FROM, $from || die "Could not open dir $from";
-	my @files = readdir FROM;
-	closedir FROM;
-	shift @files; #.
-	shift @files; #..
-	foreach my $file (grep {-f $from.$_} @files) {
-		open IN, $from.$file || die "Could not open file ".$from.$file." to read";
-		open OUT, '>'.$to.$file  || die "Could not open file to ".$to.$file." write";
-		while (<IN>) { print OUT $_; }
-		close OUT;
-		close IN;
-	}
-	foreach my $dir (grep {(-d $from.$_)&&($_ ne 'CVS')} @files) {
-		dircopy( $from.$dir, $to.$dir ); #recurs
-	}
 }
 
 # the usage message is inserted below on compile time

@@ -1,23 +1,22 @@
 $VAR1 = {
   'core' => {
-    'Storable' => '2.04',
-    'Term::ANSIScreen' => '1.40',
     'Config' => 0,
+    'UNIVERSAL' => '1.01',
+    'IO::File' => '1.10',
     'Term::ReadKey' => '2.21',
-    'Term::ANSIColor' => '1.05',
-    'IO::File' => '1.09',
-    'Data::Dumper' => '2.12',
-    'overload' => '1.00',
-    'Env' => '1.00',
+    'Term::ANSIColor' => '1.07',
     'vars' => '1.01',
-    'Tie::Hash' => '1.00',
-    'strict' => '1.02',
-    'File::Spec' => '0.83',
-    'POSIX' => '1.05',
-    'File::Glob' => '1.01',
-    'Exporter' => '5.566',
-    'utf8' => '1.00',
+    'Term::ANSIScreen' => '1.40',
+    'Exporter::Tidy' => '0.06',
+    'Data::Dumper' => '2.121',
+    'Storable' => '2.08',
+    'File::Glob' => '1.02',
+    'POSIX' => '1.06',
+    'overload' => '1.01',
+    'strict' => '1.03',
+    'Cwd' => '2.08',
     'Carp' => '1.01',
-    'Cwd' => '2.06'
+    'Env' => '1.00',
+    'File::Spec' => '0.86'
   }
 };

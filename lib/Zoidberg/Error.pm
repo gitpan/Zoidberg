@@ -1,16 +1,14 @@
 
 package Zoidberg::Error;
 
-our $VERSION = '0.3c';
+our $VERSION = '0.40';
 
 use strict;
 use Carp;
-require Exporter;
-
-our @ISA = qw/Exporter/;
-our @EXPORT = qw/error bug todo/;
-
-use overload 
+use UNIVERSAL qw/isa/;
+use Exporter::Tidy
+	default => [qw/error bug todo/];
+use overload
 	'""' => \&stringify,
 	'eq' => sub { return $_[0] };
 
@@ -25,32 +23,36 @@ our %_caller = (
 ); # more ?
 
 sub error {
+	my %error;
 	my @caller = caller;
-	my %error = map {($_ => $caller[$_caller{$_}])} keys %_caller;
+	{
+		no strict 'refs';
+		@caller = caller(${$caller[0].'::ERROR_CALLER'}) 
+			if ${$caller[0].'::ERROR_CALLER'};
+
+		if (${$caller[0].'::DEBUG'}) {
+			$error{debug} = ${$caller[0].'::DEBUG'};
+			$error{stack} = [];
+			push @{$error{stack}}, [ (caller($_))[0..2] ]
+				for (1..${$caller[0].'::DEBUG'});
+		}
+	}
+	@error{qw/package file line/} = @caller;
 
 	die PROPAGATE($@, @error{qw/file line/}) if $@ && !@_; # make it work more like die
 
-	while (@_) {
-		my $ding = shift;
-		my $t = ref $ding;
-		unless ($t) { $error{string} .= $ding }
-		elsif ($t eq 'HASH' || $t eq __PACKAGE__) { %error = ( %error, %{$ding} ) }
-		else { croak 'Argument has wrong data type' }
+	for (@_) {
+		unless (ref $_) { $error{string} .= $_ }
+		elsif (isa $_, 'HASH') { %error = (%error, %$_) }
+		else { croak "subroutine error can't handle argument: $_" }
 	}
 	
-	$error{string} = $error{is_bug}
-		? 'This is a bug'
-		: $error{is_todo} 
-			? 'Something TODO here'
-			: 'Error'
+	$error{string} = $error{is_bug}	? 'This is a bug'
+		: $error{is_todo}  	? 'Something TODO here'
+		: 'Error'
 		unless $error{string};
 
-	{
-		no strict 'refs';
-		$error{debug}++ if ${ $error{package}.'::DEBUG' };
-	}
-
-	die bless \%error, __PACKAGE__;
+	die bless \%error;
 }
 
 sub bug {
@@ -89,8 +91,6 @@ sub _perl_string {
 	for (@{$self->{propagated}}) { $string = PROPAGATE($string, $_->{file}, $_->{line}) }
 	return $string;
 }
-
-sub debug { $_[0]->{debug} }
 
 sub PROPAGATE { # see perldoc -f die
 	my ($self, $file, $line) = @_;
@@ -224,6 +224,10 @@ Source file where the exception was raised.
 
 Line in source file where the exception was raised.
 
+=item debug
+
+The calling package had the global variable C<$DEBUG> set to a non-zero value.
+
 =item is_bug
 
 This exception should never happen, if it does this is considered a bug.
@@ -247,17 +251,15 @@ for example the calling package, or add meta data to an exception.
 
 =head1 AUTHOR
 
-Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
+Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
 Copyright (c) 2003 Jaap G Karssenberg. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
-See L<http://www.perl.com/language/misc/Artistic.html>
-
 =head1 SEE ALSO
 
-L<perl>, L<Zoidberg>, L<http://zoidberg.sourceforge.net>,
+L<Zoidberg>, L<http://zoidberg.sourceforge.net>,
 L<http://www.gnu.org/prep/standards_15.html#SEC15>
 
 =cut
