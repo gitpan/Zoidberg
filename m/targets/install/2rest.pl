@@ -42,15 +42,3 @@ print "## If all went well, try type \"zoid\" to start the Zoidberg shell.\n";
 
 __END__
 
-=head1 NAME
-
-install files
-
-=head1 DESCRIPTION
-
-This script is ment as a make target in combination with the
-Makefile.pm module. See module documentation for more details.
-
-=head1 FUNCTION
-
-Zoidberg specific, install files

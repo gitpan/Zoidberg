@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Prompt;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use strict;
 
@@ -29,7 +29,7 @@ sub children {
 
 sub createChild {
     my $self = shift;
-    return new String ($self,@_);
+    return new Zoidberg::Fish::Prompt::string ($self,@_);
 }
 
 sub getLength {
@@ -67,7 +67,7 @@ sub reset {
 }
 
 
-package String;
+package Zoidberg::Fish::Prompt::string;
 
 use Term::ANSIColor;
 
@@ -96,7 +96,7 @@ sub init {
     }
     $self->stringify;
     if (($self->getLength > $self->{max_length})&&($self->{max_length})) {
-        bless $self => 'String::Scrolling';
+        bless $self => 'Zoidberg::Fish::Prompt::string::scrolling';
     }
     $self;
 }
@@ -216,9 +216,9 @@ sub expandVars {
     return $string;
 }
 
-package String::Scrolling;
+package Zoidberg::Fish::Prompt::string::scrolling;
 
-use base 'String';
+use base 'Zoidberg::Fish::Prompt::string';
 
 sub init {
     my $self = shift;
@@ -228,9 +228,9 @@ sub init {
 sub _stringify {
     my $self = shift;
     my $maxlen = $self->{max_length};
-    my $string = String::stripAnsi(String::stringify($self));
+    my $string = Zoidberg::Fish::Prompt::string::stripAnsi(Zoidberg::Fish::Prompt::string::stringify($self));
     my $len = $self->getLength;
-    if ($self->getLength <= $maxlen) { return String::stringify($self) }
+    if ($self->getLength <= $maxlen) { return Zoidberg::Fish::Prompt::string::stringify($self) }
     if ($self->{i} >= $self->getLength) { $self->{i} = 0 }
     if ($self->getLength > $maxlen) {
         $self->{i}++;
@@ -247,7 +247,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Prompt - Modular prompt plugin for Zoidberg
+Zoidberg::Fish::Prompt - Modular prompt plugin for Zoidberg
 
 =head1 SYNOPSIS
 

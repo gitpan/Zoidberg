@@ -1,6 +1,6 @@
 package Zoidberg::ZoidParse;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use POSIX ();
 use Config;
@@ -178,29 +178,6 @@ sub disown { # dissociate job ... remove from @jobs, nohup
     # all your pty are belong:0
 }
 
-=pod
-## I believe this to be deprecated
-sub _scuddle_cmd {
-    my $self = shift;
-    my $string = shift;
-    my $context = shift;
-    my $job = Scuddle->new($self,[ [$string, '', $context, ''] ],0);
-    push @{$self->{jobs}}, $job;
-    $job->{string} = $string;
-    my @pipe = POSIX::pipe;
-    $job->{files}{1} = $pipe[1];
-    $job->preparse;
-    $job->{id} = $self->_nextjobid;
-    $job->prerun;
-    $job->postrun;
-    my $fh = IO::File->new_from_fd($pipe[0],'r');
-    #$fh->blocking(0);
-    my @dus = (<$fh>);
-    $fh->close;
-    return @dus;
-}
-=cut
-
 # ################## #
 # Internal interface #
 # ################## #
@@ -210,7 +187,7 @@ sub scuddle {
     my ($tree, $string, $sign)  = @_;
     my $fg;
     if (grep {$sign =~ /^$_$/} @{$self->{grammar}{background}}) { $fg = 0 } else { $fg = 1 }
-    my $job = Scuddle->new($self,$tree,$fg);
+    my $job = Zoidberg::ZoidParse::scuddle->new($self,$tree,$fg);
     push @{$self->{jobs}}, $job;
     $job->{string} = $string;
     $job->preparse;
@@ -291,7 +268,7 @@ sub _substjobno {
 }
         
             
-package Scuddle;
+package Zoidberg::ZoidParse::scuddle;
 
 use Data::Dumper;
 use POSIX qw/:sys_wait_h :signal_h/;
@@ -315,16 +292,15 @@ sub zoid { $_[0]->{zoid} }
 
 sub classify {
     my $self = shift;
-    if (($#{$self->{tree}}==0)&&($self->{tree}[0][2]ne'SYSTEM'or!$self->zoid->{round_up})&&$self->{foreground}) {bless $self => 'Scuddle::Native'; }
-    #if (($#{$self->{tree}}==0)&&$self->{foreground}) { bless $self => 'Scuddle::Native'; }
-    else { bless $self => 'Scuddle::Wide'; }
+    if (($#{$self->{tree}}==0)&&($self->{tree}[0][2]ne'SYSTEM'or!$self->zoid->{round_up})&&$self->{foreground}) {bless $self => 'Zoidberg::ZoidParse::scuddle::native'; }
+    else { bless $self => 'Zoidberg::ZoidParse::scuddle::wide'; }
     $self->zoid->print("Scuddle class ".ref($self)." in use.", "debug");
     return $self;
 }
 
 sub preparse {
     my $job = shift;
-    ref($job) !~ 'Scuddle' && $job->zoid->print("Gegegegeget a job [$job]", 'error');
+    ref($job) !~ 'scuddle' && $job->zoid->print("Gegegegeget a job [$job]", 'error');
     for (my $i=0;$i<=$#{$job->{tree}};$i++) {
         if ($job->{tree}[$i][1] =~ /</) {
             my $file = splice(@{$job->{tree}},$i+1,1);
@@ -341,8 +317,8 @@ sub preparse {
 
 sub nohup { 0 }
 
-package Scuddle::Native;
-use base 'Scuddle';
+package Zoidberg::ZoidParse::scuddle::native;
+use base 'Zoidberg::ZoidParse::scuddle';
 
 sub prerun { # only stdout redirection supported for now ...
     my $self = shift;
@@ -383,8 +359,8 @@ sub stopped { 0 }
 
 sub update_status { }
 
-package Scuddle::Wide;
-use base 'Scuddle';
+package Zoidberg::ZoidParse::scuddle::wide;
+use base 'Zoidberg::ZoidParse::scuddle';
 
 use Data::Dumper;
 use POSIX qw/:sys_wait_h :signal_h/;

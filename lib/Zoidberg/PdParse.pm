@@ -1,6 +1,6 @@
 package Zoidberg::PdParse;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use strict;
 

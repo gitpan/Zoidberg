@@ -43,15 +43,3 @@ chmod 0755, "b/bin/zoid";
 
 __END__
 
-=head1 NAME
-
-compile fluff (ie zoid)
-
-=head1 DESCRIPTION
-
-This script is ment as a make target in combination with the
-Makefile.pm module. See module documentation for more details.
-
-=head1 FUNCTION
-
-Zoidberg specific, generates F<b/bin/zoid> out F<bin/fluff>

@@ -20,15 +20,3 @@ for ($make->manifest) {
 
 __END__
 
-=head1 NAME
-
-compile libs
-
-=head1 DESCRIPTION
-
-This script is ment as a make target in combination with the
-Makefile.pm module. See module documentation for more details.
-
-=head1 FUNCTION
-
-Copy files in F<./lib> to the build directory

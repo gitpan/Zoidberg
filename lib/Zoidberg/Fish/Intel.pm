@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Intel;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use Zoidberg::StringParse;
 use base 'Zoidberg::Fish';
@@ -452,7 +452,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Intel - Zoidberg module handling tab expansion and globbing
+Zoidberg::Fish::Intel - Zoidberg module handling tab expansion and globbing
 
 =head1 SYNOPSIS
 

@@ -37,6 +37,7 @@ $VAR1 = {
 		'down' => 'history_get(\'next\')',
 		'left' => 'move_left',
 		'right' => 'move_right',
+		'ctrl_l' => '->parse(\'clear\')',
 		'ctrl_left' => 'move_left(\'fast\')',
 		'ctrl_right' => 'move_right(\'fast\')',
 		'ctrl_]' => 'k_backspace(\'fast\')',

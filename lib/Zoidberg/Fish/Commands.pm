@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use Devel::Symdump;
 use Data::Dumper;
@@ -248,7 +248,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Commands - Zoidberg plugin for internal commands
+Zoidberg::Fish::Commands - Zoidberg plugin for internal commands
 
 =head1 SYNOPSIS
 

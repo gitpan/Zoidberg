@@ -1,6 +1,6 @@
 package Zoidberg::StringParse;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use strict;
 use Data::Dumper;

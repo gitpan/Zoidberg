@@ -16,15 +16,3 @@ for ($make->manifest) {
 
 __END__
 
-=head1 NAME
-
-compile files
-
-=head1 DESCRIPTION
-
-This script is ment as a make target in combination with the
-Makefile.pm module. See module documentation for more details.
-
-=head1 FUNCTION
-
-Zoidberg specific, copy some files to build directory

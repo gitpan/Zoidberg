@@ -1,8 +1,7 @@
 package Zoidberg::Fish;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
-use Devel::Symdump;
 #use Zoidberg::Fish::Crab;
 
 sub new {

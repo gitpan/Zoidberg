@@ -1,6 +1,9 @@
 Revision history for Zoidberg -- a modular perl shell
 <http://zoidberg.sourceforge.net>
 
+0.2b Su Feb 16 2003
+	- Module namespace cleaned up for CPAN
+
 0.2  We Feb 12 2003
 	- Plugins get loaded on use, not on init, thus reducing the footprint of
 	shells running in the background.

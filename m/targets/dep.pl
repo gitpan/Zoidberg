@@ -31,16 +31,3 @@ else { print "done.\n"; }
 
 __END__
 
-=head1 NAME
-
-dep
-
-=head1 DESCRIPTION
-
-This script is ment as a make target in combination with the
-Makefile.pm module. See module documentation for more details.
-
-=head1 FUNCTION
-
-This target tries to fetch missing dependencies from CPAN.
-It's wise to config your CPAN first.

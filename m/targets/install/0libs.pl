@@ -33,21 +33,3 @@ for ($make->manifest) {
 
 __END__
 
-=head1 NAME
-
-install libs
-
-=head1 DESCRIPTION
-
-This script is ment as a make target in combination with the
-Makefile.pm module. See module documentation for more details.
-
-=head1 FUNCTION
-
-Install all files in the F<./lib> dir.
-
-=head1 VARS
-
-If LIB_PREFIX or LIB is specified libs will be installed to this dir.
-Else if INSTALLDIRS is one of "perl", "site" or "vendor" the apropriate 
-dir is used from %Config.

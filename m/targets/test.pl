@@ -48,22 +48,3 @@ unless ($done) {
 
 __END__
 
-=head1 NAME
-
-test
-
-=head1 DESCRIPTION
-
-This script is ment as a make target in combination with the
-Makefile.pm module. See module documentation for more details.
-
-=head1 FUNCTION
-
-If there is a F<test.pl>, the contents are evalled.
-
-If there is a directory F<t> all files in this dir with extension ".t"
-are run using L<Test::Harness>.
-
-=head1 VARS
-
-If TEST_VERBOSE or VERBOSE are set Test::Harness is set verbose.

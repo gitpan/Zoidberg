@@ -59,7 +59,7 @@ m/targets/clean.sh
 m/targets/help.pl
 m/targets/dep.pl
 m/targets/cvs.sh
-m/targets/new_dep.pl
-m/targets/release.pl
+m/targets/check_dep.pl
+m/targets/check_manifest.pl
 m/Depends.pd
 m/Makefile.pm

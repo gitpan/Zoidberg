@@ -1,4 +1,4 @@
-package fortune;
+package Zoidberg::Fish::MOTZ::fortune;
 
 sub new {
     my $class = shift;
@@ -24,7 +24,7 @@ sub pickQuote {
     
 package Zoidberg::Fish::MOTZ;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use Data::Dumper;
 
@@ -44,8 +44,8 @@ sub init {
     my $self = shift;
     $self->{dir} = scan_dir($self->{config}{dir});
     $self->{files} = [map {$self->{config}{dir}."/".$_} @{$self->{dir}{files}}];
-    $self->{files} = [map {fortune->new($_)} @{$self->{files}}];
-    unless(@{$self->{files}}) { @{$self->{files}}[0] = fortune->new("") } # make stub
+    $self->{files} = [map {Zoidberg::Fish::MOTZ::fortune->new($_)} @{$self->{files}}];
+    unless(@{$self->{files}}) { @{$self->{files}}[0] = Zoidberg::Fish::MOTZ::fortune->new("") } # make stub
     $self->register_event('message');
 }
 
@@ -87,7 +87,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::MOTZ - message of the zoid, replace fortune
+Zoidberg::Fish::MOTZ - message of the zoid, replace fortune
 
 =head1 SYNOPSIS
 

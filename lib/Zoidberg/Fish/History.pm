@@ -1,6 +1,6 @@
 package Zoidberg::Fish::History;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use strict;
 use IO::File();
@@ -217,7 +217,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::History - History plugin for the Zoidberg shell
+Zoidberg::Fish::History - History plugin for the Zoidberg shell
 
 =head1 SYNOPSIS
 

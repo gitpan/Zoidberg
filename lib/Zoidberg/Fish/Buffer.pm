@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use strict;
 use Data::Dumper;
@@ -751,7 +751,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Buffer - The zoidberg input buffer
+Zoidberg::Fish::Buffer - The zoidberg input buffer
 
 =head1 SYNOPSIS
 

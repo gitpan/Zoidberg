@@ -49,20 +49,3 @@ for (grep {m/^(?:\.\/)?lib\/.*?\.(pm|pod)$/i} @manifest) {
 
 __END__
 
-=head1 NAME
-
-compile man pages
-
-=head1 DESCRIPTION
-
-This script is ment as a make target in combination with the
-Makefile.pm module. See module documentation for more details.
-
-=head1 FUNCTION
-
-Generates man pages out pod by using Pod::Man.
-
-Searches F<./man(0..9)> for .pod files (just copies all other files found) and places these
-in F<b/man(0..9).
-
-Scans F<./lib> for .pm and .pod files and puts these in F<b/man3>.

@@ -1,6 +1,6 @@
 package Zoidberg::StringParse::Syntax;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use strict;
 use Term::ANSIColor;

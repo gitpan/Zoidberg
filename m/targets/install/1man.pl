@@ -32,17 +32,3 @@ foreach my $section (0..9) {
 
 __END__
 
-=head1 NAME
-
-install man pages
-
-=head1 DESCRIPTION
-
-This script is ment as a make target in combination with the
-Makefile.pm module. See module documentation for more details.
-
-=head1 FUNCTION
-
-Install manpages to their apropriated directories.
-
-Uses INSTALLMAN(0..9)DIR or tries to find these in %Config.

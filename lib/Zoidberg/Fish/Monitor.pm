@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Monitor;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use strict;
 use Zoidberg::PdParse;
@@ -70,7 +70,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Monitor - simple event monitoring
+Zoidberg::Fish::Monitor - simple event monitoring
 
 =head1 SYNOPSIS
 

@@ -106,19 +106,3 @@ sub gen_list {
 
 __END__
 
-=head1 NAME
-
-compile docs
-
-=head1 DESCRIPTION
-
-This script is ment as a make target in combination with the
-Makefile.pm module. See module documentation for more details.
-
-=head1 FUNCTION
-
-Zoidberg specific (?)
-
-generates html user documentation by using Pod::Tree::HTML
-
-Doesn't work yet.

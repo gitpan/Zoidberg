@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Hermes;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use base 'Zoidberg::Fish';
 use DBI;
@@ -93,7 +93,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Hermes - Zoidberg module SQL handling
+Zoidberg::Fish::Hermes - Zoidberg module SQL handling
 
 =head1 SYNOPSIS
 
@@ -117,21 +117,26 @@ Zoidberg::Hermes - Zoidberg module SQL handling
 
 None by default.
 
+=head1 AUTHOR
 
+Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
+
+R.L. Zwart, E<lt>carlos@caremail.nlE<gt>
+
+M. Dalhuijsen, E<lt>denthijs@users.sourceforge.netE<gt>
+
+Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
+This program is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-http://zoidberg.sf.net
+L<perl>
 
-=head1 AUTHOR
+L<Zoidberg>
 
-pardus carlos denthijs
+L<Zoidberg::Fish>
 
-=head1 COPYRIGHT AND LICENSE
-
-Copyright 2002 by root
-
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself. 
+L<http://zoidberg.sourceforge.net>
 
 =cut

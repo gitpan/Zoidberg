@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Sepository;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use strict;
 use base 'Zoidberg::Fish';
@@ -43,7 +43,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Sepository - Inline:: glue
+Zoidberg::Fish::Sepository - Inline:: glue
 
 =head1 SYNOPSIS
 

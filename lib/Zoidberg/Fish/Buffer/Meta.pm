@@ -1,7 +1,7 @@
 package Zoidberg::Fish::Buffer::Meta;
 use Storable qw/dclone/;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use strict;
 use base 'Zoidberg::Fish::Buffer';

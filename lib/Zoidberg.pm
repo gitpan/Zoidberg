@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.2a';
+our $VERSION = '0.2b';
 our $VERSION_NAME = '-mudpool-release';
 our $LONG_VERSION =
 "Zoidberg - a modular perl shell, version $VERSION$VERSION_NAME
@@ -80,9 +80,9 @@ sub init {
 }
 
 
-########################
+###############################
 #### main parsing routines ####
-########################
+###############################
 
 sub main_loop {
 	my $self = shift;
@@ -93,7 +93,7 @@ sub main_loop {
 
 		my $cmd = eval { $self->Buffer->get_string };
 		if ($@) { $self->print("Buffer died. ($@)", 'error') }
-		else { 
+		elsif ($self->{core}{continu}) { 
 			$self->broadcast_event('cmd', $cmd);
 			$self->parse($cmd);
 		}
@@ -107,9 +107,9 @@ sub parse {
 	return $self->trog(@_);
 }
 
-#######################
+##############################
 #### information routines ####
-#######################
+##############################
 
 sub list_objects {
 	my $self = shift;
@@ -133,7 +133,7 @@ sub object {
 		return $self->{objects}{$ding};
 	}
 	elsif (($ding) = grep {lc($_) eq lc($name)} @Zoidberg::core_objects) { # use stub
-		my $pack = "stub_".lc($ding);
+		my $pack = 'Zoidberg::stub::'.lc($ding);
 		$self->{objects}{$ding} = $pack->new($self);
 		return $self->{objects}{$ding};
 	}
@@ -167,9 +167,9 @@ sub list_clothes { # includes $self->{vars}
 
 sub list_vars { return [map {'{'.$_.'}'} sort keys %{$_[0]->{vars}}]; }
 
-#################
+######################
 #### Output subs  ####
-##################
+######################
 
 sub interactivity { # TODO: save the silence state, ask jaap how to do it the RIGHT way
     my $self = shift;
@@ -496,34 +496,36 @@ sub DESTROY {
 	}
 }
 
-package stub_stub;
+package Zoidberg::stub;
 sub new { bless {'parent' => $_[1]}, $_[0]; }
 sub help { return "This is a stub object -- it can't do anything."; }
 sub AUTOLOAD { return wantarray ? () : ''; }
 
-package stub_prompt;
-use base 'stub_stub';
+package Zoidberg::stub::prompt;
+use base 'Zoidberg::stub';
 sub stringify { return 'Zoidberg no prompt>'; }
 sub getLength { return length('Zoidberg no prompt>'); }
 
-package stub_buffer;
-use base 'stub_stub';
+package Zoidberg::stub::buffer;
+use base 'Zoidberg::stub';
 sub get_string {
+	my $self = shift;
 	$/ = "\n";
-	my $prompt = $_[1] || 'Zoidberg STDIN>';
+	my $prompt = shift || "Zoidberg $Zoidberg::VERSION STDIN >>";
 	if (ref($prompt)) { $prompt = $prompt->stringify; }
 	print $prompt.' ';
-	return scalar <STDIN>;
+	if (defined (my $input = <STDIN>)) { return $input; } 
+	else { $self->{parent}->exit; }
 }
 sub size { return (undef, undef); } # width and heigth in chars
 sub bell { print "\007" }
 
-package stub_history;
-use base 'stub_stub';
+package Zoidberg::stub::history;
+use base 'Zoidberg::stub';
 sub get_hist { return (undef, '', 0); }
 
-package stub_commands;
-use base 'stub_stub';
+package Zoidberg::stub::commands;
+use base 'Zoidberg::stub';
 sub parse {
 	if ($_[1] eq 'quit') { $_[0]->c_quit; }
 	return "";
@@ -536,17 +538,17 @@ sub c_quit {
 	$self->{parent}->exit;
 }
 
-package stub_intel;
-use base 'stub_stub';
+package Zoidberg::stub::intel;
+use base 'Zoidberg::stub';
 sub tab_exp { return [0, [$_[1]]]; }
 
-package stub_help;
-use base 'stub_stub';
+package Zoidberg::stub::help;
+use base 'Zoidberg::stub';
 sub help { print "No help available.\n" }
 sub list { return []; }
 
-package stub_motz;
-use base 'stub_stub';
+package Zoidberg::stub::motz;
+use base 'Zoidberg::stub';
 sub fortune { return ''; }
 
 1;

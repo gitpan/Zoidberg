@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Help;
 
-##Insert version Zoidberg here##
+our $VERSION = '0.2';
 
 use strict;
 
@@ -185,7 +185,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Help - Generates help texts for zoidberg
+Zoidberg::Fish::Help - Generates help texts for zoidberg
 
 =head1 SYNOPSIS
 

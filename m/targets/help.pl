@@ -35,15 +35,3 @@ print "\n".$make->{help_postamble}."\n\n";
 
 __END__
 
-=head1 NAME
-
-help
-
-=head1 DESCRIPTION
-
-This script is ment as a make target in combination with the
-Makefile.pm module. See module documentation for more details.
-
-=head1 FUNCTION
-
-This target prints a dynamicly generated help text listing available targets and variables.
