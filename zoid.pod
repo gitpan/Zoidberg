@@ -1,0 +1,101 @@
+=head1 NAME
+
+Zoidberg - a modular perl shell
+
+zoid     - a frontend script to the Zoidberg shell
+
+=head1 DESCRIPTION
+
+Zoidberg provides a shell written in perl, configured in perl and operated in perl.
+It is intended to be a replacement for command language interpreters like
+bash, ksh, csh in the future, but that is a long way.
+Although Zoidberg does not do the language interpreting itself -- it uses
+perl to do this -- it supplies powerfull language extensions aimed at creating
+an easy to use interface.
+Unlike bash Zoidberg does _not_ want to be POSIX compliant, and only is
+so when necessary. Also this won't be the most harware-efficient software
+you've ever seen - it is never intended to be so.
+Most likely you will have to be a perl programmer or developer to enjoy this.
+
+You most likely want to use the default config files as installed
+by the ProgramFiles package and all the modules from the Zoidberg
+package.
+
+The rest of this documentation supposses 
+you to have both default packackages installed.
+
+=head1 SYNOPSIS
+
+    zoid [options]
+
+    Options:
+       --help           Detailed help message
+       --exec           execute string
+       --command        does the same as --exec
+       --version        display version information
+       --interaction    start interactive shell
+       --nointeraction  execute non-interactive
+
+=head1 OPTIONS
+
+Abbreviations of options are also allowed.
+
+=over 4
+
+=item B<-h, --help>
+
+    Print a this help message and exits.
+
+=item B<-e, --exec>
+
+    Execute string as interpreted by zoidberg.
+    If non-interactive exits with exit status
+    of command string.
+
+=item B<-c, --command>
+
+    Does the same as exec.
+
+=item B<-v, --version>
+
+    Display version information.
+    The displayed version is the version of the
+    Zoidberg module, not of the program files.
+
+=item B<-i, --interaction>
+
+    Start an interactive shell.
+    This is the default if no exec string is
+    supplied. If exec string is supplied
+    nointeraction becomes default.
+
+=item B<--nointeraction>
+
+    Do not start interactive shell - just
+    execute commandline options and exit.
+
+=back
+
+=head1 BUGS
+
+Many since Zoidberg is still in developement stage.
+
+=head1 AUTHORS
+
+Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
+
+R.L. Zwart, E<lt>carlos@caremail.nlE<gt>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
+This program is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+L<perl>,
+L<Zoidberg>,
+L<http://zoidberg.sourceforge.net>
+
+=cut

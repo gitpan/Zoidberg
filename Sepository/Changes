@@ -1,0 +1,6 @@
+Revision history for Perl extension Zoidberg::Sepository.
+
+0.01  Fri Nov 29 02:00:20 2002
+	- original version; created by h2xs 1.22 with options
+		-AX -n Zoidberg::Sepository
+

@@ -1,0 +1,116 @@
+TODO-list for Zoidberg -- a modular perl shell
+<http://zoidberg.sourceforge.net>
+
+Disclaimer: some of this might be in dutch
+
+**************
+**** BUGS ****
+**************
+
+commands snappen exec_error nog niet
+
+dir hist niet debug
+load buffer from file niet debug
+
+del_one_hist werkt nie goe && open_from_file werkt ook nie goed
+	beide zijn verwant aan kirl/buffer hooks
+
+tabexp gaat nog nie helemaal goed als de regel over de scherm breedte heen komt
+	dit is verwant aan printen tijdens heartbeat van buffer ....
+		dat is weer verwant aan meerdere buffers (?)
+
+^g = ^golf == show number of chars -- nog wat mooier implementen
+
+******************************
+**** wanted modifications ****
+******************************
+
+Buffer->switch_char_table($tableObject)
+Buffer->probe plugable maken
+Commands->usage
+FILE context afsplitsen van SYSTEM context voor tab_exp -- handig voor save file
+
+history records opschonen i.e. formaat veranderen (again)
+maak van kirl echte subklasse ofzo
+hooks tussen kirl en buffer opschonen
+flush cache event
+
+*************************
+**** wanted features ****
+*************************
+<TAB><TAB> => I feel lucky
+
+te implementeren commands:
+alias
+eval
+pwd
+
+magick char afvangen voor contexten die er niets mee kunnen
+
+how about handlers voor dingen als files, dirs, urls etc.
+
+meer intel in grammar om perl te onderscheiden van files etc.
+
+active modus switch in buffer => 'perl' afvangen in buffer en stdin vervangen door multi line modus
+	{ + BROKEN => multi line
+	\\\s*$ => multi line
+auto indent
+heartbeat uit buffer
+
+***************
+**** Notes ****
+***************
+
+take a look at error.pm (en fatal.pm ?)
+
+build-ins van bash checken voor kritieke dingen
+
+before releasing:
+	check stubs in Zoidberg.pm
+	update pod - both in modules and help files
+	check all Makefile.PL
+	check $VERSION in all modules
+	check $DEVEL in zoidberg.pm
+	remove Makefile.old
+	remove unused modules from tree
+	remove scripts from tree
+
+
+****************
+**** Vision ****
+****************
+
+modular
+repeat after me MODULAR
+events zijn goed
+
+dingen als tab expansion zijn plugins
+dingen als monitor en een extra infobar ook
+zelfs netwerk moet een simpele plugin zijn
+zelfs pipes en jobs moeten plugin zijn -- zij het dat hier aanpassingen voor gedaan mogen worden
+history idem
+/mesg: ingebakken msn/icq functionaliteit?
+MOTZ::audio
+
+## Zoidberg Documentation
+
+  # Contents
+
+  0 Introduction
+  1 Release notes (oid)
+  2 Tour
+  3 Common configuration variables
+  4 Default syntax
+    4.1 Commands
+    4.2 Aliases
+    4.3 Perl
+    4.4 Methods
+    4.5 Pipes
+  5 Use of objects
+    5.1 Standard objects
+    5.2 Custom objects
+  6 Jobs and Screens
+  7 Communication
+  8 FAQ
+  9 Disclaimer and Copyright
+
