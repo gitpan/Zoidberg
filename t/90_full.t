@@ -32,6 +32,7 @@ print ZOID "echo ok 12 - redirection 2> test12~ 1>&2; cat test12~\n"; # 12
 print ZOID "TEST='ok 13 - local environment' { print(\$TEST, \"\\n\") }\n"; # 13
 print ZOID "false && echo 'not ok 14 - logic 2' || echo 'ok 14 - logic 1'\n"; #14
 print ZOID "./false && echo 'not ok 15 - logic 1' || echo 'ok 15 - logic 2'\n"; #15
+print ZOID "true\n"; # A very subtle Bug emerges when this is not here :(
 print ZOID "      && echo 'ok 16 - empty command'\n"; # 16
 print ZOID "(false || false) || echo 'ok 17 - subshell 1'\n"; # 17
 print ZOID "(./false || ./false) || echo 'ok 18 - subshell 2'\n"; # 18

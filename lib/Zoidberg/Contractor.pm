@@ -1,6 +1,6 @@
 package Zoidberg::Contractor;
 
-our $VERSION = '0.93';
+our $VERSION = '0.94';
 
 use strict;
 use POSIX ();
@@ -852,7 +852,7 @@ sub AUTOLOAD { # autoload signals - bo args
 
 sub status_string {
 	# POSIX: "[%d]%c %s %s\n", <job-number>, <current>, <status>, <job-name>
-	my $self = shift;
+	my ($self, $status, $list) = @_;
 
 	my $pref = '';
 	if ($$self{id}) {
@@ -861,18 +861,40 @@ sub status_string {
 			($self eq $$self{boss}{jobs}[-2]) ? '- ' : '  ' );
 	}
 
-	my $status = shift || (
+	$status ||=
 		$$self{new}        ? 'New'         :
 		$$self{stopped}    ? 'Stopped'     :
 		$$self{core_dump}  ? 'Core dumped' :
 		$$self{terminated} ? 'Terminated'  :
-		$$self{completed}  ? 'Done'        : 'Running' ) ;
+		$$self{completed}  ? 'Done'        : 'Running' ;
 
 	my $string = $$self{string};
-	$string =~ s/\n$//;
-	$string .= "\t\t(pwd: $$self{pwd})" if $$self{pwd} and $$self{pwd} ne $ENV{PWD};
+	chomp $string;
+	$string .= "    \t(pwd: $$self{pwd})"
+		if $$self{pwd} and $$self{pwd} ne $ENV{PWD};
 
-	return $pref . $status . "\t$string";
+	if ($list) { # more verbose output for `jobs --list`
+		# FIXME this can no doubt be handled more gracefully
+		my ($t, @stack) = ($$self{tree});
+		for (my $i = 0; $i < @$t; $i++) {
+			my $string;
+			until (ref $$t[$i] or $i >= @$t) {
+				$string .= $$t[$i] . ' ';
+				$i++
+			}
+			if (ref $$t[$i]) {
+				$string .= $$t[$i][0]{string} || $$t[$i][-1];
+				chomp $string;
+				$string =~ s/\n/\n\t/g;
+			}
+			else { $string .= $$t[$i] }
+			push @stack, $string;
+		}
+		
+		$string = join "\n\t", $string, grep /\S/, @stack;
+		return $pref . $$self{pgid} . " $status\t$string";	
+	}
+	else { return $pref . $status . "\t$string" }
 }
 
 package Zoidberg::Job::builtin;

@@ -14,7 +14,7 @@
 
 use strict;
 use Cwd qw/cwd/;
-our $VERSION = '0.93';
+our $VERSION = '0.94';
 
 my @inc = (); # You can list custom includes here
 my $cwd = cwd;
@@ -40,7 +40,7 @@ my ($opts, $args) = eval { getopt( '
 	help,h,usage,u version,V config,C
 	exec,e@ command,c@ stdin,s
 	interactive,i login,l plug,p@
-	debug,-D verbose,v include,-I@
+	debug,-D,D verbose,v include,-I@
 	-I* -D* +o@ -o@ -m* -M*
 	@', @ARGV ) } ;
 if ($@) { # renice error message

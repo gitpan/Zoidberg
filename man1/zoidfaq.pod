@@ -117,9 +117,9 @@ code of a gui application using zoid.
 
 If you use Term::ReadLine::Zoid, make sure not to use a version older then your version of Zoidberg.
 When using the latest version of zoid, the latest version of Term::ReadLine::Zoid should work.
+Try installing Bundle::Zoidberg instead of just Zoidberg.
 
 If you have all dependencies right you might need to remove/clean the directory C<< ~/.zoid >>.
-
 Also it might be a good idea to clean up C<< /usr/share/zoid >> and/or
 C<< /usr/local/share/zoid >> before installing a new version.
 

@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.93';
+our $VERSION = '0.94';
 
 use strict;
 use AutoLoader 'AUTOLOAD';
@@ -669,16 +669,37 @@ sub type_command {
 # Job routines #
 # ############ #
 
-=item jobs
+=item jobs [-l,--list|-p,--pgids] I<job_spec ...>
 
-List current jobs.
+Lists current jobs.
+
+If job specs are given as arguments only lists those jobs.
+
+The --pgids option only lists the process group ids for the jobs
+without additional information.
+
+The --list option gives more verbose output, it adds the process group id
+of the job and also shows the stack of commands pending for this job.
+
+This command is not POSIX compliant. It uses '-l' in a more verbose
+way then specified by POSIX. If you wat to make sure you have POSIX
+compliant verbose output try: C<jobs -l | {! /^\t/}g>.
 
 =cut
 
 sub jobs {
 	my $self = shift;
-	my $j = @_ ? \@_ : $$self{shell}->{jobs};
-	output $_->status_string() for sort {$$a{id} <=> $$b{id}} @$j;
+	my ($opts, $args) = getopt 'list,l pgids,p @', @_;
+	$args = @$args 
+		? [ map {$$self{shell}->job_by_spec($_)} @$args ]
+		: $$self{shell}->{jobs} ;
+	if ($$opts{pgids}) {
+		output [ map $$_{pgid}, @$args ];
+	}
+	else {
+		output $_->status_string(undef, $$opts{list})
+			for sort {$$a{id} <=> $$b{id}} @$args;
+	}
 }
 
 =item bg I<job_spec>

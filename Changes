@@ -1,7 +1,17 @@
  Revision history for Zoidberg - a modular perl shell 
 ======================================================
 
-0.93 Fri Jan 21 2004
+0.94 Mon Mar 21 2005
+	Bugfix release
+	- Fixed a critical bugfix making the shell practically unusable
+	once the PWD contained a single quote :(  Reported by Ryan Voots.
+
+     Mon Mar 14
+	- Added alias for gnu grep to the default zoidrc
+	- Added functionality to the jobs builtin command
+	- Reniced the generation of zoidbuiltins(1)
+
+0.93 Fri Jan 21 2005
 	Bugfix release
 	- Made brace expansion more bash compatible, set 'voidbraces'
 	for the old behaviour

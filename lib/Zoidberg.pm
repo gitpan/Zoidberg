@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.93';
+our $VERSION = '0.94';
 our $LONG_VERSION = "Zoidberg $VERSION
 
 Copyright (c) 2002 - 2004 Jaap G Karssenberg. All rights reserved.
@@ -544,6 +544,7 @@ sub parse_env {
 
 	# parse environment
 	if ($$meta{parse_env}) {
+		my $_env = delete $$meta{env}; # PWD and SHELL
 		while ($words[0] =~ /^(\w[\w\-]*)=(.*)/s) {
 			$$meta{compl} = shift @words;
 			$$meta{env}{$1} = $2
@@ -558,6 +559,9 @@ sub parse_env {
 				my (undef, @w) = @{ $self->parse_words([$meta, $$meta{env}{$_}]) };
 				$$meta{env}{$_} = join ':', @w;
 			}
+		}
+		for (keys %$_env) {
+			$$meta{env}{$_} = $$_env{$_} unless defined $$meta{env}{$_};
 		}
 	}
 

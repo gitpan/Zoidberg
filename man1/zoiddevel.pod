@@ -671,6 +671,8 @@ TODO this mechanism seems to have some problems
 Contains the string that caused the current command to be executed. Can be used
 by a command to inspect its arguments as they were before path expansions etc..
 
+=back
+
 =head1 SEE ALSO
 
 L<perl>(1), L<http://zoidberg.sourceforge.net>

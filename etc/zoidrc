@@ -86,5 +86,8 @@ set('nocaseglob')
 
 ### OS dependent stuff
 if ($^O eq 'linux' and $ENV{CLICOLOR}) { # _GNU_/Linux rigth ?
-	alias( { ls => 'ls --color=auto' } );
+	alias( {
+		ls   => 'ls --color=auto',
+		grep => 'grep --color=auto',
+	 } );
 }
