@@ -1,69 +1,88 @@
-use ExtUtils::MakeMaker;
+
+require 'm/Makefile.pm';
+import Makefile qw/get_version_from pd_read/;
+
 use strict;
 
-my $pms = {};
-my $pods1 = {};
-my $pods3 = {};
-my $depends = {	# dependecies for scripts -- can't be distilled from .pm's
-	'Getopt::Long'		=> '2.32',
-	'Pod::Usage'		=> '1.14',
-	#'Pod::Tree::HTML'	=> '1.08', # Pod/Tree/HTML.pm seems a bad boy
-};
- 
-# read MANIFEST for .pm's
-open MANIFEST, "< MANIFEST" or die "Couldn't open ./MANIFEST";
-while(<MANIFEST>) {
-	chomp;
-	if ($_ !~ /.pm$/) { next; }
-	my $dest = $_;
-
-	### convert our <insert cursing> dir structure
-	 my @dirs = split(/\//, $dest);
-	 my $file = pop @dirs;
-	 if(pop @dirs) { # lose last dir
-		 unshift @dirs, 'Zoidberg';
-	 }
-	 $dest = join('/', @dirs).(@dirs ? '/' : '').$file;
-	###
-
-	my $podname = $dest;
-	$dest = '$(INST_LIBDIR)/'.$dest;
-	$pms->{$_} = $dest;
-
-	# set right name for pod3
-	$podname =~ s/\//\:\:/g;
-	$podname =~ s/\.pm$//;
-	$pods3->{$_} = '$(INST_MAN3DIR)/'.$podname.'.$(MAN3EXT)';
-}
-close(MANIFEST);
-
-# set man1 pods
-foreach (qw/zoid.pod/) { # this should come from MANIFEST also -- shouldn't it ?
-	my $name = $_;
-	$name =~ s/\.pod$//;
-	$pods1->{$_} = '$(INST_MAN1DIR)/'.$name.'.$(MAN1EXT)';
-}
-
 # get dependecies from Depends.pd
-open DEP, "< Depends.pd" or die "Couldn't open ./Depends.pd";
-my $content = join("",(<DEP>));
-close DEP;
-my $VAR1;
-eval($content);
-if ($@) { die "Failed to eval the contents of ./Depends.pd ( $@ )"; }
-for (keys %{$VAR1}) { $depends->{$_} = $VAR1->{$_}; }
+my $depends = pd_read('m/Depends.pd');
 
-WriteMakefile (
-	'NAME'		=> 'Zoidberg',
-	'VERSION_FROM'	=> 'Zoidberg.pm',
-	'AUTHOR'	=> 'Jaap G Karssenberg <j.g.karssenberg@student.utwente.nl>',
-	'ABSTRACT'	=> 'Zoidberg -- a modular perl shell',
-#	'EXE_FILES'	=> [ qw(bin/zoid) ],
-	'MAN1PODS'	=> $pods1,
-	'MAN3PODS'	=> $pods3,
-	'PM'		=> $pms,
-#	'dist'		=> { COMPRESS => 'gzip -9f', SUFFIX => 'gz' }
-	'PREREQ_PM'	=> $depends,
+my %config = (
+	'default_target' => 'compile',
+	'log_file' => $ENV{PWD}.'/m/make.log',
+	'conf_file' => $ENV{PWD}.'/m/config.pd',
+	'makefile' => 'Makefile',
+	'target_dir' => 'm/targets',
+	'manifest' => $ENV{PWD}.'/MANIFEST',
+	'fake_targets' => [qw/all realclean cpan/],
+	'depends' => {
+		'all' => [qw/compile test install/],
+		'cpan' => [qw/compile dep test install/],
+		'realclean' => [qw/clean/],
+	},
+	'help' => {
+		'compile' => 'Prepare all files for installation',
+		'install' => 'Install Zoidberg on your system',
+		'all' => 'Compile, test, install',
+		'help' => 'print this text',
+		'new_dep' => 'generate Depends.pd and t/use_ok.t',
+		'check_manifest' => 'Check for missing files',
+		'check_dep' => 'Check dependencies',
+		'dep' => 'Fetch missings dependencies from CPAN',
+		'cpan' => 'Make all and check deps from CPAN',
+		'cvs' => 'Try checkout source tree from anonymous cvs',
+	},
+	'vars' => {
+		'PREFIX' => '/usr/local',
+		'LIB_PREFIX' => '',
+		'LIB' => '',
+		'TEST_VERBOSE' => 0,
+		'VERBOSE' => 0,
+		'PERL' => '/usr/bin/perl',
+		'CONFIG' => '/etc',
+		'INSTALLDIRS' => 'site',
+		'NO_HTML_DOC' => 0,
+	},
+	'include' => {
+		'NAME'		=> 'Zoidberg',
+		'VERSION'	=> get_version_from('lib/Zoidberg.pm'),
+		'AUTHOR'	=> 'Jaap G Karssenberg <j.g.karssenberg@student.utwente.nl> and RL Zwart <r.l.zwart@caremail.nl>',
+		'PREREQ_PM'	=> $depends,
+	},
+	'help_postamble' =>
+"--[ Zoidberg ]
+
+  Use \"make all\" to install Zoidberg
+
+  The LIB_PREFIX var overloads the INSTALLDIRS var.
+  (LIB and LIB_PREFIX are the same -- added LIB after reading CPAN docs)
+  The place where libraries and man pages are installed is _not_
+  influenced by PREFIX.
+
+  try \"perl Makefile.PL LOCAL_DIR=my_dir\" for a private installation
+
+  See also <http://Zoidberg.sourceforge.net>",
+
 );
 
+my $make = Makefile->new(\%config);
 
+if ($make->{vars}{LOCAL_DIR}) { # overrule other settings
+	$make->{vars}{PREFIX} = $make->{vars}{LOCAL_DIR};
+	$make->{vars}{CONFIG} = $make->{vars}{LOCAL_DIR}.'/etc/';
+	$make->{vars}{LIB_PREFIX} = $make->{vars}{LOCAL_DIR}.'/lib/';
+	$make->{vars}{PERS_DIR} = $make->{vars}{LOCAL_DIR}.'/dump';
+	$make->{vars}{INSTALLMAN1DIR} = $make->{vars}{LOCAL_DIR}."/man1/";
+	$make->{vars}{INSTALLMAN3DIR} = $make->{vars}{LOCAL_DIR}."/man3/";
+	$make->{vars}{share} = $make->{vars}{LOCAL_DIR}.'/share';
+	for (qw/LOCAL_DIR PREFIX CONFIG LIB_PREFIX share INSTALLMAN1DIR INSTALLMAN3DIR/) {
+		unless (-d $make->{vars}{$_}) { mkdir $make->{vars}{$_}; }
+	}
+}
+
+$make->check_manifest;
+$make->check_dep || print "==> Try \"make dep\" to fetch missing modules from CPAN.\n";
+$make->write_makefile;
+
+
+__END__

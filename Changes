@@ -1,9 +1,33 @@
 Revision history for Zoidberg -- a modular perl shell
 <http://zoidberg.sourceforge.net>
 
+0.2  We Feb 12 2003
+	- Plugins get loaded on use, not on init, thus reducing the footprint of
+	shells running in the background.
+	- Exec comand fixed, this solves a lot of bugs.
+	- Lots of other small fixes.
+
+     Jan       2003
+	- ZoidIPC works over domain sockets, providing transparent objects.
+	- Partially rewrote the input buffer, allowing multiple modusses.
+	- Vi commands and keybindings are fairly complete (usable).
+
+     Fr Jan 10 2003
+	Lets try another approach to Makefile.PL, all make targets now link to
+	files in the 'm/targets' directory.
+	- We no longer use ExtUtils::MakeMaker
+	- Install everything with "make all"
+	Try "perl Makefile.PL && make help" for more info.
+
+     We Jan  8 2003
+	Making a fresh cvs directory -- this will make the directory structure
+	clean and fit for packaging. As a result there will no longer be a 
+	separate ProgramFiles package. Also the release scripts etc. have
+	been updated to the new structure.
+
 0.1c Mo Jan  5 2003
-	Critical bug in t/use_ok.t -- 0.1b won't install on systems without cvs 
-		modules installed :((
+	Critical bug in t/use_ok.t -- 0.1b won't install on systems without cvs
+	modules installed :((
 	- Intel now knows "multi set" results -- allowing for more flexability
 	- Zoid now waits correctly for foreground jobs
 

@@ -1,0 +1,78 @@
+=pod
+
+=head1 Zoidberg::Commands
+
+This module contains some usefull routines, these are _not_ core functions but are
+supplied to increase the interface.
+
+By default commands start with an '_'.
+
+=head2 Commands
+
+=over 4
+
+=item B<change_dir, cd $dir>
+
+Change your present working directory.
+
+=item B<back, forw>
+
+Go back/forward to a previous/next directory.
+Think like back and forward like in a browser.
+
+=item B<delete_object $zoidname>
+
+Delete object with name $zoidname.
+I<Be carefull -- this can delete core funtions.>
+
+=item B<echo $string>
+
+Just print $string -- no fancy options.
+
+=item B<eval $code>
+
+Execute $code and return the exit status.
+
+=item B<exec $code>
+
+Like eval but quits zoid with exit status.
+
+=item B<hide $thing>
+
+Hide $thing from non-naked zoid namespace.
+
+=item B<load_object $zoidname $class>
+
+Load object of $class under name $zoidname.
+Objects should be true object-oriented (ie.
+they should have e routine 'new')
+
+=item B<print $code>
+
+Execute $code and print the return value.
+
+=item B<pwd>
+
+Print present working directory.
+
+=item B<quit, bye>
+
+Quit zoid -- same as Ctrl-d from Buffer.
+
+=item B<set_env $var = $value>
+
+Like export in most shells.
+Same as $ENV{$var} = $value.
+
+=item B<source $file>
+
+Executes commands from file like they where entered on prompt.
+
+=item B<unhide $thing>
+
+Opposite of "hide", add $thing to non-naked zoid 
+namespace.
+
+=back
+
+=cut
