@@ -1,0 +1,21 @@
+use Sys::Hostname;
+my $i;
+$VAR1 = 
+{
+    '\a' => sub { chr(7) }, # ASCII bell
+    '\w' => sub { $ENV{PWD} }, # working dir
+    '\h' => sub { hostname }, # duh
+    '\H' => sub { (split/\./,hostname,1)[0] }, # basename of D'OH
+    '\u' => sub { (getpwuid($>))[0] }, # username
+    '\W' => sub { (split/\//,$ENV{PWD})[-1] || '/' }, # basename of PWD
+    '\U' => sub { [getpwuid($>)]->[2]?'$':'#' }, # this should be \$, but i can't seem to get it escaped right througout all the levels ... it means uid
+    '\L' => sub {my$fh=IO::File->new("/proc/apm")or return'0%';my$i=-1;my@h=qw/- = +/;join("",reverse map{s{(0x\d)(\d)}{$h[$2]}ex;$_}grep{$i++;!($i%3)&&$i}split/\s/,$fh->getline)},
+    '\e'  => sub { chr(33) }, # an ASCII escape character
+    '\j'  => sub { 0 }, # number of jobs, unimplemented
+    '\l'  => sub { (split/\//,readlink("/proc/$$/fd/1"))[-1] }, # the basename of the shell's terminal device name
+    '\s'  => sub { (split/\//,$0)[-1]}, # the name of the shell, the basename of $0 (the portion following the final slash)
+}
+
+
+
+ 

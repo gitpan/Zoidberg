@@ -1,0 +1,61 @@
+#this file can use a $prefix and a $conf_dir
+sub apm {
+    my $fh = IO::File->new("/proc/apm") or return 0;
+    if ([split/ /,$fh->getline]->[6]!~/^-1/) { return 1 }
+    return 0;
+}
+
+$VAR1 = {
+	'Test' => {
+		'file' => $conf_dir."var/test.pd",
+	},
+	'Help' => {
+		'dir' => $prefix."share/zoid/help/",
+	},
+	'Prompt' => {
+		'prompt' => [{'['=>'red'},{'\u'=>'magenta'},{'@'=>'blue'},{'\h'=>'green'}, ((&apm)?('(', {'\L'=>'yellow'}, ')'):()), ' ',{'\W'=>'cyan'}, {']'=>'red'}, ' '],
+		'file' => $conf_dir."ps1.pd",
+	},
+	'Buffer' => {
+		'char_table_file' => $conf_dir."var/char-table.pd",
+		'skel_char_table_file' => $conf_dir."char-table.pd",
+		'tab_string' => "    ", # do not use special character in this string
+	},
+	'Intel' =>	{
+		'special' => {
+			'help' => 's_help',
+			'mplayer' => 's_mime("video")',
+			'mpg123' => 's_mime("music")',
+		},
+		'mime' => {
+			'video' => [qw/avi mpg mpeg rm mov bin/],
+			'music' => [qw/mp3/],
+		},
+	},
+	'History' => {
+		'hist_file' => $conf_dir."var/hist.pd",
+		'max_hist' => 100,
+		'max_dir_hist' => 10,
+	},
+	'MOTZ' => {
+        	'dir' => $prefix."share/zoid/MOTZ",
+	},
+	'Monitor' => {
+		'applet_file' => $conf_dir."monitor.pd",
+	},
+	'Commands' => {
+		'aliases' => {
+			'cd' => "c_change_dir",
+			'back' => "c_change_dir_f('back')",
+			'forw' => "c_change_dir_f('forw')",
+			'reset_safe' => "c_set_safe",
+			'go'    => '_Gnot->go',
+			'dance' => '_Gnot->dance',
+		}
+	},
+	'Hermes' => {
+		handles => {
+			#main => ['DBI:mysql:database=test','root',''],
+		},
+	},
+}
