@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.91';
+our $VERSION = '0.92';
 our $LONG_VERSION = "Zoidberg $VERSION
 
 Copyright (c) 2002 - 2004 Jaap G Karssenberg. All rights reserved.
@@ -282,10 +282,12 @@ sub new { # FIXME maybe rename this to init ?
 
 	## let's load the rcfiles
 	$$self{events}{loadrc} = sub {
-		$self->source(grep {-f $_} @{$$self{_settings}{rcfiles}})
+		$self->source(grep {-f $_} @{$$self{_settings}{rcfiles}});
 	};
 	$self->broadcast('loadrc');
-	
+
+	$self->broadcast('envupdate'); # set/log pwd and maybe init other env stuff
+
 	return $self;
 }
 
@@ -329,7 +331,7 @@ sub main_loop {
 
 			last unless $$self{_continue};
 
-			$self->shell_string({broadcast_cmd => 1}, $cmd) if length $cmd;
+			$self->shell_string({interactive => 1}, $cmd) if length $cmd;
 		}
 	}
 }
@@ -363,8 +365,9 @@ sub shell_string {
 		goto PARSE_STRING;
 	}
 
-	if ($$meta{broadcast_cmd}) {
+	if ($$meta{interactive}) {
 		$self->broadcast('cmd', $string);
+		$$self{previous_cmd} = $string;
 		print STDERR $string if $$self{_settings}{verbose}; # posix spec
 	}
 

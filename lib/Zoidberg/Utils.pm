@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils;
 
-our $VERSION = '0.91';
+our $VERSION = '0.92';
 
 use strict;
 use vars '$AUTOLOAD';
@@ -13,17 +13,17 @@ use Exporter::Tidy
 	fs	=> [qw/path list_dir/],
 	other	=> [qw/
 		setting read_data_file read_file merge_hash
-		complain typed_output
+		complain typed_output output_is_captured
 		list_path unique_file regex_glob
-		getopt usage version path2hashref
+		getopt help usage version path2hashref 
 	/] ;
 
 our $ERROR_CALLER = 1;
 
 our %loadable = (
 	fs      => ['Zoidberg::Utils::FileSystem', qw/path list_dir list_path unique_file regex_glob/ ],
-	output	=> ['Zoidberg::Utils::Output',     qw/output message debug complain typed_output/     ],
-	getopt	=> ['Zoidberg::Utils::GetOpt',     qw/getopt usage version path2hashref/              ],
+	output	=> ['Zoidberg::Utils::Output',     qw/output message debug complain typed_output output_is_captured/ ],
+	getopt	=> ['Zoidberg::Utils::GetOpt',     qw/getopt help usage version path2hashref/ ],
 );
 
 sub AUTOLOAD {

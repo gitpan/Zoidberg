@@ -336,6 +336,7 @@ It can be used to update routines.
 =item cmd
 
 This event is called after the input prompt with the commandline as the first argument.
+It is intended for interactive input only.
 
 =item envupdate
 

@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils::Error;
 
-our $VERSION = '0.91';
+our $VERSION = '0.92';
 
 use strict;
 use UNIVERSAL qw/isa can/;
@@ -99,7 +99,9 @@ sub stringify {
 			. $self->{string};
 		$string .= qq# at $$self{stack}[0][1] line $$self{stack}[0][2]\n# 
 				unless $string =~ /\n$/;
-		$string = PROPAGATE($string, @$_) for @{$self->{propagated}};
+		if (exists $$self{propagated} and ref $$self{propagated}) {
+			$string = PROPAGATE($string, @$_) for @{$self->{propagated}};
+		}
 	}
 	return $string;
 }

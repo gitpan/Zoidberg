@@ -1,5 +1,29 @@
- Revision history for Zoidberg - a modular perl shell
+ Revision history for Zoidberg - a modular perl shell 
 ======================================================
+
+0.92 Tue Dec  7
+	Releasing quickly due to the bug in the 'export' builtin, also packaging working
+	'--help' and '--usage' switched for builtins and working history commands.
+	- Fixed 't/31_ZoidbergError.t', it seems overload.pm prevented 'is_deeply()'
+	from working correctly
+	- Delayed history logging till after executng the command, so the command is able
+	to modify what is logged; this was needed for 'fc' to work
+	- The 'history' and 'fc' commands seem to work correctly now; also the 'cd'
+	history functions now use 'history'.
+
+     Fri Dec  3
+	- Restructured the way the 'history' builtin works
+	- Added 'GetHistory' and 'SetHistory' builtins for Z:Fish::ReadLine
+	- Made the directory history of the 'cd' builtin work with Log
+
+     Wed Dec  1
+	- Changed history tag from "hist" to "cmd"
+	- Changed '.history.yaml' into '.zoid.log.yaml' and added pid to the data set
+
+     Sat Nov 27
+	- Fixed a bug in the export builtin with exporting variables that already
+	existed in the environment
+	- Enabled --version --usage and --help for all builtins using Z:Utils::GetOpt
 
 0.91 Mon Nov 22
 	Maintenance release, mostly bugfixes and some cleanups

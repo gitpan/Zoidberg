@@ -1,6 +1,6 @@
 package Zoidberg::Fish::ReadLine;
 
-our $VERSION = '0.91';
+our $VERSION = '0.92';
 
 use strict;
 use vars qw/$AUTOLOAD $PS1 $PS2/;
@@ -43,19 +43,56 @@ sub init {
 		$$self{rl_z} = 0;
 		message 'Using '.$$self{rl}->ReadLine(). " for input\n"
 			. 'we suggest you use Term::ReadLine::Zoid'; # officially nag-ware now :)
-	}
-	## hook history
-	if (my ($thing) = grep { $$self{rl}->can($_) } qw/SetHistory AddHistory addhistory/) {
-		my @hist = $$self{shell}->builtin('history');
-		if (@hist) {
-			if ($thing eq 'SetHistory') { $$self{rl}->SetHistory(reverse @hist) }
-			else { $$self{rl}->$thing($_) for @hist }
+		if ($$self{rl}->can('GetHistory')) {
+			*GetHistory = sub { # define more intelligent GetHistory
+				my @hist = $$self{rl}->GetHistory;
+				Zoidberg::Utils::output(\@hist);
+			}
 		}
+		else {  *GetHistory = sub { return wantarray ? () : [] }  }
+		if ($$self{rl}->can('SetHistory')) {
+			*SetHistory = sub { # define more intelligent SetHistory
+				my ($self, @hist) = @_;
+				@hist = @{$hist[0]} if @hist == 1 and ref $hist[0];
+				$$self{rl}->SetHistory(@hist);
+			}
+		}
+		elsif (my ($s) = grep {$$self{rl}->can($_)} qw/addhistory AddHistory/) {
+			*SetHistory = sub { # define more intelligent SetHistory
+				my ($self, @hist) = @_;
+				@hist = @{$hist[0]} if @hist == 1 and ref $hist[0];
+				$$self{rl}->$s($_) for @hist;
+			}
+		}
+		else {
+			*SetHistory = sub { undef };
+			$$self{no_real_hist}++;
+		}
+
+		if (my ($s) = grep {$$self{rl}->can($_)} qw/addhistory AddHistory/) {
+			*AddHistory = sub { $$self{rl}->$s(@_) }
+		}
+		else { *AddHistory = sub {} }
+	}
+	else {		*GetHistory = sub {
+				my $self = shift;
+				my $ref = $self->SUPER::GetHistory(@_); # force scalar context
+				Zoidberg::Utils::output($ref);
+			};
+	}
+	
+	## hook history
+	unless ($$self{no_real_hist}) {
+		$self->SetHistory( $$self{shell}->builtin(qw/history --read/) );
+		$self->add_events('prompt', 'history_reset');
+		$$self{rl}->Attribs->{autohistory} = 0;
 	}
 
 	## completion
 	my $compl = $$self{rl_z} ? 'complete' : 'completion_function' ;
-	$$self{rl}->Attribs->{completion_function} = sub { return $$self{shell}->builtin($compl, @_) };
+	$$self{rl}->Attribs->{completion_function} = sub {
+		return $$self{shell}->builtin($compl, @_);
+	};
 
 	## Env::PS1
 	$Env::PS1::map{m} ||= sub { $$self{settings}{mode} || '-' };
@@ -87,6 +124,11 @@ sub wrap_rl_more {
 	Zoidberg::Utils::output($line);
 }
 
+sub prompt { # log on prompt event
+	my $self = shift;
+	$self->AddHistory( $$self{shell}{previous_cmd} );
+}
+
 sub beat {
 	$_[0]{shell}->reap_jobs() if $_[0]{settings}{notify};
 	$_[0]->broadcast('beat');
@@ -110,7 +152,14 @@ sub select {
 		complain 'Please select just one item';
 		goto SELECT_ASK;
 	}
-	Zoidberg::Utils::output @re;
+	Zoidberg::Utils::output( @re );
+}
+
+sub history_reset { # event exported by Log
+	my $self = shift;
+	unless ($$self{no_real_hist}) {
+		$self->SetHistory( $$self{shell}->builtin(qw/history --read/) );
+	}
 }
 
 our $ERROR_CALLER;
@@ -166,15 +215,34 @@ The version of the application.
 
 =back
 
-=head1 CONFIG
+=head1 COMMANDS
 
-TODO
-
-=head1 METHODS
-
-TODO
+TODO document all
 
 =over 4
+
+=item readline
+
+Returns a line of input.
+
+=item select
+
+Given a list of items presents the user with a menu and returns
+the choice made or undef.
+
+=item SetHistory
+
+Takes either an array or an array reference and uses that
+as new commandline history.
+
+I<This routine does not alter the history file.>
+
+=item GetHistory
+
+Returns the commandline history either as an array reference
+or as an array.
+
+I<This routine does not use the history file.>
 
 =back
 

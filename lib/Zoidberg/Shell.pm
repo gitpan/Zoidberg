@@ -1,6 +1,6 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.91';
+our $VERSION = '0.92';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -68,8 +68,24 @@ sub shell { # FIXME FIXME should not return after ^Z
 	else                  { @re = $self->shell_string( {capture => $c}, @_ ) }
 	$@ = $$self{error};
 	$$self{error} = $save_error;
-	return wantarray ? (map {chomp; $_} @re) :
-		Zoidberg::Shell::scalar->new( join('', @re), ($@ ? 0 : 1) ) ;
+	_return($@, @re);
+}
+
+sub _return { # fairly complex output logic :S
+	my $error = shift() ? 0 : 1;
+	unless (@_) { return Zoidberg::Shell::scalar->new('', $error) }
+	elsif ($_[0] =~ /\n$/) { # system command output
+		return wantarray ? (return map {chomp; $_} @_) :
+			Zoidberg::Shell::scalar->new( join('', @_), $error ) ;
+	}
+	elsif (wantarray) { # mimicking output formatting a bit
+		return map {
+			(ref($_) eq 'ARRAY' and ! grep ref($_), @$_) ? (@$_) : $_
+		} @_;
+	}
+	else { # keep as is for later processing
+		return Zoidberg::Shell::scalar->new((@_ == 1) ? shift : \@_, $error );
+	}
 }
 
 sub builtin {
@@ -92,8 +108,7 @@ sub _shell_cmd {
 		[{context => 'CMD', cmdtype => $type}, @_] );
 	$@ = $$self{error};
 	$$self{error} = $save_error;
-	return wantarray ? (map {chomp; $_} @re) :
-		Zoidberg::Shell::scalar->new( join('', @re), ($@ ? 0 : 1) ) ;
+	_return($@, @re);
 }
 
 sub readpipe { # TODO handle STDOUT differently, see perlop
@@ -176,20 +191,24 @@ sub job { $Zoidberg::CURRENT->job_by_spec(pop @_) }
 package Zoidberg::Shell::scalar;
 
 use overload
-	'""'   => \&string,
+	'""'   => \&scalar,
 	'bool' => \&error,
-	'@{}'  => \&lines,
+	'@{}'  => \&array,
 	fallback => 'TRUE';
 
-sub new { bless \[@_[1,2]], $_[0] }
+sub new    { bless \[@_[1,2]], $_[0]      }
 
-sub error { my $s = ${ shift() };  $$s[1] }
+sub scalar { my $s = ${ shift() }; $$s[0] }
 
-sub string { my $s = ${ shift() }; $$s[0] }
+sub error  { my $s = ${ shift() }; $$s[1] }
 
-sub lines {
+sub array {
 	my $s = ${ shift() };
-	$$s[2] ||= [ split /\n/, $$s[0] ]; # returning $$s[2]
+	unless (ref $$s[0]) {
+		$$s[2] ||= [ split /\n/, $$s[0] ]; # returning $$s[2]
+	}
+	elsif (ref($$s[0]) eq 'ARRAY') { $$s[0] }
+	else { [$$s[0]] }
 }
 
 package Zoidberg::Shell::JobsArray;

@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.91';
+our $VERSION = '0.92';
 
 use strict;
 use AutoLoader 'AUTOLOAD';
@@ -40,11 +40,9 @@ sub init {
 
 =over 4
 
-=item cd I<dir>
+=item cd [-v|--verbose] [I<dir>|-|(+|-)I<hist_number>]
 
-=item cd -
-
-=item cd [I<+->]I<number>
+=item cd (-l|--list)
 
 Changes the current working directory to I<dir>.
 When used with a single dash changes to OLDPWD.
@@ -55,12 +53,11 @@ in the current directory.
 
 This command also uses a directory history.
 The '-number' and '+number' switches are used to change directory
-back and forward in this history. Note that 'cd -' and 'cd -1'
-have a different effect.
+to an positive or negative offset in this history.
 
 =cut
 
-sub cd { # TODO [-L|-P] see man 1 bash # FIXME simplify be putting fully specified pwd in history .. and log it
+sub cd { # TODO [-L|-P] see man 1 bash
 	my $self = shift;
 	my ($dir, $done, $verbose);
 	if (@_ == 1 and $_[0] eq '-') { # cd -
@@ -69,36 +66,32 @@ sub cd { # TODO [-L|-P] see man 1 bash # FIXME simplify be putting fully specifi
 	}
 	else {
 		my ($opts, $args) = getopt 'list,-l verbose,-v +* -* @', @_;
-		error 'usage: cd [-l,--list|-v,--verbose|-idx|+idx] [dir]'
-			if %$opts > 2 or @$args > 1 or %$opts && @$args;
-		unless (%$opts) { # 'normal' cd
+		if (@$args) { # 'normal' cd
+			error 'to many arguments' if @$args > 1;
 			$dir = $$args[0];
-			unless ($dir eq $$self{dir_hist}[0]) {
-				unshift @{$$self{dir_hist}}, $dir;
-				$$self{_dir_hist_i} = 0;
-				splice @{$$self{dir_hist}}, $$self{config}{max_dir_hist}
-					if defined $$self{config}{max_dir_hist};
+		}
+
+		if (%$opts) {
+			$verbose++ if $$opts{verbose};
+			if (my ($opt) = grep /^[+-][^\d+lv]$/, @{$$opts{_opts}}) {
+				error "unrecognized option '$opt'";
 			}
-		}
-		elsif ($$opts{list}) { # list dirhist
-			output [reverse @{$$self{dir_hist}}];
-			return;
-		}
-		elsif ($$opts{verbose}) { $verbose++ }
-		else { # cd back/forward in history
-			error 'usage: cd [-l,--list|-idx|+idx] [dir]'
-				unless $$opts{_opts}[0] =~ /^[+-]\d+$/;
-			my $idx = $$self{_dir_hist_i} - $$opts{_opts}[0];
-			error qq{No $_[0] in dir history}
-				unless $idx >= 0 and $idx <= $#{$$self{dir_hist}};
-			$$self{_dir_hist_i} = $idx;
-			$dir = $$self{dir_hist}[ $$self{_dir_hist_i} ];
-			$verbose++;
+			elsif ($$opts{list}) { # list dirhist
+				error 'to many args' if @$args;
+				return $$self{shell}->builtin(qw/history --type pwd +1 -2/); # last pwd is current
+			}
+			elsif (my ($idx) = grep /^[+-]\d+$/, @{$$opts{_opts}}) {
+				# cd back/forward in history
+				error 'to many args' if @$args;
+				$idx -= 1 if $idx < 1; # last pwd is current
+				($dir) = $$self{shell}->builtin(qw/history --type pwd/, $idx, $idx);
+				$verbose++;
+			}
 		}
 	}
 
 	if ($dir) {
-		# due to things like autofs we must try every possibility
+		# due to things like autofs we must *try* every possibility
 		# instead of checking '-d'
 		$done = chdir path($dir);
 		if    ($done)                { message $dir if $verbose }
@@ -184,15 +177,15 @@ sub export { # TODO if arg == 1 and not hash then export var from zoid::eval to 
 	else { # really export
 		for (@$args) {
 			s/^([\$\@]?)//;
-			next if defined $ENV{$_};
 			if ($1 eq '@') { # arrays
 				my @env  = defined($$vals{$_})               ? (@{$$vals{$_}})     :
-					   defined(*{$class.'::'.$_}{ARRAY}) ? (@{$class.'::'.$_}) : ();
-				$ENV{$_} = join ':', @env;
+					   defined(*{$class.'::'.$_}{ARRAY}) ? (@{$class.'::'.$_}) : () ;
+				$ENV{$_} = join ':', @env if @env;
 			}
 			else { # scalars
-				$ENV{$_} = defined($$vals{$_})        ? $$vals{$_}        :
-		        		   defined(${$class.'::'.$_}) ? ${$class.'::'.$_} : ''
+				$env = defined($$vals{$_})        ? $$vals{$_}        :
+		        	       defined(${$class.'::'.$_}) ? ${$class.'::'.$_} : undef ;
+				$ENV{$_} = $env if defined $env;
 			}
 		}
 	}
@@ -518,7 +511,7 @@ sub pwd {
 	output $ENV{PWD};
 }
 
-=item symbols [-a|--all] [CLASS]
+=item symbols [-a|--all] [I<class>]
 
 Output a listing of symbols in the specified class.
 Class defaults to the current perl namespace, by default
@@ -537,7 +530,7 @@ sub symbols {
 	no strict 'refs';
 	my $self = shift;
 	my ($opts, $class) = getopt 'all,a @', @_;
-	error 'usage: symbols [-a|--all] [CLASS]' if @$class > 1;
+	error 'to many arguments' if @$class > 1;
 	$class = shift(@$class)
        		|| $$self{shell}{settings}{perl}{namespace} || 'Zoidberg::Eval';
 	my @sym;
@@ -555,7 +548,7 @@ sub symbols {
 	output [sort @sym];
 }
 
-=item help [TOPIC|COMMAND]
+=item help [I<topic>|command I<command>]
 
 Prints out a help text.
 
@@ -577,7 +570,7 @@ EOH
 	my $topic = shift;
 	if ($topic eq 'about') { output "$Zoidberg::LONG_VERSION\n" }
 	elsif ($topic eq 'command') {
-		error 'usage: help command COMMAND' unless scalar @_;
+		error usage unless scalar @_;
 		$self->help_command(@_)
 	}
 	else { $self->help_command($topic, @_) }
@@ -594,7 +587,7 @@ sub help_command {
 		}
 		else {
 			output "it belongs to the $info[1] plugin.";
-			if (@info == 3) { output "\n", usage($cmd[0], $info[2]) }
+			if (@info == 3) { output "\n", Zoidberg::Utils::help($cmd[0], $info[2]) }
 			else { output "\nNo other help available" }
 		}
 	}
@@ -730,7 +723,7 @@ sub wait { todo }
 
 =item kill -l
 
-=item kill [-w | -s I<sigspec>|-n I<signum>|I<-sigspec>] [I<pid>|I<job__pec>]
+=item kill [-w | -s I<sigspec>|-n I<signum>|-I<sigspec>] (I<pid>|I<job_spec>)
 
 Sends a signal to a process or a process group.
 By default the "TERM" signal is used.
@@ -757,8 +750,6 @@ wipes the list that would be executed after the job ends.
 sub kill {
 	my $self = shift;
 	my ($opts, $args) = getopt 'wipe,-w list,-l sigspec,-s signum,-n -* @', @_;
-	error "usage:  kill [-w] [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspecs]"
-		unless %$opts || @$args;
 	if ($$opts{list}) { # list sigs
 		error 'too many options' if @{$$opts{_opts}} > 1;
 		my %sh = %{ $$self{shell}{_sighash} };
@@ -766,6 +757,7 @@ sub kill {
 		output [ map {sprintf '%2i) %s', $_, $sh{$_}} sort {$a <=> $b} @k ];
 		return;
 	}
+	else { error 'to few arguments' unless @$args }
 
 	my $sig = $$opts{signum} || '15'; # sigterm, the default
 	if ($$opts{_opts}) {

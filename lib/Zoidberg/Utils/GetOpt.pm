@@ -1,12 +1,13 @@
 package Zoidberg::Utils::GetOpt;
 
-our $VERSION = '0.91';
+our $VERSION = '0.92';
 
 use strict;
 use Zoidberg::Utils::Error qw/error bug/;
+use Zoidberg::Utils::Output qw/output debug/;
 use Exporter::Tidy
 	default => ['getopt'],
-	other   => [qw/usage version path2hashref/] ;
+	other   => [qw/help usage version path2hashref/] ;
 
 our $ERROR_CALLER = 1;
 
@@ -36,10 +37,21 @@ sub getopt { # hic sunt leones
 			push @{$conf{_glob}}, $opt;
 		}
 	}
-	$conf{_glob} = '^('.join('|', map {s/^\+/\\+/; $_} @{$conf{_glob}}).')' if $conf{_glob};
+	$conf{_glob} = '^('.join('|', map {s/^\+/\\+/; $_} @{$conf{_glob}}).')(?!-)' if $conf{_glob};
 	#use Data::Dumper; print STDERR 'conf: ', Dumper \%conf;
 
 	PARSE_OPTS:
+	for ( # set default options
+		[qw/h help/,    \&help   ],
+		[qw/u usage/,   \&usage  ],
+		[qw/v version/, \&version]
+	) {
+		next if exists $conf{$$_[1]};
+		$conf{$$_[1]} = $$_[2];
+		$conf{_alias}{'-'.$$_[0]} = $$_[1]
+			unless exists $conf{_alias}{'-'.$$_[0]} or exists $conf{_alias}{$$_[0]};
+	}
+
 	my $delim = 0;
 	while (@args) { # parse opts
 		last unless $args[0] =~ /^(-|\+.)/;
@@ -72,6 +84,10 @@ sub getopt { # hic sunt leones
 		if (! $type) { # no arg
 			error "option '$opt' doesn't take an argument" if defined $arg;
 			$opts{$opt} = ($pre eq '+') ? 0 : 1;
+		}
+		elsif (ref $type) { # CODE ... for default opts
+			output $type->( (caller(1))[3], (caller)[0] ); # subroutine, package
+			error {silent => 1, exit_status => 0}, 'getopt needed to pop stack';
 		}
 		else {
 			$arg = defined($arg) ? $arg : shift(@args);
@@ -147,9 +163,15 @@ sub getopt { # hic sunt leones
 }
 
 sub usage {
-	my ($cmd, $file) = @_;
+	$_[2] = 1;
+	goto &help;
+}
 
-	$file ||= ( caller() )[1];
+sub help {
+	my ($cmd, $file, $usage) = @_;
+
+	$cmd ||= (caller(1))[3];
+	$file = $1 if $cmd =~ s/(.*):://;
 	$file =~ s/::/\//g;
 	$file =~ s/\.pm$//;
 	($file) = grep {-e $_} map {("$_/$file.pod", "$_/$file.pm")} @INC
@@ -158,31 +180,39 @@ sub usage {
 	open POD, $file || error "Could not read $file";
 	my ($help, $p, $o) = ('', 0, 0);
 	while (<POD>) {
-		if    (/^=item\s+$cmd/) {
-			$p = 1;
-			$help = $_;
-		}
-		elsif ($p) {
+		if ($p) {
 			if    (/^=over/)  { $o++ }
 			elsif (/^=back/)  { $o-- }
-			elsif (/^=(item|back|cut)/) {
+			elsif (/^=(item(?!\s+$cmd)|back|cut)/) {
 				last unless $o;
 			}
-			$help .= $_;
+			$help .= $_ unless $usage and ! $o and ! /^=item\s+$cmd/;
+			# only return 'item' lines if short format
+		}
+		elsif (/^=item\s+$cmd/) {
+			$p = 1;
+			$help = $_;
 		}
 	}
 	close POD;
 
 	$help =~ s/^\s+|\s+$//g;
+	if ($usage) {
+		$help =~ s/^=item\s+/  /gm;
+		$help = "usage:\n".$help;
+	}
+	else { $help =~ s/^=\w+\s+/= /gm }
+	$help =~ s/(\w)<<(.*?)>>|\w<(.*?)>/
+		($1 eq 'B') ? "\"$2$3\"" :
+		($1 eq 'C') ? "`$2$3`"   : "'$2$3'"
+	/ge;
 	return $help;
 }
 
 sub version {
-	my $caller = shift || caller;
-	print STDERR "version $caller\n";
+	my (undef, $class) = @_;
 	no strict 'refs';
-	return  ${$caller.'::LONG_VERSION'}
-		|| $caller.' '.${$caller.'::VERSION'};
+	return ${$class.'::LONG_VERSION'} || $class.' '.${$class.'::VERSION'};
 }
 
 sub path2hashref {

@@ -1,8 +1,5 @@
 {
 	module  => 'Zoidberg::Fish::Commands',
-	config  => {
-		max_dir_hist => 10
-	},
 	events  => { loadrc => 'plug' }, # allready using AutoLoader
 	aliases => {
 		back => 'cd(q/-1/)',

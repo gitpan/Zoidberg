@@ -7,7 +7,7 @@ use Zoidberg::Shell;
 
 $ENV{PWD} = cwd();
 
-print "1..19\n";
+print "1..17\n";
 
 unlink 'test12~~' or warn 'could not remove test12~~' if -e 'test12~~';
 
@@ -57,14 +57,7 @@ $shell->shell('set perl/namespace=Zoidberg::Eval');
 	ok( $ok, '17 - namespace switching works' ); # 17
 }
 
-$shell->shell('$testexp = "dusss ja"');
-$shell->shell('export testexp');
-ok( $ENV{testexp} eq 'dusss ja', '18 - export works' ); # 18
-
-$shell->shell('export -n testexp');
-ok( !$ENV{testexp}, '19 - unexport works' ); # 19
-
-# TODO test also array export / source-filtering / source-filtering for existing arrays
+# TODO test also source-filtering
 
 $shell->round_up;
 

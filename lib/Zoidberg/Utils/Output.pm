@@ -1,14 +1,14 @@
 
 package Zoidberg::Utils::Output;
 
-our $VERSION = '0.91';
+our $VERSION = '0.92';
 
 use strict;
 use Data::Dumper;
 use POSIX qw/floor ceil/;
 use Exporter::Tidy
 	default => [qw/output message debug complain/],
-	other   => [qw/typed_output/];
+	other   => [qw/typed_output output_is_captured/];
 
 our %colours = ( # Copied from Term::ANSIScreen
 	'clear'      => 0,    'reset'      => 0,
@@ -27,22 +27,16 @@ our %colours = ( # Copied from Term::ANSIScreen
 	'white'      => 37,   'on_white'   => 47,
 );
 
+sub output_is_captured {
+	return $Zoidberg::CURRENT->{_builtin_output} ? 1 : 0;
+}
+
 sub output {
 	if ($Zoidberg::CURRENT->{_builtin_output}) { # capturing output from builtin
-		my $out = $Zoidberg::CURRENT->{_builtin_output};
-		for (@_) {
-			unless (ref $_) {
-				if (@$out and !ref $$out[-1]) { $$out[-1] .= $_ }
-				else { push @$out, $_ }
-			}
-			elsif (ref($_) eq 'ARRAY' and ! grep {ref $_} @$_) {
-				push @$out, @$_;
-			}
-			else { push @$out, $_ }
-		}
+		push @{ $Zoidberg::CURRENT->{_builtin_output} }, @_;
 		return 1;
 	}
-	typed_output('output', @_);
+	else { typed_output('output', @_) }
 }
 
 sub message {
@@ -86,6 +80,7 @@ sub typed_output {
 
 	$dinge[-1] .= "\n" unless ref $dinge[-1];
 	for (@dinge) {
+		$_ = $_->scalar() if ref($_) eq 'Zoidberg::Shell::scalar';
 		unless (ref $_) { print $_ }
 		elsif (ref($_) eq 'ARRAY' and ! grep { ref($_) } @$_) { output_list(@$_) }
 		elsif (ref($_) eq 'Zoidberg::Utils::Error') {
@@ -96,7 +91,7 @@ sub typed_output {
 			}
 		}
 		elsif (ref($_) =~ /Zoidberg/) {
-			 print 'Cowardly refusing to dump object of class '.ref($_)."\n";
+			complain 'Cowardly refusing to dump object of class '.ref($_);
 		}
 		else { print map {s/^\$VAR1 = //; $_} Dumper $_ }
 	}
@@ -113,7 +108,7 @@ sub output_list { # takes minimum number of rows, but fills cols first
 	return print join("\n", @items), "\n" unless $Zoidberg::CURRENT->{settings}{interactive};
 
 	my $len = 0;
-	$_ > $len and $len = $_ for map {length $_} @items;
+	$_ > $len and $len = $_ for map {s/\t/    /g; length $_} @items;
 	$len += 2; # spacing
 	return print join("\n", @items), "\n" if $width < (2 * $len);      # rows == items
 	return print join('  ', @items), "\n" if $width > (@items * $len); # 1 row
@@ -226,6 +221,11 @@ Prints C<$@> when no argument is given.
 
 Method that can be used to define output types that don't fit in the above group.
 C<$type> must be a plain string that is used as output 'tag'.
+
+=item C<output_is_captured($type, @_)>
+
+Method that returns a boolean that tells whether output is captured or not.
+This can be used to make terminal output different from data struct output.
 
 =back
 

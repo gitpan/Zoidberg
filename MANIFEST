@@ -58,8 +58,8 @@ t/33_GetOpt.t
 t/40_StringParse_simple.t
 t/41_default_grammar.t
 t/42_dezoidify.t
-t/50_Commands.t
 t/90_full.t
 t/91_full_Shell.t
+t/92_builtins.t
 t/data/test.pl
 t/zoidrc

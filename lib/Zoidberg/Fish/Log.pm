@@ -1,29 +1,113 @@
 package Zoidberg::Fish::Log;
 
-our $VERSION = '0.91';
+our $VERSION = '0.92';
 
 use strict;
 use AutoLoader 'AUTOLOAD';
-use Zoidberg::Utils qw/:default path getopt/;
+use Zoidberg::Utils qw/:default path getopt output_is_captured/;
 use base 'Zoidberg::Fish';
 
 # TODO purge history with some intervals
 
 sub init {
-	# TODO in %Env::PS1::map
-	# \!  The history number of the next command.
-	#	This escape gets replaced by literal '!' while a literal '!' gets replaces by '!!'; this
-	#	makes the string a posix compatible prompt, thus it will work if your readline module expects
-	# 	a posix prompt.
-	# \#  The command number of the next command (like history number, but minus the lines read from
-	# 	the history file).
+	my $self = shift;
+	@$self{qw/pid init_time/} = ($$, time);
+	close $$self{logfh} if $$self{logfh};
+	my $file = path( $$self{config}{logfile} );
+	my $fh; # undefined scalar => new anonymous filehandle on open()
+	if (open $fh, ">>$file") {
+		my $oldfh = select $fh;
+	       	$| = 1;
+		select $oldfh;
+		$$self{logfh} = $fh;
+		$self->add_events('prompt');
+		# TODO also set event for change of hist file => re-init filehandle
+	}
+	else {
+		delete $$self{logfh};
+		complain "Log file not writeable, logging disabled";
+	}
+}
+# TODO in %Env::PS1::map
+# \!  The history number of the next command.
+# \#  The command number of the next command 
+#     (like history number, but minus the lines read from the history file)
+
+# TODO "history_reset" event for when we are forced to read a new hist file
+
+# TODO: HISTTIMEFORMAT should give an insight in the timestamps
+sub history {
+	my $self = shift;
+	my ($opts, $args) = getopt('nonu,-n reverse,-r read type$ +* -* @', @_);
+	my $tag = $$opts{type} || 'cmd';
+	unshift @$args, grep /^[+-]\d+$/, @{$$opts{_opts}} if exists $$opts{_opts};
+	error 'to many arguments' if @$args > 2;
+
+	# find the rigth history
+	my $re;
+	if ($$opts{read} or ! $$self{read_log}) { $re = $self->read_log_file($tag) }
+	elsif (exists $$self{logs}{$tag}) { $re = $$self{logs}{$tag} }
+	elsif ($tag eq 'cmd') { $re = $$self{shell}->builtin('GetHistory') }
+	debug 'found '.scalar(@$re).' records for '.$tag;
+
+	# set history numbers
+	unless (output_is_captured) {
+		my $i = ($tag eq 'cmd') ? ($$self{command_number} - @$re + 1) : 1;
+		# TODO make this depend on init time indexing ... $$self{shell}{command_number}
+		# avoid modifying the original reference
+		# ouput format found in posix spec for fc
+	       	$re = [ map {$a = $_; $a =~ s/^/\t/mg; $a} @$re ];
+		@$re = map {$i++.$_} @$re unless $$opts{nonu};
+	}
+	else { $re = [ @$re ] } # force copy
+
+	# get range if any
+	if (@$args) {
+		for (@$args) { # string match
+			next if /^[+-]?\d+$/;
+			my $regex = ref($_) ? $_ : qr/^\d*\t?\Q$_\E/;
+			my ($i, $done) = (0, 0);
+			for (reverse @$re) {
+				$i--; next unless $_ =~ $regex;
+				++$done and last;
+		       	}
+			error "no record matching '$_'" unless $done;
+			if (@$args == 0 or $$args[0] == $$args[1]) { # default last for string
+				@$args = ($i, $i);
+				last;
+			}
+			else { $_ = $i }
+		}
+		$$args[1] = scalar @$re unless defined $$args[1]; # default default last
+		my $total = scalar @$re;
+		for (@$args) { # convert negative 2 positive
+			error 'index out of range: '.$_
+		       		if $_ == 0 or $_ < -$total or $_ > $total;
+			$_ += $total+1 if $_ < 0;
+		}
+		if ($$args[0] > $$args[1]) { # check order of args
+			$$opts{reverse} = $$opts{reverse} ? 0 : 1 ;
+			@$args = reverse @$args;
+		}
+		debug "history range: $$args[0] .. $$args[1]";
+		@$re = @$re[$$args[0]-1 .. $$args[1]-1];
+	}
+	elsif ($tag eq 'cmd' and defined $$self{config}{maxlines}) {
+	       	# FIXME temp hack till ReadLine gets maxlines
+		my @range = ($#$re - $$self{config}{maxlines}, $#$re);
+		@$re = @$re[$range[0] .. $range[1]];
+	}
+
+	output $$opts{reverse} ? [reverse @$re] : $re;
 }
 
-sub history { # also does some bootstrapping # FIXME move bootstrapping to init()
-	my $self = shift;
-	close $$self{logfh} if $$self{logfh};
-
-	my @hist;
+sub read_log_file {
+	my ($self, $tag) = @_;
+	my %tags = $tag ? ( $tag => [] ) : ();
+	if ($$self{config}{keep}) {
+		$tags{$_} = [] for keys %{$$self{config}{keep}};
+	}
+	return unless %tags;
 	my $file = path( $$self{config}{logfile} );
 	unless ($file) {
 		complain 'No log file defined, can\'t read history';
@@ -34,45 +118,68 @@ sub history { # also does some bootstrapping # FIXME move bootstrapping to init(
 		return;
 	}
 	elsif (-s _) {
+		# TODO ignore lines from other shell instances ... use pid + init timestamp
 		debug "Going to read $file";
 		open IN, $file || error 'Could not open log file !?';
-		@hist = grep { $_ } map {
-			m/-\s*\[\s*\d+\s*,\s*hist\s*,\s*"(.*?)"\s*\]\s*$/
-			? $1 : undef
-		} reverse (<IN>);
+		while (<IN>) {
+			#          pid      time        type        string
+			m/-\s*\[\s*(\d+),\s*(\d+)\s*,\s*(\w+)\s*,\s*"(.*?)"\s*\]\s*$/ or next;
+			push @{$tags{$3}}, $4
+				if exists $tags{$3} and ($2 < $$self{init_time} or $1 == $$self{pid});
+			# if record newer then init_time and not matching our pid it's not ours
+		}
 		close IN;
-		@hist = map {s/(\\\\)|(\\n)|\\(.)/$1?'\\':$2?"\n":$3/eg; $_} @hist;
 	}
 
-	my $fh; # undefined scalar => new anonymous filehandle on open()
-	if (open $fh, ">>$file") {
-		$$self{logfh} = $fh;
-		$self->add_events('cmd') unless $$self{_r_cmd};
-		$$self{_r_cmd}++;
+	my $re;
+	$$self{logs} = {}; # reset
+	debug 'found the following tags in log: '.join(' ', keys %tags);
+	for (keys %tags) {
+		my @t = map {s/(\\\\)|(\\n)|\\(.)/$1?'\\':$2?"\n":$3/eg; $_}
+			@{ delete $tags{$_} };
+		if ($$self{config}{keep}{$_}) {
+			@t = reverse( ( reverse @t )[0 .. $$self{config}{keep}{$_}] )
+				if @t > $$self{config}{keep}{$_};
+			$$self{logs}{$_} = \@t;
+		}
+		$re = \@t if $_ eq $tag;
+		$$self{command_number} = scalar @t if $_ eq 'cmd';
 	}
-	else { complain "Log file not writeable, logging disabled" }
 
-	debug 'Found '.scalar(@hist).' log records in '.$file;
-	output \@hist;
+	$$self{read_log}++;
+	return wantarray ? @$re : $re;
 }
 
-sub cmd {
-	my ($self, undef,  $cmd) = @_;
+# sub cmd {
+sub prompt {
+#	my ($self, undef,  $cmd) = @_;
+	my $self = shift;
+	my $cmd = $$self{shell}{previous_cmd};
 	return unless $$self{settings}{interactive} and $$self{logfh};
 	$cmd =~ s/(["\\])/\\$1/g;
 	$cmd =~ s/\n/\\n/g;
-	print {$$self{logfh}} '- [ '.time().", hist, \"$cmd\" ]\n"
+	print {$$self{logfh}} "- [ $$self{pid}, ".time().", cmd, \"$cmd\" ]\n"
 		unless $$self{config}{no_duplicates} and $cmd eq $$self{prev_cmd};
 	$$self{prev_cmd} = $cmd;
+	$$self{command_number}++;
 }
 
 sub log {
 	my ($self, $string, $type) = @_;
 	$type ||= 'log';
+	return prompt($self, undef, $string) if $type eq 'cmd';
+	if (exists $$self{config}{keep}{$type}) {
+		$$self{logs}{$type} ||= [];
+		unless ($$self{config}{no_duplicates} and $string eq $$self{logs}{$type}[-1]) {
+			push @{$$self{logs}{$type}}, $string;
+			shift @{$$self{logs}{$type}}
+				if @{$$self{logs}{$type}} > $$self{config}{keep}{$type};
+		}
+	}
 	return unless $$self{logfh};
 	$string =~ s/(["\\])/\\$1/g;
 	$string =~ s/\n/\\n/g;
-	print {$$self{logfh}} '- [ '.time().', '.$type.", \"$string\" ]\n";
+	print {$$self{logfh}} "- [ $$self{pid}, ".time().', '.$type.", \"$string\" ]\n";
 }
 
 sub round_up {
@@ -109,11 +216,12 @@ This module is a Zoidberg plugin, see Zoidberg::Fish for details.
 
 =head1 DESCRIPTION
 
-This plugin listens to the 'cmd' event and records all
+This plugin listens to the 'prompt' event and records all
 input in the history log.
 
 If multiple instances of zoid are using the same history file
 their histories will be merged.
+
 TODO option for more bash like behaviour
 
 In order to use the editor feature of the L<fc> command the module
@@ -145,6 +253,12 @@ value on run time because the file is not purged after every write.
 
 If set a command will not be saved if it is the same as the previous command.
 
+=item keep
+
+Hash with log types mapped to a number representing the maximal number of lines
+to keep in memory for this type. In contrast to the commandline history,
+history arrays for these types are completely managed by this module.
+
 =back
 
 =head1 COMMANDS
@@ -153,67 +267,81 @@ If set a command will not be saved if it is the same as the previous command.
 
 =item fc [-r][-e editor] [first[last]]
 
-=item fc -l[-nr] [first[last]]
+=item fc -l [-nr] [I<first> [I<last>]]
 
-=item fc -s[old=new][first]
+=item fc -s [I<old>=I<new>] [I<first> [I<last>]]
 
 TODO this command doesn't work yet !
-
-=cut
-
-=cut
-
-Command to manipulate the history.
 
 Note that the selection of the editor is not POSIX compliant
 but follows bash, if no editor is given using the '-e' option
 the environment variables 'FCEDIT' and 'EDITOR' are both checked,
 if neither is set, B<vi> is used.
-( According to POSIX we should use 'ed' by default and ignore
-the 'EDITOR' varaiable. )
+( According to POSIX we should use 'ed' by default and probably 
+ignore the 'EDITOR' varaiable. )
+
+Following B<zsh> setting the editor to '-' is identical with using
+the I<-s> switch.
 
 =cut
 
 sub fc {
 	my $self = shift;
-	my ($opt, $args) = getopt 'reverse,r editor,e$ list,l n s @', @_;
+	my ($opt, $args) = getopt 'reverse,-r editor,-e$ list,-l nonu,-n -s -* +* @', @_;
+	unshift @$args, grep /^[+-]\d+$/, @{$$opt{_opts}} if exists $$opt{_opts};
 	my @replace = split('=', shift(@$args), 2) if $$args[0] =~ /=/;
-	error 'usage: fc [options] [old=new] [first [last]]' if @$args > 2;
-	
-	# get selection
-	# TODO -number +number .. needs getopt features
-	my ($first, $last) = @$argv;
-	if (!$first) { ($first,$last) = $$opt{s} ? (-1, -1) : (-16, -1) }
-	elsif (!$last) { $last = -1 }
-	# FIXME how to get _our_ hist, not our brothers ?
+	error 'to many arguments' if @$args > 2;
 
-	if ($$opt{list}) { # list history
-		output $$opt{n}
-			? [ map @lines ]
-			: [ map @lines ] ;
-		return;
-	}
-	
-	unless ($$opt{s}) {
+	# get selection
+	if (!$first) { ($first,$last) = $$opt{list} ? (-16, -1) : (-1, -1) }
+	elsif (!$last) { $last = $$opt{list} ? '-1' : $first }
+
+	# list history ?
+	my @hist_opts = map "--$_", grep $$opt{$_}, qw/nonu reverse/;
+	return $$self{shell}->builtin('history', @hist_opts, $first, $last) if $$opt{list};
+
+	# get/edit commands
+	my $cmd = join "\n", @{ $$self{shell}->builtin('history', @hist_opts, $first, $last) };
+	debug $cmd;
+	my $editor = $$opt{editor} || $ENV{FCEDIT} || $ENV{EDITOR} || 'vi';
+	unless ($$opt{'-s'} or $editor eq '-') {
 		# edit history - editor behaviour consistent with T:RL:Z
-		my $editor = $$opt{editor} || $ENV{FCEDIT} || $ENV{EDITOR} || 'vi';
 		eval 'require File::Temp' || error 'need File::Temp from CPAN';
-		($fh, $file) = File::Temp::tempfile(
+		my ($fh, $file) = File::Temp::tempfile(
 			'Zoid_fc_XXXXX', DIR => File::Spec->tmpdir );
-		print {$fh} @lines;
-		# unless editor error
-		# insert new command in history
-		#  TODO remove self from history ... posix says so
-		# shell new command
-		#  TODO inherit environment and redirection from self
+		print {$fh} $cmd;
+		close $fh;
+		$$self{shell}->shell($editor.' '.$file);
+		error if $@;
+		open TMP, $file or error "Could not read $file";
+		my $cmd = join '', <TMP>;
+		close TMP;
+		unlink $file;
 	}
+
+	# execute commands
+	$$self{shell}->shell($cmd) if length $cmd;
+	$$self{shell}{previous_cmd} = $cmd; # reset string to be logged
+
+	#  TODO inherit environment and redirection from self
 }
 
-=item history
+=item history [--type I<type>] [--read] [-n|--nonu] [-r|--reverse] [I<first> [I<last>]]
 
-Returns the contents of the current history file.
+Returns (a part of) the history. By default it tries to find the commandline
+history (depending on GetHistory), but the '--read' option forces reading the
+history file. To get other log types, like 'pwd', use the '--type' option.
+The '--nonu' option surpressees line numbering for the terminal output.
 
-TODO options like the ones for bash's implementation
+The arguments I<first> and I<last> can either be a positive or negative integer,
+representing the command number or reverse offset, or a string matching the begin
+of the command. If only one integer is given I<last> defaults to '-1'; if only one
+string is given I<last> defaults to I<first>. As a bonus you can supply a regex
+reference instead of a string when using the perl interface.
+
+Note that unlike B<fc> the B<history> command is not specified by posix and
+the implementation varies widely for different shells. In zoid, B<fc> is build on
+top of B<history>, so options for B<history> are chosen consistently with b<fc>.
 
 =item log I<string> I<type>
 
@@ -221,16 +349,6 @@ Adds I<string> to the history file with the current timestamp
 and the supplied I<type> tag. The type defaults to "log".
 If the type is set to "hist" the entry will become part of the
 command history after the history file is read again.
-
-=back
-
-=head1 EVENTS
-
-=over 4
-
-=item read_history
-
-Returns an array with history contents.
 
 =back
 

@@ -4,5 +4,5 @@ $VAR1 = {
 		readline => 'wrap_rl',
 		readmore => 'wrap_rl_more',
 	},
-	export => ['select'],
+	export => [qw/select GetHistory SetHistory AddHistory/],
 }
