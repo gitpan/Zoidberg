@@ -1,5 +1,7 @@
 package String;
 
+our $VERSION = '0.04';
+
 use Term::ANSIColor();
 
 sub new {
@@ -103,8 +105,6 @@ use base 'Zoidberg::Fish';
 
 sub init {
 	my $self = shift;
-	$self->{parent} = shift;
-	$self->{config} = shift;
     $self->{lookup} = $self->{parent}->pd_read($self->{config}{file});
     $self->{children} = [];
     $self->append($self->{config}{prompt});
@@ -164,16 +164,35 @@ sub reset {
 
 1;
 __END__
+
 =head1 NAME
 
 Zoidberg::Prompt - Modular prompt plugin for Zoidberg
 
 =head1 SYNOPSIS
 
-    
-  
+This module is a Zoidberg plugin,
+see Zoidberg::Fish for details.
 
 =head1 DESCRIPTION
+
+This module generates the prompt used by the
+Buffer plugin. You can put any piece of perl code
+in its config file to allow any function to output to
+your prompt.
+
+=head1 METHODS
+
+=head2 stringify()
+
+  Returns a string to use as prompt
+
+=head2 getLength()
+
+  Returns the length of the previously generated prompt.
+  This is needed since the string might contain ANSI
+  escape sequences, the length as returned by this sub
+  is the length in printable chars
 
 =head1 AUTHOR
 
@@ -185,6 +204,10 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Zoidberg>.
+L<Zoidberg>
+
+L<Zoidberg::Fish>
+
+http://zoidberg.sourceforge.net.
 
 =cut

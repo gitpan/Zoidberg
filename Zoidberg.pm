@@ -1,310 +1,191 @@
 package Zoidberg;
 
+our $VERSION = '0.04';
+
+our $LONG_VERSION =
+" Zoidberg - a modular perl shell, version $VERSION
+ Copyright (C) 2002 J.G.Karssenberg and R.L.Zwart.
+ Visit http://zoidberg.sourceforge.net for more information";
+
 use strict;
 use vars qw/$AUTOLOAD/;
+use Term::ANSIColor;
 use Data::Dumper;
 use Safe;
 use Zoidberg::PdParse;
 
+push @Zoidberg::ISA, ("Zoidberg::PdParse");
+
 sub new {
-	# argument: @filez
-	@Zoidberg::ISA = ("Zoidberg::PdParse");
 	my $class = shift;
 	my $self = {};
 
-	my $run_dir = shift;
+	$self->{core}  = {};		# global configuration
+	$self->{grammar} = {};		# parsing configuration
+	$self->{cache}	= {};		# cache - TODO non caching option (?)
+	$self->{events} = {};		# hash used for broadcasting events
+	$self->{objects} = {};		# plugins as blessed objects
+	$self->{config} = {};		# plugin configuration
+	$self->{pending} = [];	# pending commands
 
-	$self->{shell}  = {};		# system data - not to be configed (?)
-	$self->{aliases} = {};		# user aliases
-	$self->{cache}	= {};		# cache - not to be configed (?) - TODO non caching option
-	$self->{user} = {};		    # most of the user configuration
-    $self->{events} = {};       # hash used for broadcasting events
-	$self->{objects} = {};		# various paralel objects
+	$self->{core} = {
+		'silent' => {
+			'output' => 0,
+			'warning' => 0,
+			'error' => 0,
+			'message' => 0,
+			'debug' => 1,
+		},
+		'core_objects' => [qw/Buffer Intel Prompt Commands History/],
+		'non_core_keys' => [qw/core grammar config/],
+	};
+	$self->{round_up} = 1;
+	$self->{exec_error} = 0;
+	$self->{cache}{max_dir_hist} = 10; # moet nog weg
+	# these have stub versions
 
 	bless($self, $class);
-
-	$self->{run_dir} = $self->abs_path($run_dir);
-	return $self;
 }
 
 sub init {
-	#set defaults TODO
-	#check config
-	#init various objects
 	my $self = shift;
-	$self->{shell}{continu} = 1;
 
 	# print welcome message
-	$self->print("  ## Welcome to the Zoidberg shell Version 0.02 ##  ");
+	$self->print("  ## Welcome to the Zoidberg shell Version $VERSION ##  ", 'message');
 
-	if (@_) { $self->{config_files} = [@_]; }	# default ?
-	#print "debug : got config files : ".join("--", @{$self->{config_files}})."\n";
-	#print "debug: run file: ".$self->{run_dir}."\n";
+	# process fluff input
+	$self->{fluff_input} = shift;
+	for ( (grep {/_dir$/} keys %{$self->{fluff_input}}) , 'prefix') { $self->{fluff_input}{$_} =~ s/\/?$/\//; }
 
-	# defaults
-	$self->defaults;
-
-	# check config:
-	@{$self->{config_files}} = map { $self->abs_path($_, $self->{run_dir}) } @{$self->{config_files}};
-	#print "debug : got absolute config files : ".join("--", @{$self->{config_files}})."\n";
-	my $config = $self->pd_read_multi(@{$self->{config_files}});
-	$self->{cache}{config_backup} = $config;
-	#print "debug: config: ".Dumper($config);
-
-	#translate to absolute files
-	foreach my $file (@{$config->{files}}) {
-		my ($a, $b) = split(/\//, $file);
-		$config->{$a}{$b} = $self->abs_path($config->{$a}{$b}, $self->{run_dir});
+	foreach my $name (grep {/_file$/} keys %{$self->{fluff_input}}) {
+		my $file = $self->{fluff_input}{$name};
+		unless ($_ =~ /^\//) { $file = $self->{fluff_input}{config_dir}.$file; }
+		$name =~ s/_file$//;
+		my $pre_eval = 'my $prefix = \''.$self->{fluff_input}{prefix}.'\'; my $conf_dir = \''.$self->{fluff_input}{config_dir}.'\';';
+		$self->{$name} = $self->pd_merge($self->{$name}, $self->pd_read($file, $pre_eval) );
 	}
-
-	foreach my $cat (@{$self->{shell}{top_conf}}) {
-		$self->{$cat} = $self->pd_merge($self->{$cat}, $config->{$cat});
-	}
-	#print "debug: ".Dumper($self);
 
 	# init various objects:
-	while (my ($n, $o) = each %{$self->{shell}{init_objects}}) {
-		#print "debug : going to init: $n - config: ".Dumper($config->{$n});
-        	$self->use_postponed($o);
-		my $oconfig = $config->{$n} || {};
-		$self->{objects}{$n} = $o->new;
-		if (($o =~ /Zoidberg/)&&($o->can('init'))) { $self->{objects}{$n}->init($self, $oconfig); } # only use init for residential modules
-	}
+	while (my ($zoidname, $data) = each %{$self->{core}{init_objects}}) {
+		my @args = ();
+		if ($data->[1]) {
+			if (ref($data->[1]) eq 'ARRAY') { @args = @{$data->[1]}; }
+			else { @args = ($data->[1]); }
+		}
 
-	if ($self->{objects}{Safe}) {
-		$self->init_safe("Safe");
+		my $class = $data->[0];
+        	unless ($self->use_postponed($class)) { next; }
+
+		if ($class->can('isFish') && $class->isFish) {
+			unless ($self->{config}{$zoidname}) { $self->{config}{$zoidname} = {}; }
+			$self->{objects}{$zoidname} = $class->new($self, $self->{config}{$zoidname}, $zoidname);
+			$self->{objects}{$zoidname}->init(@args);
+		}
+		else { $self->{objects}{$zoidname} = $class->new(@args); }
+
+		if ($data->[2]) { eval($data->[2]); }
 	}
 
 	# init self
-	$self->cache_path;
-	if ($self->{user}{hist_pd_file} && -s $self->{user}{hist_pd_file}) {
-		 $self->{cache}{hist} = $self->pd_read($self->{user}{hist_pd_file});
-		 #print "debug: got history: ".Dumper($self->{cache}{hist})."from file: ".$self->{user}{hist_pd_file}."\n";
-	}
-	$self->{cache}{dir_hist} = [];
-	$self->{cache}{dir_futr} = [];
-
-	#print fortune
+	$self->cache_path('init');
+	$self->{StringParser} = Zoidberg::StringParse->new($self->{grammar}, 'pending_gram');
     	$self->MOTZ->fortune;
-	#if ($self->{extern_bin}{fortune}) { $self->print("fortune says: \n".qx/$self->{extern_bin}{fortune}/); }
-	$self->print("  ## Type help to view commands and objects");
+	$self->print("  ## Type help to view commands and objects", 'message');
 }
 
-sub defaults {
-	my $self = shift;
-	$self->{shell}{init_objects} = {
-		'Buffer'	=> 'Zoidberg::Buffer',
-		'Intel' 	=> 'Zoidberg::Intel',
-		'Prompt'	=> 'Zoidberg::Prompt',
-		'Commands'	=> 'Zoidberg::Commands',
-       	'MOTZ'   	=> 'Zoidberg::MOTZ',
-		'Test'		=> 'Zoidberg::Test',
-        'Monitor'   => 'Zoidberg::Monitor',
-		'Safe'		=> 'Safe',
-        'Help'      => 'Zoidberg::Help',
-	};
-	$self->{shell}{top_conf} = ['aliases', 'extern_bin', 'user'];
-	$self->{aliases}{bye} = "_bye";
-	$self->{aliases}{cd} = "_cd";
-	$self->{aliases}{chdir} = "_cd";
-	$self->{aliases}{back} = "_back";
-	$self->{aliases}{forw} = "_forw";
-	$self->{aliases}{help} = "Help->help";
-	$self->{aliases}{print} = "_print";
-	$self->{aliases}{export} = "_set_env";
-	$self->{cache}{max_dir_hist} = 5;
-}
-
-sub list_objects {
-	my $self = shift;
-	return [sort(keys(%{$self->{objects}}))];
-}
-
-sub list_aliases {
-	my $self = shift;
-	return [sort(keys(%{$self->{aliases}}))];
-}
-
-sub alias {
-	my $self = shift;
-	if ($self->{aliases}{$_[0]}) { return $self->{aliases}{$_[0]}; }
-	else { return ""; }
-}
-
-sub broadcast_event {
-	my $self = shift;
-	my $event = shift;
-	map {$_->can($event)&&$_->$event} values(%{$self->{objects}});
-}
+########################
+#### main parsing routines ####
+########################
 
 sub main_loop {
 	#return: boolean -- if 1 continue if 0 die
 	my $self = shift;
-	$self->broadcast_event('precmd');
-	$self->cache_path;
-	if ($self->{objects}{Buffer}) {
-		$self->parse($self->{objects}{Buffer}->read);
+	$self->{core}{continu} = 1;
+	$self->{rounded_up} = 0;
+	while ($self->{core}{continu}) {
+		$self->{exec_error} = 0;
+
+		$self->broadcast_event('precmd');
+		if ($self->{objects}{Trog}) { $self->{no_trog_warnig} = 0; }
+		elsif (!$self->{no_trog_warnig}) {
+			$self->print("No Exec module \'Trog\' found -- only use very stripped down syntax.", 'warning');
+			$self->{no_trog_warnig} = 1;
+		}
+
+		$self->cache_path; # moet dit ding hieruit en naar een event ???
+
+		my $cmd = $self->Buffer->read;
+		chomp $cmd; # just to be sure
+		#print "Debug: cmd: $cmd\n";
+		unless ($cmd =~ /^[\s\n]*$/) { $self->parse($cmd); } # speed hack
+
+		$self->broadcast_event('postcmd');
+		$self->wipe_cache; # moet dit ding hieruit en naar een event ???
 	}
-	else {
-		$self->print("No input module \'Buffer\' found.\n");
-		$/ = "\n";
-		print ">> ";
-		my $dus = <>;
-		chomp $dus;
-		$self->parse($dus);
-	}
-	$self->broadcast_event('postcmd');
-	unless ($self->{shell}{continu}) {$self->round_up; }
-	return $self->{shell}{continu};
 }
 
 sub parse {
-	# arguments: command string, alias bit (prohibit recurs)
-
-	# TODO
-	#	pluggable maken
-
-	# hierarchy:
-	# TODO  pipes recurs and concatonate
-	# 	aliases = recurs with translation
-	# 	_name = shell command	--	_\d+ = multiplicate
-	# 	{} space = code
-	#	^->	is sub of $self
-	#	\w->\w is module
-	#	/ en ./ en ~/ ~pardus/
-	# 	bin in path or workdir
-	# 	try to eval if eval_all bit is set
-
 	my $self = shift;
-	my $string = shift;
-	my $no_recurs = shift || 0;
-
-	$string =~ s/^\s*//;
-	$string =~ m/^([^\s\n]+)(\s|\n|$)/;
-	my $first = $1;
-
-	#print "debug: got string --$string-- first is --$first--\n";
-
-	if (!$string || ($string =~ /^[\s\n]*$/)) { return ""; } #do nothing - speed hack
-	elsif (defined($self->{aliases}{$first}) && !$no_recurs) {
-		#print "debug: is alias\n";
-		my $new = $self->{aliases}{$first};
-		$string =~ s/$first/$new/;
-		return $self->parse($string, 1); 	#recurs
-	}
-
-	if ($first =~ /^_/) {
-		if ($string =~ /^_[\n\s]*(\d+)/) {	# multiply by $1
-			my $count = $1;
-			$string =~ s/^_[\n\s]*(\d+)[\n\s]*//;
-			my $return = "";
-			for (1..$count) { $return = $self->parse($string) };
-			return $return;
-		}
-		elsif ($self->{objects}{Commands}) {
-			$string =~ s/^_[\n\s]*//;
-			my @arg = split(/[\n\s]+/, $string);
-			return $self->{objects}{Commands}->parse(@arg);
-		}
-	}
-	elsif ($first =~ /^\\_/) { 	#escape sequence for "_"
-		$string =~ s/^\\_/_/;
-	}
-
-	if ( ($first =~ /^\{/) && ($string =~ /\}[s\n]*$/) ) {
-		$string =~ s/(^\{|\}[s\n]*$)//g;
-		#print "debug: found code --$1--\n";
-		return $self->run_eval($string);
-	}
-	elsif ($first =~ /^->/) {
-		if ($self->{user}{call_zoidberg}) {
-			$string =~ s/^->/\$self->/;
-			return $self->run_sub($string);
-
-		}
-		else {
-			$self->print("Calling of core functions disabled. To enable set \'{user}{call_zoidberg}\'.");
+	my @pending = ();
+	for (@_) {
+		push @pending, map {$_->[0]} @{$self->{StringParser}->parse($_)};
+		if ($self->{StringParser}->{error}) {
+			$self->print("Syntax error.", 'error');
 			return "";
 		}
 	}
-	elsif ($first =~ /^([\w\d\-\_]+)(\(.*\))?->/) {
-		#print "debug: is procedure call\n";
-		my $module = $1;
-		#print "debug: module $module\n";
-		if ($self->{objects}{$module}) {
-			$string =~ s/^$module/\$self->\{objects\}\{$module\}/;
-			return $self->run_sub($string);
-		}
-		else {
-			$self->print("Unknown module \'$module\'");
+	my ($re, $i) = ("", 0);
+	for (@pending) { $i++;
+		my $logic_tree = $self->{StringParser}->parse($_, 'logic_gram');
+		if ($self->{StringParser}->{error}) {
+			$self->print("Syntax error in block $i.", 'error');
 			return "";
 		}
+		$self->{exec_error} = 0;
+		#print "debug: ".Dumper($logic_tree);
+		while (@{$logic_tree}) {
+			my ($string, $sign) = @{shift @{$logic_tree}};
+			$re = $self->basic_parser($string);
+			if ($sign eq '||') { unless ($self->{exec_error}) { return $re; } }
+			elsif ($sign eq '&&') { if ($self->{exec_error}) { return $re; } }
+		}
 	}
-
-	if (my $bin = $self->is_bin($first)) {
-		#print "debug: string is $string\n";
-		my @arg = split (/[\n\s]+/, $string);
-		$arg[0] = $bin;
-		#print "debug: array is : ".join("--", @arg)."\n";
-		return system(@arg);
-	}
-	elsif ($self->{objects}{$first} && $self->{objects}{$first}->can('main')) {
-		$string =~ s/^$first/$first->main/;
-		return $self->run_sub($string);
-	}
-
-	#print "debug: is rest\n";
-	if ($self->{user}{eval_all}) {
-		return $self->run_eval($string);
-	}
-	else {
-		$self->print("Unknown syntax.");
-		return "";
-	}
+	return $re;
 }
 
-sub run_sub {
+sub basic_parser {
 	my $self = shift;
 	my $string = shift;
-	my $tail = "";
-	if ($string =~ /\(.*\)/) {
-		$string =~ s/[\s\n]*([^\)]*)[\s\n]*$//;
-		$tail = $1;
-	}
-	else {
-		$string =~ s/([^\s\n]*)[\s\n]*(.*)[\s\n]*$/$1/;
-		$tail = $2;
-	}
-	if ($tail) { $tail = "\"".$tail."\""; }
-	$tail =~ s/[\s\n]+/\", \"/;
-	#print "debug: tail = --$tail--\n";
-	if ($string =~ /\((.*)\)$/) {
-		if ($1) {
-			$tail = $1.", ".$tail;
-		}
-		$string =~ s/\((.*)\)$//;
-	}
-	$string .= "(".$tail.")";
-	#print "debug: going to eval: $string\n";
-	my $re = eval($string);
-	unless ($@) {return $re; }
-	else {
-		$self->print($@);
+
+	my $tree = $self->{StringParser}->parse($string, 'pipe_gram');
+	if ($self->{StringParser}->{error}) {
+		$self->print("Syntax error.", 'error');
 		return "";
 	}
-}
 
-sub run_eval {
-	my $self = shift;
-	foreach my $string (@_) {
+	if ($#{$tree} > 0) {
+		unless ($self->{objects}{Trog} ) {
+			$self->print("Syntax to advanced, use a Trog object for this kind of stuff.", 'error');
+			return "";
+		}
+		elsif ( grep {$_->[2] eq 'ZOID'} @{$tree} ) {
+			$self->print("Syntax to advanced, wait for a future release.", 'error');
+			return "";
+		}
+		else { return $self->Trog->parse($tree); }
+	}
+
+	my $context = $tree->[0]->[2];
+	if ($context eq 'PERL') {
+		$tree->[0]->[0] =~ m/^\s*\{(.*)\}\s*$/;
+		my $string = $1;
 		#print "debug: trying to eval --$string--\n";
 		if ($self->{objects}{Safe}) {
 			my $re = $self->{objects}{Safe}->reval($string);
-			print "\n";	# else the prompt could overwrite some printed data - more fancy solution ?
+			print "\n";	# else the prompt could overwrite some printed data - more fancy solution in buffer?
 			return $re;
 		}
-		else {
-			#print "debug: no Safe object\n";
+		else { #print "debug: no Safe object\n";
 			my $re = eval { eval($string) };
 			unless ($@) {
 				print "\n";	# idem
@@ -312,17 +193,145 @@ sub run_eval {
 			}
 			else {
 				$self->print($re);
+				$self->{exec_error} = 1;
 				return "";
 			}
 		}
 	}
+	elsif ($context eq 'ZOID') {
+		my @args = map {$_->[0]} @{$self->{StringParser}->parse($tree->[0]->[0], 'space_gram')};
+		while ($args[0] !~ /\w/) { shift @args; }
+		my $string = shift(@args);
+		if ($self->{core}{show_core}) { $string =~ s/^(->)?/\$self->/; }
+		elsif ($string =~ /^(->)?\{(\w*)\}/) {
+			if (grep {$_ eq $2} @{$self->{core}{non_core_keys}}) { $string =~ s/^(->)?/\$self->/; }
+			else {
+				$self->print("Turn on the \'show_core\' bit to see Zoibee naked.", 'error');
+				$self->{exec_error} = 1;
+				return "";
+			}
+		}
+		else { $string =~ s/^(->)?(\w+)/\$self->object\(\'$2\'\)/; }
+		my $args = '';
+		if ($string =~ /\((.*?)\)$/) {
+			$string =~ s/\((.*?)\)$//;
+			$args = $1.', ';
+		}
+		if (@args) { $args .= '\''.join('\', \'', @args).'\''; }
+		if ($args) { $string .= '('.$args.')'; }
+		#print "debug: going to eval string: $string\n";
+		my $re = eval($string);
+		unless ($@) {return $re; }
+		else {
+			$self->print($@);
+			$self->{exec_error} = 1;
+			return "";
+		}
+	}
+	elsif ($context eq 'SYSTEM') {
+		$tree->[0]->[0] =~ m/^\s*(.*?)\s*$/;
+		if ($1) {
+			my @args = map {$_->[0]} @{$self->{StringParser}->parse($1, 'space_gram')};
+			$self->{exec_error} = system(@args);
+		}
+		else { return ""; }
+	}
+
+	return "";
 }
+
+#######################
+#### information routines ####
+#######################
+
+sub list_objects {
+	my $self = shift;
+	return [sort(keys(%{$self->{objects}}))];
+}
+
+sub object {
+	my $self = shift;
+	my $name = shift;
+	my $silence_bit = shift;
+
+	if ($self->{objects}{$name}) { return $self->{objects}{$name}; } #speed is vital
+	elsif (my ($ding) = grep {lc($_) eq lc($name)} keys %{$self->{objects}}) { return $self->{objects}{$ding}; }
+	elsif (($ding) = grep {lc($_) eq lc($name)} @{$self->{core}{core_objects}}) {
+		my $pack = "stub_".lc($ding);
+		$self->{objects}{$ding} = $pack->new($self);
+		return $self->{objects}{$ding};
+	}
+
+	unless ($silence_bit) {
+		my @caller = caller;
+		$self->print("No such object \'$name\' as requested by ".$caller[0]." line ".$caller[2], 'error');
+		return;
+	}
+}
+
+sub test_object {
+	my $self = shift;
+	my $zoidname = shift;
+	my $class = shift || '';
+	if (my $ding = $self->object($zoidname, 1)) { if (ref($ding) =~ /$class$/) { return 1; } }
+	return 0;
+}
+
+sub list_aliases {
+	my $self = shift;
+	return [keys %{$self->{grammar}{aliases}}];
+}
+
+sub alias {
+	my $self = shift;
+	return $self->{grammar}{aliases}{$_[0]};
+}
+
+
+#####################
+#### chache status subs ####
+######################
+
+sub silent {
+	my $self = shift;
+	my $option = shift;
+	$self->{core}{silent}{message} = 1;
+	$self->{core}{silent}{warning} = 1;
+	if ($option eq 'no_roundup') { $self->{core}{round_up} = 0; }
+}
+
+sub exit {
+	my $self = shift;
+	$self->{core}{continu} = 0;
+}
+
+#################
+#### Output subs  ####
+##################
 
 sub print {
 	my $self = shift;
-	my $dus = join( " ", @_);
-	unless ($dus =~ /\n$/) { $dus .= "\n"; }
-	print $dus;
+	my $ding = shift;
+	my $type = shift || 'output';
+	my $no_newline_bit = shift; # vunzige hack
+	unless ($self->{core}{silent}{$type}) {
+		my $fh = select; # backup filehandle
+		if ($type eq 'error') {
+			select STDERR;
+		}
+		if ($self->{core}{print_colors}{$type}) { print color($self->{core}{print_colors}{$type}); }
+		if (grep {$_ eq $type} qw/error warning debug/) { print "## ".uc($type).": "; }
+
+		if (ref($ding) eq 'ARRAY' && !ref($ding->[0])) { $self->Buffer->print_list(@{$ding}); }
+		elsif (ref($ding)) { print Dumper($ding); }
+		else {
+			unless ($no_newline_bit) { $ding =~ s/\n?$/\n/; }
+			print $ding;
+		}
+		if ($self->{core}{print_colors}{$type}) { print color('reset'); }
+		select $fh;
+	}
+
 }
 
 sub ask {
@@ -341,7 +350,12 @@ sub ask {
 	}
 }
 
-sub abs_path {			# return absolute path
+########################################
+#### File routines -- do they belong in this object ? ####
+########################################
+
+sub abs_path {	# TODO to intel.pm
+	# return absolute path
 	# argument: string optional: reference
 	my $self = shift;
 	my $pattern = shift || $ENV{PWD};
@@ -374,132 +388,96 @@ sub abs_path {			# return absolute path
 
 sub cache_path {
 	my $self = shift;
-	if(($self->{cache}{path_string} ne $ENV{PATH}) || ($_[0] eq "force")) {
-		#print "debug: going to reload path\n";
-		if ($_[0] eq "force") { $self->print("Reloading path.."); }
-		my @loc = reverse(split (/:/, $ENV{PATH}));
-		$self->{cache}{path} = {}; #cleanup
-		#print "debug: path: ".$ENV{PATH}." array: ".join("--", @loc)."\n";
-		foreach my $dir (@loc) {
-			if ($dir =~ /[^\/]$/) { $dir .= "/"; }
-			#print "debug: scanning $dir\n";
-			my %inh = $self->scan_dir($dir);
-			foreach my $file (@{$inh{files}}) {
-				$self->{cache}{path}{$file} = $dir.$file;
-			}
-		}
-		$self->{cache}{path_string} = $ENV{PATH};
+	my $ding = shift;
+	if ($ding eq "force") { $self->print("Reloading path..", 'message', 1); }
+	elsif ($ding eq "init") { $self->print("Caching path..", 'message', 1); }
+	@{$self->{cache}{path_dirs}} = grep {-e $_} grep {($_ ne '..') && ($_ ne '.')} split (/:/, $ENV{PATH});
+	foreach my $dir (@{$self->{cache}{path_dirs}}) {
+		if ($ding) { $self->print(".", 'message', 1); }
+		if ($ding eq "force") { $self->scan_dir($dir, "force", 1); }
+		else {$self->scan_dir($dir, '', 1);}
 	}
+	if ($ding) { $self->print(".", 'message'); }
 }
 
-sub is_bin {
+sub list_path {
 	my $self = shift;
-	my $first = shift;
-	#print "debug: checking --$first-- in path\n";
-	if ((defined $self->{cache}{path}{$first}) && (-x $self->{cache}{path}{$first})) {
-		#print "debug: is bin in path\n";
-		return $self->{cache}{path}{$first};
-	}
-	#print "debug: current dir $ENV{PWD}\n";
-	my %dir = $self->scan_dir( $ENV{PWD} );
-	foreach my $file (@{$dir{files}}) {
-		if (($file eq $first) && (-x $file)) { return $ENV{PWD}."/".$file; }
-	}
-	return "";
+	my @return = ();
+	foreach my $dir (@{$self->{cache}{path_dirs}}) { push @return, @{$self->{cache}{dirs}{$dir}{files}}; }
+	return [@return];
 }
 
 sub scan_dir {
 	my $self = shift;
-	#print "debug: Scanning: ".$_[0]."\n";
-	opendir DUS, $_[0] ;
-	my @inhoud = readdir DUS ;
-	closedir DUS ;
-	chdir $_[0];
-	shift @inhoud ; shift @inhoud ; #removing "." en ".."
+	my ($dir, $string, $no_wipe) = @_;
+	$dir = $self->abs_path($dir);
+	my $mtime = (stat($dir))[9];
+	unless ($self->{cache}{dirs}{$dir} && ($string ne 'force') && ($mtime == $self->{cache}{dirs}{$dir}{mtime})) { 
+		$self->read_dir($dir, $no_wipe); 
+	}
+	else { $self->{cache}{dirs}{$dir}{cache_time} = time; }
+	return $self->{cache}{dirs}{$dir};
+}
 
-	my @dirs = ();
-	my @files = () ;
-	foreach my $ding (sort {uc($a) cmp uc($b)} @inhoud) {
+sub read_dir {
+	my $self = shift;
+	my $dir = shift;
+	if (-e $dir) {
+		my $no_wipe = shift || $self->{cache}{dirs}{$dir}{no_wipe};
+		opendir DIR, $dir;
+		my @contents = readdir DIR;
+		splice(@contents, 0, 2); # . && ..
+		closedir DIR;
+		chdir $dir;
+		my @files = grep {-f $_ || -f readlink($_)} @contents;
+		my @dirs = grep {-d $_  || -d readlink($_)} @contents;
+		my @rest = grep { !(grep $_, @files) && !(grep $_, @dirs) } @contents;
+		chdir($ENV{PWD});
+		$self->{cache}{dirs}{$dir} = { 
+			'files' => [@files],
+			'dirs' => [@dirs],
+			'rest' => [@rest],
+			'mtime' => (stat($dir))[9],
+			'no_wipe' => $no_wipe,
+			'cache_time' => time,
+		};
+	}
+}
 
-		if ((-d $ding) && !(-l $ding)) {
-			push @dirs, $ding ;
+sub wipe_cache {
+	my $self = shift;
+	foreach my $dir (keys %{$self->{cache}{dirs}})  {
+		unless ($self->{cache}{dirs}{$dir}{no_wipe}) {
+			my $diff = $self->{cache}{dirs}{$dir}{cache_time} - time;
+			if ($diff > $self->{core}{cache_time}) { delete ${$self->{cache}{dirs}}{$dir}; }
 		}
-		elsif (-f $ding) {
-			push @files, $ding;
-		}
-		else {
-			#print "debug: unknown: $ding \n" ;
-		}
 	}
-
-	chdir($ENV{PWD});
-	my %result = ("dirs" => [@dirs], "files" => [@files]);
-	#print "debug: dir $_[0] comtains ".Dumper(\%result);
-	return %result ;
 }
 
-sub add_history {
-	my $self = shift;
-	my $ding = shift;
-	$ding =~ s/([\'\"])/\\$1/g;		#escape quotes
-	$ding =~ s/^\s*(\S.*\S)\s*$/\'$1\'/;	#strip space & put on safety quotes
-	#print "debug: add hist ding is: $ding ,  max hist: ".$self->{max_hist}."\n";
-	if ( $ding && !($ding eq @{$self->{cache}{hist}}[1]) ) {
-		@{$self->{cache}{hist}}[0] = $ding;
-		unshift @{$self->{cache}{hist}}, "";	# [0] is current prompt - should be empty
-		if ($#{$self->{cache}{hist}} > $self->{user}{max_hist}) { pop @{$self->{cache}{hist}}; }
-	}
-	$self->{cache}{hist_p} = 0; # reset history pointer
-}
+#####################
+#### Event logic ####
+#####################
 
-sub get_hist {	# arg undef -> @hist | "back" -> $last | "forw" -> $next
+sub broadcast_event {
 	my $self = shift;
-	my $act = shift || return @{$self->{cache}{hist}};
-	if ($act eq "back") {	# one back in hist
-		if ($self->{cache}{hist_p} < $#{$self->{cache}{hist}}) { $self->{cache}{hist_p}++; }
-	}
-	elsif ($act eq "forw") {	# one forward in hist
-		if ($self->{cache}{hist_p}) { $self->{cache}{hist_p}--; }
-	}
-	my $result = $self->{cache}{hist}[$self->{cache}{hist_p}];
-	$result =~ s/(^\'|\'$)//g;
-	$result =~ s/\\([\'\"])/$1/g; #get rid of safety quotes
-	return $result;
-}
-
-sub del_one_hist {
-	my $self = shift;
-	my $int = shift;
-	shift @{$self->{cache}{hist}};
-	shift @{$self->{cache}{hist}};
-	unshift @{$self->{cache}{hist}}, "";
-}
-
-sub init_safe {
-	my $self = shift;
-	my $name = shift;
-	if ($_[0] eq "new") { $self->{objects}{$name} = Safe->new; print "debug: new safe --$name-- ..\n"}
-	$self->{objects}{$name}->reval("no strict");
-	$self->{objects}{$name}->reval("use Data::Dumper");
+	my $event = shift;
+	map {$self->{objects}{$_}->event($event, @_)} @{$self->{events}{$event}};
 }
 
 sub register_event {
     my $self = shift;
     my $event = shift;
-    my $object = shift;
-    unless (exists $self->{events}{$event}) { $self->{events}{$event} = {} }
-    my $nom = $self->{events}{$event};
-    $nom->{"$object"}=$object;
+    my $object = shift; # zoid name
+    unless (exists $self->{events}{$event}) { $self->{events}{$event} = [] }
+    push @{$self->{events}{$event}}, $object;
 }
 
 sub registered_events {
     my $self = shift;
-    my $object = shift;
+    my $object = shift; # zoid name
     my @events;
     foreach my $event (keys %{$self->{events}}) {
-        if (exists $self->{events}{$event}{"$object"}) {
-            push @events, $event; 
-        }
+        if (grep {$_ eq $object} @{$self->{events}{$event}}) { push @events, $event; }
     }
     return @events;
 }
@@ -507,60 +485,21 @@ sub registered_events {
 sub registered_objects {
     my $self = shift;
     my $event = shift;
-    return values %{$self->{events}{$event}};
+    return @{$self->{events}{$event}};
 }
 
 sub unregister_event {
     my $self = shift;
     my $event = shift;
     my $object = shift;
-    unless (exists $self->{events}{$event}) { return 1 }
-    delete $self->{events}{$event}{"$object"};
+    @{$self->{events}{$event}} = grep {$_ ne $object} @{$self->{events}{$event}};
 }
 
-sub round_up {
+sub unregister_all_events {
 	my $self = shift;
-	foreach my $n (keys %{$self->{objects}}) {
-		#print "debug roud up: ".ref( $self->{objects}{$n})."\n";
-		if ((ref( $self->{objects}{$n}) =~ /Zoidberg/)&&($self->{objects}{$n}->can('round_up'))) { $self->{objects}{$n}->round_up; }
-	}
-
-	# own roundup
-	if ($self->{user}{hist_pd_file}) {
-		unless ($self->pd_write($self->{user}{hist_pd_file}, $self->{cache}{hist})) {
-			$self->print("Failed to write hist file: ".$self->{user}{hist_pd_file});
-		}
-	}
-	$self->print("  # ### CU - Please fix all bugs !! ### #  ");
-
-}
-
-sub AUTOLOAD {
-    my $self = shift;
-    my $method = (split/::/,$AUTOLOAD)[-1];
-    for (keys %{$self->{objects}}) {
-        if (lc($_) eq lc($method)) {
-            $method = $_;
-            last;
-        }
-    }
-    unless (exists $self->{objects}{$method}) {
-        warn "failed to AUTOLOAD $method via package ".ref($self);
-        return;
-    }
-    my $sub = sub {
-        my $self = shift;
-        return $self->{objects}{$method};
-    };
-    no strict 'refs';
-    *{ref($self)."::".$method}=$sub;
-    $self->$sub(@_);
-}
-
-sub DESTROY {
-	my $self = shift;
-	if ($self->{shell}{continu}) {
-		$self->round_up;
+	my $object = shift;
+	foreach my $event (keys %{$self->{events}}) {
+		@{$self->{events}{$event}} = grep {$_ ne $object} @{$self->{events}{$event}};
 	}
 }
 
@@ -574,17 +513,20 @@ sub init_postponed {
 	my $name = shift;
 	my $class = shift;
 	#print "debug : going to init: $n - config: ".Dumper($config->{$n});
-	$self->use_postponed($class);
-	my $oconfig = $self->{cache}{config_backup}{$name} || {};
-	$self->{objects}{$name} = $class->new(@_);
-	if (($class =~ /Zoidberg/)&&($class->can('init'))) { $self->{objects}{$name}->init($self, $oconfig); } # only use init for residential modules
+	if ($self->use_postponed($class)) {
+		my $oconfig = $self->{cache}{config_backup}{$name} || {};
+		$self->{objects}{$name} = $class->new(@_);
+		if (($class =~ /Zoidberg/)&&($class->can('init'))) { $self->{objects}{$name}->init($self, $oconfig); }
+		# only use init for residential modules
+		return 1;
+	}
 }
 
 sub use_postponed {
     my $self = shift;
     my $mod = shift;
-    $mod =~ s{::}{/}g;
-    $self->inc($mod);
+    $mod =~ s{::}{/}g; #/
+    return $self->inc($mod);
     #my @trappen = split/\//,$mod;
     #for (my$i=0;$i<=$#trappen;$i++) {
     #    $self->inc(join('/',@trappen[0..$i]));
@@ -609,66 +551,229 @@ sub inc {
         }
         else {
             $self->print("Failed to include $mod.pm: ",$@);
+            return 0;
         }
     }
 }
 
+#########################
+#### Some more magic ####
+#########################
+
+sub round_up {
+	my $self = shift;
+	if ($self->{round_up}) {
+		foreach my $n (keys %{$self->{objects}}) {
+			#print "debug roud up: ".ref( $self->{objects}{$n})."\n";
+			if ($self->{objects}{$n}->can('isFish') && $self->{objects}{$n}->isFish) {
+				$self->{objects}{$n}->round_up;
+			}
+		}
+	}
+	$self->{rounded_up} = 1;
+	$self->print("  # ### CU - Please fix all bugs !! ### #  ", 'message');
+	#print "Debug: exit status: ".$self->{exec_error}."\n";
+	return $self->{exec_error};
+}
+
+sub AUTOLOAD {
+    my $self = shift;
+    my $method = shift || (split/::/,$AUTOLOAD)[-1];
+
+    if ( $self->object($method, 1) ) {
+	($method) = grep {lc($_) eq lc($method)} keys %{$self->{objects}};
+	my $sub = sub {
+		my $self = shift;
+		if ($self->{objects}{$method}) { return $self->{objects}{$method}; }
+		else { return $self->object($method); }
+	};
+	no strict 'refs';
+	*{ref($self)."::".$method}=$sub;
+	$self->$sub(@_);
+    }
+    else {
+	my @caller = caller;
+	$self->print("failed to AUTOLOAD $method as requested by ".$caller[0]." line ".$caller[2], 'error');
+	return;
+    }
+}
+
+sub DESTROY {
+	my $self = shift;
+	unless ($self->{rounded_up}) { $self->round_up; } # something went wrong -- unsuspected die
+}
+
+package stub_stub;
+sub new {
+	my $class = shift;
+	my $self = {};
+	$self->{parent} = shift;
+	bless $self, $class;
+}
+sub help { return "This is a stub object -- it can't do anything."; }
+
+package stub_prompt;
+use base 'stub_stub';
+sub stringify { return 'Zoidberg no-prompt>'; }
+sub getLength { return length('Zoidberg no-prompt>'); }
+
+package stub_buffer;
+use base 'stub_stub';
+sub read { $/ = "\n"; print 'Zoidberg no-buffer> '; return <STDIN>; }
+sub read_question { $/ = "\n"; print $_[1]; return <STDIN>; }
+sub print_list { print join("\n", @_)."\n"; }
+
+package stub_history;
+use base 'stub_stub';
+sub add_history {}
+sub get_hist { return (undef, '', 0); }
+sub del_one_hist {}
+
+package stub_commands;
+use base 'stub_stub';
+sub parse {
+	if ($_[1] eq 'quit') { $_[0]->c_quit; }
+	return "";
+}
+sub list { return ['quit']; }
+sub c_quit {
+	my $self = shift;
+	if ($_[0]) {$self->{parent}->print($_[0]) }
+	$self->{parent}->History->del_one_hist; # leave no trace
+	$self->{parent}->exit;
+}
+
+package stub_intel;
+use base 'stub_stub';
+sub tab_exp { return [0, [$_[1]]]; }
+
+package stub_help;
+use base 'stub_stub';
+sub help { print "No help available.\n" }
+sub list { return []; }
+
+package stub_motz;
+use base 'stub_stub';
+sub fortune { return ''; }
+
+#more stubs ?
+
 1;
 
 __END__
-# Below is stub documentation for your module. You better edit it!
 
 =head1 NAME
 
-Zoidberg - an other perl shell
+Zoidberg - a modular perl shell
 
 =head1 SYNOPSIS
 
-  use Zoidberg;
-  blah blah blah
+You most likely want to use the default config files as installed
+by the ProgramFiles package and all the modules from the Zoidberg
+package.
 
+  use Zoidberg;
+
+  # set config
+  my $fluff_conf = {
+    'prefix' => '/usr/local',	# $prefix/share/zoid/... expected to exist
+    'config_dir' => '/home/my_user/.zoid',
+    'config_file' => 'profile.pd',
+    'core_file' => 'core.pd',
+    'grammar_file' => 'grammar.pd',
+  };
+
+  my $cube = Zoidberg->new;
+  $cube->init($config);
+  $cube->main_loop;
+  $cube->round_up;
+
+=head1 PROJECT
+
+Zoidberg provides a shell written in perl, configured in perl and operated in perl.
+It is intended to be a replacement for bash in the future, but that is a long way.
+Most likely you will have to be a perl programmer or developer to enjoy this.
+  
 =head1 DESCRIPTION
 
-Stub documentation for Zoidberg, created by h2xs. It looks like the
-author of the extension was negligent enough to leave the stub
-unedited.
-
-Word from the author: Coding cool features has priority over documentation, 
-documentation will follow as soon as the features are stable.
-(This is if the project lives long enough to see that day. )
-
-basicly it provides a shell written in perl
-(i know, yet another ...). It is intended to be a
-replacement for bash in the future.
-
-Features include:
-        runs perl from shell prompt (duh!)
-        config in perl code
-        perl codable prompt
-        perl codable key bindings
-        runtime loadable modules
-        regex tab expansion
-
-planned:
-        multi line editing              (soon)
-        pipes                           (soon)
-        jobs
-        screen
-        inter user communication
-        wrappers for several CPAN modules like mailbox
-
-There exist some similar projects but we want more modular functionality,
-things like loading modules in runtime and using them halfway a pipe.
-Also we like to the config to be hardcore perl - i.e any expression
-that evaluates to a ref, so config files can contain anything from a string
-to a extra module (although this would not be the preferred way to load a module).
-Also one should be able to overload any basic module - like for example the prompt
-generating module - while working in the shell.
+This class provides a parent object in charche of a whole bunch of
+plugins. Most of the real functionality is put in this plugins.
+Also this class is in charche of broadcasting events.
+Stubs are provided for core plugins.
+This class autoloads plugin names as subroutines.
 
 =head2 EXPORT
 
 None by default.
 
+=head1 METHODS
+
+Some usefull methods:
+
+=head2 new()
+
+  Simple constructor
+
+=head2 init(\&meta_config)
+
+  Initialize secondary objects and set config
+
+=head2 list_objects()
+
+  List secondary objects
+
+=head2 main_loop()
+
+  Not really a loop -- does main action
+
+=head2 print()
+
+  Print to stdout -- USE this in secondary objects !
+
+=head2 ask($question)
+
+  get input
+
+=head2 abs_path($file)
+
+  optional: abs_path($file, $reference)
+  get absolute path for file
+
+=head2 scan_dir($dir)
+
+  get files in dir
+
+=head2 broadcast_event($event_name, @_)
+
+  let all interested objects now ...
+
+=head2 register_event($event_name, $zoid_name)
+
+  register object $zoid_name for event $event_name
+
+=head2 unregister_event($event_name, $zoid_name)
+
+  unregister object $zoid_name for event $event_name
+
+=head2 registered_events($zoid_name)
+
+  list events for object $zoid_name
+
+=head2 registered_objects($event_name)
+
+  list objects for event $event_name
+
+=head2 unregister_all_events($zoid_name)
+
+  unregister object $zoid_name for all events
+
+=head2 silent()
+
+  Set Zoidberg in silent mode - for forks and background executes
+
+=head2 exit()
+
+  Quit Zoidberg
 
 =head1 AUTHOR
 
@@ -681,6 +786,8 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<perl>.
+L<perl>
+
+http://zoidberg.sourceforge.net
 
 =cut

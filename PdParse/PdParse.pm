@@ -1,5 +1,7 @@
 package Zoidberg::PdParse;
 
+our $VERSION = '0.04';
+
 use strict;
 
 use Data::Dumper;
@@ -10,10 +12,20 @@ $Data::Dumper::Deparse=1;
 $Data::Dumper::Indent=1;
 
 sub pd_read_multi {
+    # @files or [@files], options
     my $self = shift;
+    my @files = ();
+    my @options = ();
+    if (ref($_[0]) eq 'ARRAY') {
+    	my $ref = shift;
+        @files = @{$ref};
+        @options = @_;
+    }
+    else { @files = @_; }
+
     my $ref = {};
-    for (@_) {
-        $ref = $self->pd_merge($ref,$self->pd_read($_));
+    for (@files) {
+        $ref = $self->pd_merge($ref,$self->pd_read($_, @options));
     }
     return $ref;
 }
@@ -21,11 +33,12 @@ sub pd_read_multi {
 sub pd_read {
     my $self = shift;
     my $file = shift;
+    my $pre_eval = shift || '';
     my $fh = IO::File->new("< $file") or $self->print("Failed to fopen($file): $!\n"),return{};
     my $cont = join("",(<$fh>));
     $fh->close;
     my $VAR1;
-    eval($cont);
+    eval($pre_eval.';'.$cont);
     if ($@) {
         $self->print("Failed to eval the contents of $file ($@), no config read\n");
         return {};
@@ -49,7 +62,7 @@ sub pd_merge {
     foreach my $ding (@refs) {
         while (my ($k, $v) = each %{$ding}) {
             if (ref($v) && defined($ref->{$k})) {
-                $ref->{$k} = $self->merge($ref->{$k}, $ding->{$k});     #recurs
+                $ref->{$k} = $self->pd_merge($ref->{$k}, $ding->{$k});     #recurs
             }
             else { $ref->{$k} = $v }
         }
@@ -61,54 +74,73 @@ sub pd_merge {
 __END__
 =head1 NAME
 
-Zoidberg::PdParse - Perl extension for blah blah blah
+Zoidberg::PdParse - parses Zoidbergs config files
 
 =head1 SYNOPSIS
 
-  use Zoidberg::PdParse;
-  blah blah blah
+  push @ISA, 'Zoidberg::PdParse';
+  my $config_hash_ref = $self->pd_read('config_file.pd');
 
 =head1 ABSTRACT
 
-  This should be the abstract for Zoidberg::PdParse.
-  The abstract is used when making PPD (Perl Package Description) files.
-  If you don't want an ABSTRACT you should also edit Makefile.PL to
-  remove the ABSTRACT_FROM option.
+  This module parses Zoidbergs config files.
 
 =head1 DESCRIPTION
 
-Stub documentation for Zoidberg::PdParse, created by h2xs. It looks like the
-author of the extension was negligent enough to leave the stub
-unedited.
-
-Blah blah blah.
+The Zoidberg object and some Zoidberg plugins inherit from
+this object to read and write config files. The format
+used is actually output of Data::Dumper.
+We give these files the extension ".pd" this stands for
+"Perl Dump".
+These files can contain all kinds of code that will
+be executed in a eval() function.
+There should be assigned a $VAR1 (as done by Data::Dumper
+output) preferrably this should be a hash reference.
 
 =head2 EXPORT
 
 None by default.
 
+=head1 METHODS
 
+=head2 pd_read_multi(@file_names)
 
-=head1 SEE ALSO
+  Returns a merge of the contents of array files as hash ref.
+  Can also be called as pd_read_multi([@file_names], @options)
+  in this case @options is passed on to pd_read
 
-Mention other useful documentation such as the documentation of
-related modules or operating system documentation (such as man pages
-in UNIX), or any relevant external documentation such as RFCs or
-standards.
+=head2 pd_read($file_name, $pre_eval)
 
-If you have a mailing list set up for your module, mention it here.
+  Returns the contents of single file as hash ref.
+  $pre_eval can contain perl code as a string,
+  this code will be evalled in the same scope as
+  the config file. This can for example be used to allow
+  variables in the config file.
 
-If you have a web site set up for your module, mention it here.
+=head2 pd_write($file, $hash_ref)
+
+  Dump the contents of $hash_ref to $file. Retuns 1 on succes.
+
+=head2 pd_merge(@hash_refs)
+
+  Merges @hash_refs to single ref. This is for example used
+  to let multiple config files overload each other.
+  The last array element is the las processed, and thus in case of overloading
+  the most specific.
 
 =head1 AUTHOR
 
-root, E<lt>root@internal.cyberhqz.comE<gt>
+R.L. Zwart, E<lt>carlos@caremail.nlE<gt>
+Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
 
-=head1 COPYRIGHT AND LICENSE
+Copyright (c) 2002 Raoul L. Zwart. All rights reserved.
+This program is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
 
-Copyright 2002 by root
+=head1 SEE ALSO
 
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself. 
+L<Zoidberg>
+
+http://zoidberg.sourceforge.net.
 
 =cut

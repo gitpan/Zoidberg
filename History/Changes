@@ -1,0 +1,6 @@
+Revision history for Perl extension Zoidberg::History.
+
+0.01  Thu Oct 31 22:17:00 2002
+	- original version; created by h2xs 1.22 with options
+		-AX -n Zoidberg::History
+

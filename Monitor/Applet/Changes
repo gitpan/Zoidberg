@@ -1,6 +1,0 @@
-Revision history for Perl extension Zoidberg::Monitor::Applet.
-
-0.01  Sat Sep 28 00:29:13 2002
-	- original version; created by h2xs 1.22 with options
-		-AX -n Zoidberg::Monitor::Applet
-

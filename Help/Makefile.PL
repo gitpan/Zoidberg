@@ -4,8 +4,10 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     'NAME'		=> 'Zoidberg::Help',
     'VERSION_FROM'	=> 'Help.pm', # finds $VERSION
-    'PREREQ_PM'		=> {}, # e.g., Module::Name => 1.1
+    'PREREQ_PM'		=> {
+    	'Devel::Symdump' => '2.03'
+    }, 
     ($] >= 5.005 ?    ## Add these new keywords supported since 5.005
       (ABSTRACT_FROM => 'Help.pm', # retrieve abstract from module
-       AUTHOR     => 'root <root@internal.cyberhqz.com>') : ()),
+       AUTHOR     => 'Raoul Zwart <carlos@caremail.nl>') : ()),
 );

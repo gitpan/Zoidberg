@@ -1,0 +1,6 @@
+Revision history for Perl extension Zoidberg::Trog.
+
+0.01  Mon Sep 30 01:59:31 2002
+	- original version; created by h2xs 1.22 with options
+		-AX -n Zoidberg::Trog
+

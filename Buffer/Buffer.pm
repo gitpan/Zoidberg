@@ -1,9 +1,13 @@
 package Zoidberg::Buffer;
 
+our $VERSION = '0.04';
+
 use Data::Dumper;
-use POSIX qw/floor/;
+use POSIX qw/floor ceil/;
 use Term::ReadKey;
 use Term::ANSIScreen qw/:screen :cursor/;
+use Zoidberg::StringParse;
+use Zoidberg::StringParse::Syntax;
 use strict;
 
 use base 'Zoidberg::Fish';
@@ -12,10 +16,10 @@ $| = 1;
 
 sub init {
 	my $self = shift;
-	$self->{parent} = shift;
-	$self->{config} = shift;
 	#print "debug: buffer config: ".Dumper($self->{config})."\n";
 	$self->{tab_string} = $self->{config}{tab_string} || "    ";
+	$self->{parser} = Zoidberg::StringParse->new($self->parent->{grammar}, 'buffer_gram');
+	$self->{syntax_parser} = Zoidberg::StringParse::Syntax->new($self->parent->{grammar}, 'perl_syntax_gram');
 
 	# set default char table
 	$self->{char_table}{in_use} = {
@@ -24,12 +28,14 @@ sub init {
 	};
 
 	# set probe values
-	$self->{probe} = {
+	$self->{probe} = { # TODO pluggable maken
 		'in_use' => [
 			'Normal keybindings',
-			["Hard quit", "Ctrl-c", "k_ctrld"],	# TODO ? $SIG{INT}
-			["Soft quit", "Ctrl-d", "k_ctrld"],
-			["Save buffer", "Ctrl-o", "k_save"],
+			["Logout / quit", "Ctrl-d", "k_ctrld"],
+			["Discard", "Ctrl-c", "k_ctrlc"],	# TODO ? $SIG{INT}
+			["Suspend job", "Ctrl-z", "k_ctrlz"], # TODO : siggit!
+			["Save to file", "Ctrl-o", "k_save"],
+			["Read from file", "Ctrl-r", "k_open"],
 			["Expand", "tab", "k_expand"],
 			["Backspace", "Bcksp", "k_backspc"],
 			["Submit", "Return", "k_newl"],
@@ -48,6 +54,7 @@ sub init {
 			'Keybindings for multiline modus',
 			["Submit", "Ctrl-d", "k_m_ctrld"],
 			["Tab", "tab", "k_tab"],
+			["Expand", "Ctr-t", "k_expand"],
 			["Newline", "Return", "k_m_newl"],
 			["Move up", "up", "k_moveup"],
 			["Move down", "down", "k_movedown"]
@@ -55,7 +62,6 @@ sub init {
 	};
 	if ($self->{config}{probe}) {$self->{probe} = $self->{config}{probe}; } # no merging here - would give rubish
 
-	# this should be a merge !!
 	if ($self->{config}{char_table_file} && -s $self->{config}{char_table_file}) { $self->{char_table} = $self->{parent}->pd_read($self->{config}{char_table_file}); }
 	else {
 		print "No char table found - no file set, file empty or file does not exist ..\n";
@@ -70,14 +76,14 @@ sub read {
 	$self->{continu} = 1;
 	$self->{size} = [(GetTerminalSize())[0,1]];	# width in characters, height in characters
 	#print "debug: size ".join(",", @{$self->{size}})."\n";
-	$self->{pos} = [0,0]; 	# x,y cursor
+	my $fb = $self->{parent}->History->suggest;
+	$self->{fb} = [$fb];
+	$self->{pos} = [length($fb), 0]; 	# x,y cursor
 	$self->{lines} = 0;
-	$self->{last_quest} = ""; # used to make the history more flex
-	$self->{tab_exp_back} = ["", ""]; # used to flex up backspace
-	$self->{fb} = [""];
-
-#	$self->print_buffer;
+	$self->{last_quest} = $fb; # used to make the history more flex
+	$self->{tab_exp_back} = [ ["", ""], [$fb, ""] ]; # used to flex up backspace [ [match_string, replace_string], ... ]
 	$self->print_prompt;
+	$self->print_buffer;
 	while ($self->{continu}) {
 		my $key;
 		ReadMode("raw");
@@ -120,8 +126,26 @@ sub read {
 	}
 	#print "debug: returning buffer: ".$self->{fb}."\n";
 	my $fb = join("\n", @{$self->{fb}});
-	$self->{parent}->add_history($fb);
+	$self->{parent}->History->add_history($fb, $self->{tab_exp_back});
+	$self->{parent}->History->set_exec_last; # acknowledge execution
 	return $fb;
+}
+
+sub read_question {
+	my $self = shift;
+	my $prompt = shift;
+	if (ref($prompt)) {
+		$self->{prompt} = $prompt->stringify;
+		$self->{prompt_lenght} = $prompt->getLength + 1;
+	}
+	else {
+		$self->{prompt} = $prompt;
+		$self->{prompt_lenght} = length($prompt) + 1;
+		$self->{custom_prompt} = 1;
+	}
+	my $answer = $self->read;
+	$self->{custom_prompt} = 0;
+	return $answer;
 }
 
 sub insert_char {
@@ -148,13 +172,13 @@ sub print_buffer {	# TODO if $lines > heigth of term
 	#calculate number of lines and on which line each string starts- first one is special due to prompt length - also calculate spaces
 	my @space = ();
 	my @start = (0);
-	my $lines = floor((length($self->{fb}[0]) + $self->{prompt_lenght})/ $self->{size}[0]);
+	my $lines = floor((length($self->{fb}[0]) + $self->{prompt_lenght})/ $self->{size}[0]); #/
 	$space[0] = (($lines+1) * $self->{size}[0]) - (length($self->{fb}[0]) + $self->{prompt_lenght}) + 1;
 	if ($#{$self->{fb}} > 0) {
 		for (1 .. $#{$self->{fb}}) {
 			my $i = $_;
 			$start[$i] = ++$lines;
-			my $my_lines = floor(length($self->{fb}[$i])/ $self->{size}[0]);
+			my $my_lines = floor(length($self->{fb}[$i])/ $self->{size}[0]); #/
 			$space[$i] = (($my_lines+1) * $self->{size}[0]) - length($self->{fb}[$i]);
 			$lines += $my_lines;
 		}
@@ -174,12 +198,13 @@ sub print_buffer {	# TODO if $lines > heigth of term
 
 	#print lines
 	my $null_line = $self->{size}[1] - $lines;
+	my @buffer = $self->highlight;
 	#print locate(0,0), "debug: lines $lines null_line $null_line   ";
-	print locate($null_line , $self->{prompt_lenght}), $self->{fb}[0].(" "x$space[0]); # print buffer and overwrite any garbage
+	print locate($null_line , $self->{prompt_lenght}), $buffer[0].(" "x$space[0]); # print buffer and overwrite any garbage
 	if ($#{$self->{fb}} > 0) {
-		for (1 .. $#{$self->{fb}}) {
+		for (1 .. $#buffer) {
 			my $i = $_;
-			print locate( ($null_line + $start[$i]), 0 ),  $self->{fb}[$i].(" "x$space[$i]);
+			print locate( ($null_line + $start[$i]), 0 ),  $buffer[$i].(" "x$space[$i]);
 		}
 	}
 
@@ -191,28 +216,53 @@ sub print_buffer {	# TODO if $lines > heigth of term
 	if ($self->{pos}[1] == 0) { $c_off = $self->{prompt_lenght}; }
 	my $pos = $self->{pos}[0];
 	if ($pos > length($self->{fb}[$self->{pos}[1]])) { $pos = length($self->{fb}[$self->{pos}[1]]); }
-	my $c_line = floor(($pos + $c_off - 1)/ $self->{size}[0]);
+	my $c_line = floor(($pos + $c_off - 1)/ $self->{size}[0]); #/
 	my $c_x = ($pos + $c_off) % ($self->{size}[0]);
 	unless ($c_x) { $c_x = $self->{size}[0]; } # dit is luizige hack - nog s naar kijken
 	#print locate (0, 0), "debug: c_line $c_line c_x $c_x pos+c_off ".($pos + $c_off)." size[0] ".($self->{size}[0]);
 	print locate( ($null_line + $start[$self->{pos}[1]] + $c_line),  $c_x);
 }
 
-sub read_question {
+sub print_list {
 	my $self = shift;
-	my $prompt = shift;
-	unless (ref($prompt)) {
-		$self->{prompt} = $prompt;
-		$self->{prompt_lenght} = length($prompt) + 1;
+	my @strings = @_;
+	my $longest = 0;
+	map {if (length($_) > $longest) { $longest = length($_);} } @strings;
+	my $cols = floor($self->{size}[0] / ($longest + 2)) || 1;
+	my $rows = ceil(($#strings + 1) / $cols);
+	my @cols = ();
+	for (0..$cols-1) {
+		my $start = $_ * $rows;
+		my $end = $start + $rows - 1 ;
+		@{$cols[$_]} = map {$_.(' 'x($longest - length($_) + 2))} @strings[$start..$end];
 	}
-	else {
-		$self->{prompt} = $prompt->stringify;
-		$self->{prompt_lenght} = $prompt->getLength + 1;
+	#print "debug: ".Dumper(\@cols);
+	for (my $i = 0; $i <= $rows; $i++) {
+		print "\n";
+		for (my $j = 0; $j <= $cols; $j++) { print $cols[$j][$i]; }
 	}
-	$self->{custom_prompt} = 1;
-	my $answer = $self->read;
-	$self->{custom_prompt} = 0;
-	return $answer;
+}
+
+sub highlight { # dit is een work around zolang buffer niet transparant is
+	my $self = shift;
+	my $fb = join("\n", @{$self->{fb}});
+	my $tree = $self->{parser}->parse($fb, 'buffer_gram', 1);
+	#print 'DEBUG: '.join('__', map {join('--', @{$_})} @{$tree})."\n";
+	my $string = '';
+	foreach my $ref (@{$tree}) {
+		if ($ref->[2] eq 'PERL') { # hele $ding gedoe moet in StringParse door RECURS
+			my $ding = $ref->[0];
+			$ding =~ s/^(\s*\{)//;
+			my $begin = $1;
+			$ding =~ s/(\}\s*)?$//;
+			my $eind = $1;
+			#print "debug: voor: --$ding--, na: --".$self->{synparser}->parse($ding)."--\n";
+			$string .= $begin.$self->{syntax_parser}->parse($ding).$eind;
+		}
+		else { $string .= $ref->[0]; }
+		unless (($ref->[1]eq 'END') || ($ref->[1]eq 'BROKEN')) { $string .= $ref->[1]; }
+	}
+	return split(/\n/, $string);
 }
 
 sub k_delete {
@@ -260,10 +310,11 @@ sub k_moveright {
 sub k_hist_back {
 	my $self = shift;
 	my $fb = join("\n", @{$self->{fb}});
-	unless ($fb eq $self->{last_quest}) { $self->{parent}->add_history($fb); }
-	$fb = $self->{parent}->get_hist("back");
-	$self->{last_quest} = $fb;
-	@{$self->{fb}} = split(/\n/, $fb);
+	unless ($fb eq $self->{last_quest}) { $self->{parent}->History->add_history($fb, $self->{tab_exp_back}); }
+	my @hist = $self->{parent}->History->get_hist("back");
+	$self->{last_quest} = $hist[1];
+	$self->{tab_exp_back} = $hist[3] || [["", ""]];
+	@{$self->{fb}} = split(/\n/, $hist[1]);
 	$self->{pos}[0] = length(@{$self->{fb}}[-1]);
 	$self->{pos}[1] = @{$self->{fb}} ? $#{$self->{fb}} : 0;
 }
@@ -271,10 +322,11 @@ sub k_hist_back {
 sub k_hist_forw {
 	my $self = shift;
 	my $fb = join("\n", @{$self->{fb}});
-	unless ($fb eq $self->{last_quest}) { $self->{parent}->add_history($fb); }
-	$fb = $self->{parent}->get_hist("forw");
-	$self->{last_quest} = $fb;
-	@{$self->{fb}} = split(/\n/, $fb);
+	unless ($fb eq $self->{last_quest}) { $self->{parent}->History->add_history($fb, $self->{tab_exp_back}); }
+	my @hist = $self->{parent}->History->get_hist("forw");
+	$self->{last_quest} = $hist[1];
+	$self->{tab_exp_back} = $hist[3] || [["", ""]];
+	@{$self->{fb}} = split(/\n/, $hist[1]);
 	$self->{pos}[0] = length($self->{fb}[-1]);
 	$self->{pos}[1] = @{$self->{fb}} ? $#{$self->{fb}} : 0;
 }
@@ -292,14 +344,34 @@ sub k_movedown {
 sub k_ctrld {
 	my $self = shift;
 	$self->{continu} = 0;
-	$self->{fb} = ["_quit"];
+	$self->parent->exit;
 	print "\n";
+}
+
+sub k_ctrlc {
+	my $self = shift;
+	$self->{parent}->History->add_history( join("\n", @{$self->{fb}}), $self->{tab_exp_back});
+	$self->{continu} = 0;
+	$self->{fb} = [""];
+	print "\n";
+}
+
+sub k_ctrlz {
+    my $self = shift;
+    print "ZZZZZZZZZZZZAp!!!!\n";
 }
 
 sub k_m_ctrld {			# jump out of multi line and submit - ie normal <return>
 	my $self = shift;
 	$self->multi_line_switch;
 	$self->k_newl;
+}
+
+sub k_newl {
+	my $self = shift;
+	$self->{fb} = [""];
+	$self->{continu} = 0;
+	print "\n";
 }
 
 #sub k_debug {
@@ -313,21 +385,36 @@ sub k_tab {
 	foreach my $char (@chars) { $self->insert_char($char); }
 }
 
-sub k_expand {
+sub k_expand { # TODO rekening houden met cursor positie
 	my $self = shift;
-	#print "debug ".Dumper($self->{parent}->intel->tab_exp($self->{fb}));
-	my ($bit, $ref) = $self->{parent}->intel->tab_exp($self->{fb}[$self->{pos}[1]]);
-	unless ($ref->[0] eq $self->{fb}[$self->{pos}[1]]) { # create fancy backspace feature
-		$self->{tab_exp_back} = [$ref->[0], $self->{fb}[$self->{pos}[1]]];
-	}
-	$self->{fb}[$self->{pos}[1]] = shift @{$ref};
+
+	my $regel = $self->{fb}[$self->{pos}[1]];
+	my $tree = $self->{parser}->parse( join("\n", @{$self->{fb}}), 'buffer_gram', 1);
+	my $last = pop @{$tree};
+	#print "debug: ".Dumper($tree)."\n";
+	my $ref = $self->{parent}->Intel->tab_exp($last->[0], $last->[2]);
+
+	$last->[0] = shift(@{$ref});
+	@{$self->{fb}} = split( "\n", join( '', map { # funky back-and-forward parsing
+		my $string = $_->[0];
+		unless(($_->[1] eq 'BROKEN') || ($_->[1] eq 'END')) {
+			$string.=$_->[1]
+		}
+		$string;
+	} (@{$tree}, $last)));
 	$self->{pos}[0] = length($self->{fb}[$self->{pos}[1]]);
-	unless ($bit) {
-		unless (@{$ref}) { $ref->[0] = "... ???"; }
-		print "\n".join("\n", @{$ref})."\n";
-		$self->print_prompt;
-		$self->print_buffer;
+
+	unless ($regel eq $self->{fb}[$self->{pos}[1]]) { # create fancy backspace feature
+		push @{$self->{tab_exp_back}}, [$self->{fb}[$self->{pos}[1]], $regel];
 	}
+
+	if (@{$ref}) {
+		unless (@{$ref}) { $ref->[0] = "... ???"; }
+		#print "debug: ".Dumper($ref);
+		$self->print_list(@{$ref});
+		$self->print_prompt;
+	}
+	$self->print_buffer;
 }
 
 sub k_backspc {
@@ -338,15 +425,17 @@ sub k_backspc {
 		splice(@{$self->{fb}}, $self->{pos}[1]+1, 1);
 	}
 	elsif ($self->{pos}[0] > 0) {
-		my $exp_length = length($self->{tab_exp_back}[0]);
-		if ($self->{tab_exp_back}[0] && (substr($self->{fb}[$self->{pos}[1]], ($self->{pos}[0] - $exp_length), $exp_length) eq $self->{tab_exp_back}[0])) {
+		my $exp_length = length($self->{tab_exp_back}[-1][0]);
+		#print "debug: ".Dumper($self->{tab_exp_back});
+		if ($self->{tab_exp_back}[-1][0] && (substr($self->{fb}[$self->{pos}[1]], ($self->{pos}[0] - $exp_length), $exp_length) eq $self->{tab_exp_back}[-1][0])) {
 			# is string in front of cursor matches last tab_exp - replace with old buffer
 			for (1..$exp_length) {
 				$self->k_moveleft;
 				$self->k_delete;
 			}
-			my @chars = split(//, $self->{tab_exp_back}[1]);
-			foreach my $char (@chars) { $self->insert_char($char); }
+			my @chars = split(//, $self->{tab_exp_back}[-1][1]);
+			foreach my $char (@chars) { $self->insert_char($char); } # dit moet mooier kunnen
+			pop @{$self->{tab_exp_back}};
 		}
 		else {
 			my $i = 1;
@@ -387,10 +476,11 @@ sub k_ins {
 sub k_pgup {
 	my $self = shift;
 	my $fb = join("\n", @{$self->{fb}});
-	unless ($fb eq $self->{last_quest}) { $self->{parent}->add_history($fb); }
-	for (1..10) { $fb = $self->{parent}->get_hist("back"); }
-	$self->{last_quest} = $fb;
-	@{$self->{fb}} = split(/\n/, $fb);
+	unless ($fb eq $self->{last_quest}) { $self->{parent}->History->add_history($fb, $self->{tab_exp_back}); }
+	my @hist = $self->{parent}->History->get_hist("back", 10);
+	$self->{last_quest} = $hist[1];
+	$self->{tab_exp_back} = $hist[3] || [["", ""]];
+	@{$self->{fb}} = split(/\n/, $hist[1]);
 	$self->{pos}[0] = length($self->{fb}[-1]);
 	$self->{pos}[1] = @{$self->{fb}} ? $#{$self->{fb}} : 0;
 }
@@ -398,12 +488,33 @@ sub k_pgup {
 sub k_pgdw {
 	my $self = shift;
 	my $fb = join("\n", @{$self->{fb}});
-	unless ($fb eq $self->{last_quest}) { $self->{parent}->add_history($fb); }
-	for (1..10) { $fb = $self->{parent}->get_hist("forw"); }
-	$self->{last_quest} = $fb;
-	@{$self->{fb}} = split(/\n/, $fb);
+	unless ($fb eq $self->{last_quest}) { $self->{parent}->History->add_history($fb, $self->{tab_exp_back}); }
+	my @hist = $self->{parent}->History->get_hist("forw", 10);
+	$self->{last_quest} = $hist[1];
+	$self->{tab_exp_back} = $hist[3] || [["", ""]];
+	@{$self->{fb}} = split(/\n/, $hist[1]);
 	$self->{pos}[0] = length($self->{fb}[-1]);
 	$self->{pos}[1] = @{$self->{fb}} ? $#{$self->{fb}} : 0;
+}
+
+sub k_open {
+	my $self = shift;
+	my $file = $self->{parent}{cache}{last_file};
+	print locate(reverse(@{$self->{size}})), "\n";
+	$file = $self->read_question("File name? [$file] ") || $file;
+	$self->{parent}->History->del_one_hist;
+	$file = $self->{parent}->abs_path($file);
+	if (-e $file) {
+		$self->{parent}->History->add_history(join("\n", @{$self->{fb}}), $self->{tab_exp_back});
+		if (open IN, $file) {
+			@{$self->{fb}} = (<IN>);
+			close IN;
+			$self->{parent}{cache}{last_file} = $file;
+			$self->{continu} = 1;
+		}
+		else { print "Could not open file $file.\n"; }
+	}
+	else { print "No such file $file\n"; }
 }
 
 sub k_save {
@@ -411,25 +522,25 @@ sub k_save {
 	my $file = $self->{parent}{cache}{last_file} || $self->find_available_file;
 	my $string = join("\n", @{$self->{fb}})."\n";
 	print locate(reverse(@{$self->{size}})), "\n";
-	my $file = $self->read_question("File name? [$file] ") || $file;
+	$file = $self->read_question("File name? [$file] ") || $file;
+	$self->{parent}->History->del_one_hist;
 	$file = $self->{parent}->abs_path($file);
 	my $bit = 1;
 	if ( -e $file ) {
 		my $answer = $self->read_question("File exists - overwrite ? [yN] ") || "n";
-		$self->{parent}->del_one_hist;
+		$self->{parent}->History->del_one_hist;
 		unless ($answer =~ /y/i) { $bit = 0; }
 	}
 	if ($bit) {
-		$bit = open FILE, ">$file";
-		if ($bit) {
+		if (open FILE, ">$file") {
 			print FILE $string;
 			print "Wrote file $file\n";
+			close FILE;
+			$self->{parent}{cache}{last_file} = $file;
 		}
 		else { print "Could not open file $file - do you have permissions ?\n"; }
-		close FILE;
 	}
 	else { print "Did not write to file.\n"; }
-	$self->{fb} = [];
 }
 
 sub find_available_file {
@@ -483,52 +594,68 @@ sub probe {
 	}
 	ReadMode("normal");
 	if ($self->{config}{char_table_file}) {
-		if ($self->{parent}->pd_write($self->{config}{char_table_file}, $self->{char_table})) { print "Wrote to file: ".$self->{config}{char_table_file}."\n"; }
-		else { print "Failed to write to: ".print "Wrote to file: ".$self->{config}{char_table_file}."\n"; }
+		if ($self->{parent}->pd_write($self->{config}{char_table_file}, $self->{char_table})) { 
+			print "Wrote to file: ".$self->{config}{char_table_file}."\n"; 
+		}
+		else { print "Failed to write to: ".$self->{config}{char_table_file}."\n"; }
 	}
 	else { print "No char table file set - configuration will be lost when you log out\n"; }
 }
 
 sub help {
 	my $self = shift;
-	my $body = "\tDefault keybindings are:\n\n";
-	my $multi = "\tDefault keybindings for multi line modus are\n\n";
-	foreach my $key (sort(@{$self->{probe}})) {
-		$body .= "\t   ".$key->[0]."\t".$key->[1]."\n";
-		if ($key->[2]) {$multi .= "\t   ".$key->[0]."\t".$key->[2]."\n";}
-	}
-	return $body."\n\n".$multi."\n";
+    my$body;
+    map { $body.=(ref($_))?"\t$_->[0]\t$_->[1]\t$_->[2]\n":"$_\n\n" } @{$self->{probe}{in_use}};
+    map { $body.=(ref($_))?"\t$_->[0]\t$_->[1]\t$_->[2]\n":"\n$_\n\n" } @{$self->{probe}{multi}};
+	return "$body\n"
 	# TODO more specific help texts
 }
 
 1;
 __END__
-# Below is stub documentation for your module. You better edit it!
 
 =head1 NAME
 
-Zoidberg::Buffer - Perl extension for blah blah blah
+Zoidberg::Buffer - The zoidberg input buffer
 
 =head1 SYNOPSIS
 
-  use Zoidberg::Buffer;
-  blah blah blah
+This module is a Zoidberg plugin,
+see Zoidberg::Fish for details.
 
 =head1 DESCRIPTION
 
-Stub documentation for Zoidberg::Buffer, created by h2xs. It looks like the
-author of the extension was negligent enough to leave the stub
-unedited.
-
-Blah blah blah.
+This module generates a more dynamic input
+buffer for the Zoidberg shell. It is a
+core object for Zoidberg.
 
 =head2 EXPORT
 
 None by default.
 
+=head1 METHODS
+
+=head2 read()
+
+  Get input from prompt
+
+=head2 read_question($question)
+
+  Get input from custom prompt
+
+=head2 k_*
+
+  Methods to bind keys to
+
+=head2 probe()
+
+  Interactive probe key bindings
+
+=head2 help()
+
+  Output keybindings
 
 =head1 AUTHOR
-
 
 Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
 R.L. Zwart, E<lt>carlos@caremail.nlE<gt>
@@ -537,9 +664,14 @@ Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
-
 =head1 SEE ALSO
 
-L<perl>.
+L<perl>
+
+L<Zoidberg>
+
+L<Zoidberg::Fish>
+
+http://zoidberg.sourceforge.net
 
 =cut

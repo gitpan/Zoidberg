@@ -1,28 +1,37 @@
 package Zoidberg::Fish;
 
+our $VERSION = '0.04';
+
+sub isFish { return 1; }
+
 sub new {
     my $class = shift;
     my $self = {};
-    bless $self => $class;
+    $self->{parent} = shift;
+    $self->{config} = shift;
+    $self->{zoid_name} = shift;
+    bless $self, $class;
 }
 
 sub init {
-    my $self = shift;
-    $self->{parent} = shift;
-    $self->{config} = shift;
-    $self->register_events;
-    $self->postinit;
-    return 1;
+	my $self = shift;
+	# insert init routine here
 }
 
-sub postinit {
-    my $self = shift;
+sub reload_config {
+	my $self = shift;
+	$self->{config} = shift;
 }
 
-sub round_up {
-    my $self = shift;
-    return 1;
+sub zoidname {
+	my $self = shift;
+	if (@_) { $self->{zoid_name} = shift; }
+	return $self->{zoid_name};
 }
+
+####################
+#### some stubs ####
+####################
 
 sub parent {
     my $self = shift;
@@ -39,47 +48,58 @@ sub config {
     return $self->{config};
 }
 
-sub precmd {
-    my $self = shift;
+#####################
+#### event logic ####
+#####################
+
+sub event {
+	my $self = shift;
+	my $event = shift;
+	if ($self->can($event)) { $self->$event(@_); } # hack around old event style -- is this to stay ?
 }
 
-sub postcmd {
+sub broadcast_event {
     my $self = shift;
+    $self->parent->broadcast_event(@_);
 }
 
 sub register_event {
     my $self = shift;
-    $self->parent->register_event($_[0],$self);
-}
-
-sub register_events {
-    my $self = shift;
-    for (qw/precmd/) {
-        $self->register_event($_);
-    }
-}
-
-sub registered_events {
-    my $self = shift;
-    return $self->parent->registered_events($self);
+    for (@_) { $self->parent->register_event($_, $self->{zoid_name}); }
 }
 
 sub unregister_event {
     my $self = shift;
-    my $event = shift;
-    $self->parent->unregister_event($event);
+    for (@_) { $self->parent->unregister_event($_, $self->{zoid_name}); }
 }
 
-sub unregister_events {
+sub unregister_all_events {
     my $self = shift;
-    for ($self->registered_events) {
-        $self->unregister_event($_);
-    }
+    $self->parent->unregister_all_events($self->{zoid_name})
 }
+
+sub registered_events {
+    my $self = shift;
+    return $self->parent->registered_events($self->{zoid_name});
+}
+
+#####################
+#### other stuff ####
+#####################
 
 sub help {
 	my $self = shift;
-	return "This module does not (yet) have a detailed help text.";
+	return "";
+}
+
+sub round_up {
+    my $self = shift;
+    # put shutdown sequence here -- like saving files etc.
+}
+
+sub DESTROY {
+	my $self = shift;
+	if (!$self->parent->{rounded_up} && $self->parent->{round_up}) { $self->round_up; }
 }
 
 1;
@@ -87,19 +107,100 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Fish - Base class for loadable objects
+Zoidberg::Fish - Base class for loadable Zoidberg plugins
 
 =head1 SYNOPSIS
 
   package My::Dynamic::ZoidPlugin
   use base 'Zoidberg::Fish';
-  
 
 =head1 DESCRIPTION
 
-  This should be the abstract for Zoidberg::Fish.
-  Well what do you know ... it is!
-  If you inherit from this class, you don't need to declare the init, round_up and new methods:)
+  Base class for loadable Zoidberg plugins has many stubs
+  to provide compatability with Zoidberg
+
+  Ones this base class is used your module looks and smells
+  like fish -- Zoidberg WILL eat it.
+  
+  See other (?) documentation on how to load these objects
+  in Zoidberg.
+
+=head2 EXPORT
+
+None by default.
+
+=head1 METHODS
+
+=head2 new()
+
+  Simple constructor
+
+=head2 init($parent, \%config, $zoid_name)
+
+  sets:
+  $self->{parent} a reference to parent Zoidberg object
+  $self->{config} hash with some config
+  $self->{zoid_name} name as known by parent object
+  calls postinit
+
+=head2 postinit()
+
+  to be overloaded, is called by init
+
+=head2 parent()
+
+  returns ref to parent
+
+=head2 print()
+
+  calls parent->print
+
+=head2 config()
+
+  return ref to config
+
+=head2 event($event_name, @_)
+
+  is called by parent when event is broadcasted
+
+=head2 precmd()
+
+  stub event
+
+=head2 postcmd()
+
+  stub event
+
+=head2 broadcast_event($event_name, @_)
+
+  calls parent->broadcast_event
+
+=head2 register_event($event_name)
+
+  register self by parent for event $event_name
+  this means that when this event occurs
+  $self->event is called
+
+=head2 unregister_event($event_name)
+
+  unregister self for event $event_name
+
+=head2 unregister_all_events()
+
+  unregister self for event all events
+
+=head2 registered_events()
+
+  list events self is registered for
+
+=head2 help()
+
+  stub help function, should return string
+
+=head2 round_up()
+
+  is called when parent wants to stop
+  or when sudden DESTROY occurs
 
 =head1 AUTHOR
 
@@ -111,6 +212,8 @@ modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-L<Zoidberg>.
+L<Zoidberg>
+
+http://zoidberg.sourceforge.net
 
 =cut

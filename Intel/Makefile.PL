@@ -2,10 +2,11 @@ use ExtUtils::MakeMaker;
 # See lib/ExtUtils/MakeMaker.pm for details of how to influence
 # the contents of the Makefile that is written.
 WriteMakefile(
-    'NAME'		=> 'Zoidberg::Intel',
-    'VERSION_FROM'	=> 'Intel.pm', # finds $VERSION
-    'PREREQ_PM'		=> {}, # e.g., Module::Name => 1.1
-    ($] >= 5.005 ?    ## Add these new keywords supported since 5.005
-      (ABSTRACT_FROM => 'Intel.pm', # retrieve abstract from module
-       AUTHOR     => 'A. U. Thor <a.u.thor@a.galaxy.far.far.away>') : ()),
-);
+          'NAME' => 'Zoidberg::Intel',
+          'AUTHOR' => 'J.G. Karssenberg <j.g.karssenberg@student.utwente.nl>',
+          'VERSION_FROM' => 'Intel.pm',
+          'ABSTRACT_FROM' => 'Intel.pm',
+          'PREREQ_PM' => {
+                           'Devel::Symdump' => '2.03'
+                         }
+                );

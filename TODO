@@ -1,32 +1,143 @@
-use - ~/.zoidberg .....
+Disclaimer: some of this might be in dutch
+
+**************
+**** BUGS ****
+**************
+
+stub_history wat bijwerken
+fluff exit status not debug
+c_set_var is nie debug
+
+del_one_hist werkt nie goe && open_from_file werkt ook nie goed
+	beide zijn verwant aan kirl/buffer hooks
+tabexp gaat nog nie helemaal goed als de regel over de scherm breedte heen komt
+	dit is verwant aan printen tijdens heartbeat van buffer ....
+		dat is weer verwant aan meerdere buffers (?)
+
+# als login shell:
+$ENV{PWD} werkt niet, (done ?) POSIX::getcwd ook niet:(
+
+return value van subs in tab expansie -- dit vereist recursive eval -- achterhaald (?)
+buffer_gram ook 'SYSTEM' geven -- done
+stub_commands heeft geen _quit functie -- done
+intel moet ok stringparse gebruiken -- done
+tabexp->s_hist is TODO -- done
+Help->help moet wat meer mogenlijkheden onderzoeken -- done
+aliases kunnen nog niet geconfigged worden -- done
+
+******************************
+**** wanted modifications ****
+******************************
+
+sigils !!
 
 Buffer->switch_char_table($tableObject)
-Monitor->watch (eventloop)
+Buffer->probe plugable maken
+Commands->usage
+FILE context afsplitsen van SYSTEM context voor tab_exp -- handig voor save file
 
-diverse vissen meer loskoppelen - meer wrappers
+history records opschonen i.e. formaat veranderen (again)
+maak van kirl echte subklasse ofzo
+hooks tussen kirl en buffer opschonen
+flush cache event
 
-tab expansie in multi line modus
-filters
-perl afvangen
+load buffer from file -- done
+alle defaults in profile.pd -- done -- allmost
+script from file -- done
+init block in de config file -- achterhaald/done
+print warning/error in ansi geel/rood - done
 
-probe plugable maken
-commands pluggable maken
+*************************
+**** wanted features ****
+*************************
 
+<TAB><TAB> => I feel lucky (kirlll)
+^g = ^golf == show number of chars
+
+ergens bijhouden of er stubs in gebruik zijn, soort status hash
+
+file globbing in dingen als "ls *" -- . en .. zijn 'echte' files -- ook regex modus
 set var command
+f_path_bin implementeren (?)
+tab expansie in multi line modus -- gerelateerd aan gebruik van stringparse bij expansie
+active modus switch in buffer => 'perl' afvangen in buffer en stdin vervangen door multi line modus
+auto indent
+heartbeat uit buffer
 
-load buffer
+zoidberg docs in Help als special -- zie contents beneden
+uninstall.sh
 
-export - nog niet getest
-source
-echo
+export - done
+source - done
+echo - done
+functie ^C herzien -- done
+monitor/event/plugin manager: Hermes -- working on it -- achterhaald
 
-^->object in tab expansie en parser
+***************
+**** Notes ****
+***************
 
-<<<<<<< TODO
+no_regex_but_glob testen
+
 =======
-f_path_bin
 
-Exec: doet het execcen op een fancy, overloadable manier
-Trog: split de pipeline, douw resultaat in Exec
-Crab: overload zoidberg, stub alle methods die niet fork-safe zijn
->>>>>>> 1.9
+voor release:
+
+release splitsen in modules en files -- done
+makefile tunen -- done
+versie nummer in modules - koppelen aan welkoms message -- done
+use - ~/.zoidberg -- done
+
+
+****************
+**** Vision ****
+****************
+
+Configgable Parser
+	parse all kinds of input
+		combine this with keybindings
+Flexible stream control
+	multiple choiche callback
+
+modular
+repeat after me MODULAR
+
+events zijn goed
+
+dingen als tab expansion zijn plugins
+dingen als monitor en een extra infobar ook
+zelfs netwerk moet een simpele plugin zijn
+zelfs pipes en jobs moeten plugin zijn -- zij het dat hier aanpassingen voor gedaan mogen worden
+history idem
+/mesg: ingebakken msn/icq functionaliteit?
+MOTZ::audio
+
+transperant plugin management
+	event en config aware
+	
+'pijltjes-syntax' (->iets->{dus}) is root syntax
+
+kirl plugin -- input methodes bijna identiek
+
+## Zoidberg Documentation
+
+  # Contents
+
+  0 Introduction
+  1 Release notes (oid)
+  2 Tour
+  3 Common configuration variables
+  4 Default syntax
+    4.1 Commands
+    4.2 Aliases
+    4.3 Perl
+    4.4 Methods
+    4.5 Pipes
+  5 Use of objects
+    5.1 Standard objects
+    5.2 Custom objects
+  6 Jobs and Screens
+  7 Communication
+  8 FAQ
+  9 Disclaimer and Copyright
+
