@@ -1,6 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 sub new {
 	my ($class, $zoid, $name) = @_;
@@ -19,29 +19,32 @@ sub init {}
 # some stubs #
 # ########## #
 
-sub parent {
-    my $self = shift;
-    return $self->{parent};
-}
+sub parent { $_[0]->{parent} }
 
-sub config {
-    my $self = shift;
-    return $self->{config};
-}
+sub config { $_[0]->{config} }
 
-# ########### #
-# event logic #
-# ########### #
+# #################### #
+# event and hook logic #
+# #################### #
+
+sub call {
+	my ($self, $event) = (shift, shift);
+	return $$self{parent}{events}{$event}->(@_)
+		if exists $$self{parent}{events}{$event};
+	return ();
+}
 
 sub broadcast {
 	my $self = shift;
 	$self->{parent}->broadcast(@_);
 }
 
-sub register_event { # DEPRECATED interface
-	my ($self, $event, $zoidname) = @_;
-	$zoidname ||= $self->{zoidname};
-	$self->{parent}{events}{$event} = ["->$zoidname->$event", $zoidname];
+sub register_event {
+	my ($self, $event, $method) = @_;
+	$method ||= $event;
+	$method = '->'.$$self{zoidname}.'->'.$method 
+		unless ref $method or $method =~ /^->/;
+	$$self{parent}{events}{$event} = [$method, $$self{zoidname}];
 }
 
 sub unregister_event { todo() }
@@ -56,20 +59,38 @@ sub unregister_event { todo() }
 # other stuff #
 # ########### #
 
-sub add_context {
-	my ($self, %context) = @_;
-	my $cname = delete($context{name}) || $$self{zoidname};
-	$self->{parent}{contexts}{$cname} = [\%context, $$self{zoidname}];
-	# ALERT this logic might change
+sub ask {
+	my ($self, $quest, $def) = @_;
+	$quest .= ($def =~ /^n$/i) ? ' [yN] '
+		: ($def =~ /^y$/i) ? ' [Yn] ' : " [$def] " if $def ;
+	my $ans = $self->call('readline', $quest);
+	return $ans =~ /y/i if $def =~ /^[ny]$/i;
+	$ans =~ s/^\s*|\s*$//g;
+	return length($ans) ? $ans : $def ;
 }
 
-sub help {
-	my $self = shift;
-	return "";
+sub add_context { # ALERT this logic might change
+	my ($self, %context) = @_;
+	my $cname = delete($context{name}) || $$self{zoidname};
+	my $fp = delete($context{from_package});
+	my $nw = delete($context{no_words});
+	for (values %context) { $_ = "->$$self{zoidname}->".$_ unless /^\W/ }
+	if ($fp) { # autoconnect
+		$self->can($_) and $context{$_} ||= "->$$self{zoidname}->$_"
+			for qw/word_list handler intel filter parser/;
+	}
+	for (qw/word_list filter/) { # stacks
+		$self->{parent}{contexts}{$_} = delete $context{$_}
+			if exists $context{$_};
+	}
+	if ($nw) { # no words
+		push @{$$self{parent}{no_words}}, $cname;
+	}
+	$self->{parent}{contexts}{$cname} = [\%context, $$self{zoidname}];
+	return $cname;
 }
 
 sub round_up {} # put shutdown sequence here -- like saving files etc.
-
 
 sub DESTROY {
 	my $self = shift;
@@ -126,33 +147,40 @@ or setting defaults here.
 
 These methods return a reference to the attributes by the same name.
 
+=item C<call($event, @args)>
+
+Call a hook (implemented as an event). Use this to glue plugins.
+
 =item C<broadcast($event_name, @_)>
 
 Broadcast an event to whoever might be listening.
 
-=item C<register_event($event_name)>
+=item C<register_event($event_name, $method)>
 
-Register for an event by the parent object. When the event occurs, the C<event()> method 
-will be called.
-
-DEPRECATED
+Register for an event by the parent object.
+When the event occurs, the method C<$method> will be called.
+C<$method> is optional and defaults to the event name.
+C<$method> can also be a CODE reference.
 
 =item C<unregister_event($event_name)>
 
 Unregister self for event C<$event_name>.
 
-DEPRECATED / TODO :S
+TODO
 
-=item C<help()>
+=item C<ask($question, $default)>
 
-Stub help function, to be overloaded. This method should return a string
-with B<dynamic> content for the zoidberg help system. Static help content
-should be formatted as a seperate pod file.
+Get interactive input. The default is optional.
+If the default is either 'Y' or 'N' a boolean value is returned.
 
 =item C<round_up()>
 
 Is called when the plugin is unloaded or when a sudden DESTROY occurs.
 To be overloaded, do things like saving files or closing sockets here.
+
+=item C<add_context(%config)>
+
+FIXME / see man zoiddevel
 
 =back
 

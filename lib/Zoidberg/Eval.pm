@@ -1,16 +1,14 @@
 package Zoidberg::Eval;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 use strict;
 use vars qw/$AUTOLOAD/;
 
 use Data::Dumper;
 use Zoidberg::Shell qw/:all/;
-use Zoidberg::Utils qw/:error :output :fs is_exec_in_path/;
+use Zoidberg::Utils qw/:error :output :fs/;
 require Env;
-
-our %_REFS; # stores refs to objects of this class for ipc use
 
 $| = 1;
 
@@ -41,12 +39,17 @@ sub _eval_block {
 
 sub _do_sh {
 	my ($self, $meta, @words) = @_;
-	_check_exec($words[0]) unless $$meta{_is_checked};
+	if ($words[0] =~ m|/|) {
+		error $words[0].': No such file or directory' unless -e $words[0];
+		error $words[0].': is a directory' if -d _;
+		error $words[0].': Permission denied' unless -x _;
+	}
 	debug 'going to run: ', join ', ', @words;
-#	if ($self->{shell}{round_up}) { system @words } # FIXME ugly use of this bit
-#	else { 
-	exec {$words[0]} @words 
-#}
+
+	# exec = exexvp which checks PATH allready
+	# the block syntax to force use of execvp, not shell for one argument list
+	exec {$words[0]} @words
+		or error $words[0].': command not found';
 }
 
 sub _do_cmd {
@@ -58,22 +61,8 @@ sub _do_cmd {
 	$self->{shell}{commands}{$cmd}->(@args);
 }
 
-sub _check_exec {
-	# arg 0 is executable when this sub doesn't die
-	debug "checking $_[0]";
-	if ($_[0] =~ m|/|) {
-		error $_[0].': No such file or directory' unless -e $_[0];
-		error $_[0].': is a directory' if -d $_[0];
-		error $_[0].': Permission denied' unless -x $_[0];
-	}
-	elsif (! is_exec_in_path($_[0])) { error $_[0].': command not found' }
-	debug 'approved';
-	return 1;
-}
-
 sub _do_perl {
 	my ($_Eval, $_Meta, $_Code) = @_;
-	$_Code = $_Eval->_dezoidify($_Code) if $_Meta->{dezoidify};
 	$_Code = $_Eval->_parse_opts($_Code, $_Meta->{opts});
 	debug 'going to eval perl code: '.$_Code;
 
@@ -100,18 +89,32 @@ sub _interpolate_magic_char {
 	return $string;
 }
 
+sub _parse_opts { # parse switches
+	my ($self, $string, $opts) = @_;
+	my %opts = map {($_ => 1)} split '', $opts;
+	debug 'options: ', \%opts;
+
+	$string = $self->_dezoidify($string) unless $opts{z};
+
+	if ($opts{g}) { $string = "\nwhile (<STDIN>) {\n\tif (eval {".$string."}) { print \$_; }\n}"; }
+	elsif ($opts{p}) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n\tprint \$_\n}"; }
+	elsif ($opts{n}) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n}"; }
+
+	$string = 'no strict; '.$string unless $opts{z};
+
+	return $string;
+}
+
 our $_Zoid_gram = {
 	tokens => [
 		[ qr/->/,   'ARR' ], # ARRow
 		[ qr/\xA3/, 'MCH' ], # Magic CHar
-		[ qr/[\$\@][A-Z][A-Z_\-\d]*/, '_SELF' ], # env var
+		[ qr/[\$\@][A-Za-z_][\w\-]*(?<!\-)/, '_SELF' ], # env var
 	],
 	quotes => { "'" => "'" }, # interpolate also between '"'
 	nests => {},
 	no_esc_rm => 1,
 };
-
-our @__res = qw/ARGV ENV SIG INC/;
 
 sub _dezoidify {
 	my ($self, $code) = @_;
@@ -129,7 +132,11 @@ sub _dezoidify {
 		if (! defined $n_code) { $n_code = $block }
 		elsif ($prev_token =~ /^([\@\$])(\w+)/) {
 			my ($s, $v) = ($1, $2);
-			if ($block =~ /^[\w\-]/ or grep {$v eq $_} @__res) { $n_code .= $s.$v.$block }
+			if (
+				$block =~ /^::/
+				or grep {$v eq $_} qw/_ ARGV ENV SIG INC/
+				or ( $v =~ /[a-z]/ and ! exists $ENV{$v} )
+			) { $n_code .= $s.$v.$block} # reserved or non-env var
 			elsif ($s eq '@' or $block =~ /^\[/) { # array
 				no strict 'refs';
 				unless (defined *{$v}{ARRAY} and @{$v}) {
@@ -158,27 +165,6 @@ sub _dezoidify {
 		goto LAST;
 	}
 	return $n_code;
-}
-
-sub _parse_opts { # parse switches
-	my ($self, $string, $opts) = @_;
-	my %opts;
-	if (! defined($opts) && -p STDIN) { # FIXME FIXME FIXME -p not allowed here
-		debug 'options undef && pipeline => default opt \'p\'';
-		%opts = (p => 1);
-	}
-	else { %opts = ( map {($_ => 1)} split '', $opts ) }
-	debug 'options: ', \%opts;
-	
-	if ($opts{g}) { $string = "\nwhile (<STDIN>) {\n\tif (eval {".$string."}) { print \$_; }\n}"; }
-	elsif ($opts{p}) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n\tprint \$_\n}"; }
-	elsif ($opts{n}) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n}"; }
-
-	# TODO if in pipeline set 'n' as default unless 'N'
-
-	$string = 'no strict; '.$string unless $opts{z};
-
-	return $string;
 }
 
 # ################# #

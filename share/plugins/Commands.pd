@@ -10,11 +10,13 @@ $VAR1 = {
 		command		false		fc
 		getopts		newgrp		pwd
 		read		true		umask
-		wait		set 		setenv
+		wait		set 		export
 		_delete_object	_load_object	_hide
-		_unhide		quit		source
-		alias		unalias		unset
+		_unhide		source
+		alias		unalias		
+		setenv		unsetenv
 
 		dirs		popd		pushd
+		help
 	/],
 }

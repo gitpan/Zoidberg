@@ -1,17 +1,85 @@
-Revision history for Zoidberg -- a modular perl shell
+Revision history for Zoidberg - a modular perl shell
 <http://zoidberg.sourceforge.net>
 
-0.42 Sa Jan 10
+0.50 Mon Apr 05
+        'this that time of the year again, time for a release
+
+     Tue Mar 30
+        - Added the notify_verbose setting after trying tcsh(1)
+
+     Fri Mar 26
+        Still on IRIX
+        - Changed $ENV{ZOIDREF} to $Zoidberg::CURRENT because of problems on irix :(
+	- Changed history to Log and made it compat with ReadLine
+
+     Wed Mar 24
+        Tested zoid on IRIX - thanks to Jorik Jonker for the account
+        - Made Storable an optional dependency because it's not included in
+
+     Tue Mar 16
+        - Made Contracter send a SIGPIPE if a pipeline ends, fixes some hangs
+	- Made shell() return true on succes
+	- Removed is_exec_in_path(), just let execvp(3) figure it out
+
+     Mon Mar 15
+        - Fixed some problems in the block_parser routine by adding a "parser"
+	context sub, also made "word_list" and "filter" context subs into stacks
+
+     Sat Mar 13
+        Tested on NetBSD - thanks to S.C.Sprong for the account
+        - Introduced $ENV{CLICOLOR} to switch colours on/off
+	- made Utils/FileSystem less disk usage intensive
+	- various small fixes in parsing
+	- Fixed a set of nasty bugs concerning errors of child processes
+	and both logic list handling and notification
+
+     Thu Mar 11
+        - Made intel understand the generic completion_function api
+	- Dropped Term::ANSIScreen in favour of a hardcoded hash with ansi codes
+
+     Sun Mar 07
+        - Removed Buffer plugin, replaced it by the ReadLine plugin
+	using Term::ReadLine::Zoid is recommended
+	- Removed Prompt plugin, replaced it by a new module called Env::PS1
+
+     Thu Jan 29
+     	Tested on OS X / Darwin, this resulted in two bug fixes
+	- Worked on a more sane job data struct
+
+     Mo Jan 26 2004
+        - Made Intel expand filenames after a ':' or 'VAR=', expand filenames in
+	perl code and expand environment variables in both perl and shell.
+	- Added diagram of the process flow to zoiddevel
+	- Cleaned up old stub code
+
+     Su Jan 25 2004
+        Items below all reported by Markus "Psh2" Peter (a.k.a Warp)
+        - Added small hack for darwin to the default zoidrc
+	- Fixed bug in History when history is not writable
+	- Dropped version numbers in Requires.pd because this forces people to 
+	install all dependencies up to date without necessity
+
+     Fr Jan 23 2004
+        - Made _dezoidify() behave a little more hybrid, environment variables
+	in lower case are also interpolated now
+	- Fixed some bugs with interpolating of variables and globs in the
+	tab expansion
+	- Added "appdir" action to build process
+
+     Fr Jan 16 2004
+        - Moved Zoidberg's build process to Module::Build
+
+0.42 Sa Jan 10 2004
         - Tested compat for 5.6.2, fixed a few oddities
 
-     Th Jan 08
+     Th Jan 08 2004
         - Changed parsing order for word expansions so $_ / $shell{topic}
 	now also works for shell context
 
-     We Jan 07
+     We Jan 07 2004
         - Aliases can now be recursive
 
-     Mo Jan 05
+     Mo Jan 05 2004
         - Added a filter layer before context parsing
 
      Sa Jan 03 2004

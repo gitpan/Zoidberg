@@ -1,6 +1,6 @@
 package Zoidberg::DispatchTable;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 use strict;
 use Zoidberg::Utils qw/debug bug error/;
@@ -67,8 +67,8 @@ sub STORE {
 
 sub FETCH {
 	my ($self, $key) = @_;
-	if ($self->EXISTS($key)) {
-		$self->[0]{$key}[-1] = $self->convert($self->[0]{$key}[-1])
+	if ( exists $$self[0]{$key} and scalar @{$$self[0]{$key}} ) {
+		$$self[0]{$key}[-1] = $self->convert($self->[0]{$key}[-1])
 			unless ref $self->[0]{$key}[-1];
 		return $self->[0]{$key}[-1];
 	}
@@ -159,7 +159,7 @@ sub NEXTKEY  {
 sub stack {
 	my ($table, $key, $use_tag) = @_;
 	my $self = tied %$table;
-	return undef unless exists $$self[0]{$key};
+	return () unless exists $$self[0]{$key};
 	for (@{$self->[0]{$key}}) { $_ = $self->convert($_) unless ref $_ }
 	return map [ $$self[0]{$key}[$_], $$self[1]{$key}[$_] ], (0..$#{$$self[0]{$key}})
 		if $use_tag;

@@ -50,7 +50,7 @@ Does the same as B<--exec> but this is bound to change.
 
 Print a help message and exits.
 
-=item B<-I>I<dir>[,I<dir>]
+=item B<-I>I<dir>[,I<dir>, ...]
 
 The specified directories are added to the module search path  
 C<@INC>.
@@ -64,6 +64,15 @@ supplied.
 
 Force login behavior, this will reset your current working directory.
 This variable is also available to plugins and scripts, which might act on it.
+
+=item B<-o> I<setting>[,I<setting>, ...]
+
+=item B<-o> I<setting>=I<value>
+
+=item B<+o> I<setting>[,I<setting>, ...]
+
+Set (B<-o>) or unset (B<+o>) one or more settings.
+These can overrule other commandline switches.
 
 =item B<-s>, B<--stdin>
 
@@ -110,6 +119,8 @@ some programs seem to expect $SHELL to point to a POSIX compliant shell.
 
 B<zoid> also uses $XDG_CACHE_HOME to define the directory to write temporary files,
 it defaults to F<$HOME/.cache>.
+
+To switch off ansi colours on the terminal set $CLICOLOR to 0 (null).
 
 =head1 FILES
 
@@ -165,6 +176,6 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See either
 the GNU General Public License or the Artistic License for
 more details.
 
-L<http://www.perl.com/language/misc/Artistic.html>
-L<http://www.gnu.org/copyleft/gpl.html>
+See L<http://www.perl.com/language/misc/Artistic.html>
+and L<http://www.gnu.org/copyleft/gpl.html>
 

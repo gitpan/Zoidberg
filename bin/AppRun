@@ -1,15 +1,11 @@
+#!/bin/sh
 
-use strict;
+zoid=${0%/*}/zoid
 
-# find appdir
-my $zoid = $0;
-$zoid =~ s/AppRun$/zoid/;
+if [ $DISPLAY ]
+then exec xterm -bg black -fg white -e $zoid "$@"
+else exec $zoid "$@"
+fi
 
-# exec terminal
-exec join ' ', $TERM, $zoid, @ARGV
-	if $ENV{DISPLAY};
-
-# if no display _or_ exec failed
-exec join ' ', $zoid, @ARGV;
-
-die "Could not exec zoid !?\n";
+echo "Could not exec: $zoid $@" 1>&2
+exit 1

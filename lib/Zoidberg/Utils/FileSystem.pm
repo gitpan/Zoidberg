@@ -1,23 +1,25 @@
 package Zoidberg::Utils::FileSystem;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 use strict;
 #use File::Spec;
 use Carp;
 use Env qw/@PATH/;
-use Storable qw(lock_store lock_retrieve);
 use File::Spec; # TODO make more use of this lib
-use Zoidberg::Utils::Output qw/debug/;
+use Zoidberg::Utils::Output qw/debug message/;
 use Exporter::Tidy 
-	default => [qw/abs_path list_path get_dir unique_file is_exec_in_path/],
+	default => [qw/abs_path list_path list_dir unique_file/],
 	engine  => [qw/index_path wipe_cache read_cache save_cache/];
 
-our $cache = {};
-our $cache_time = 300; # 5x60 -- 5 minutes
+our $cache = { VERSION => $VERSION };
+our $cache_atime = 300; # 5x60 -- 5 minutes
 our $dump_file = '';
 
 our $DEVNULL = File::Spec->devnull();
+
+our $_storable = eval 'use Storable qw(lock_store lock_retrieve); 1';
+warn "No Storable available, dir listing cache disabled\n" unless $_storable;
 
 ## Basic file routines ##
 
@@ -52,15 +54,18 @@ sub abs_path {
 	return $string;
 }
 
-sub get_dir {
+sub list_dir {
 	my $dir = shift || $ENV{PWD};
-	unless ($cache->{dirs}{$dir}) { $dir = abs_path($dir); }
+	$dir =~ s#/$## unless $dir eq '/';
+	$dir = abs_path($dir) unless $$cache{dirs}{$dir};
 	
 	my $mtime = (stat($dir))[9];
-	read_dir($dir, @_) unless $cache->{dirs}{$dir} && ($mtime == $cache->{dirs}{$dir}{mtime});
-	$cache->{dirs}{$dir}{cache_time} = time;
-	
-	return $cache->{dirs}{$dir};
+	return @{read_dir($dir, @_)->{items}}
+		unless exists $$cache{dirs}{$dir}
+		and $mtime == $$cache{dirs}{$dir}{mtime};
+
+	$$cache{dirs}{$dir}{cache_atime} = time;
+	return @{$$cache{dirs}{$dir}{items}};
 }
 
 sub read_dir {
@@ -68,45 +73,21 @@ sub read_dir {
 	debug "(re-) scanning directory: $dir";
 	if (-e $dir) {
 		my $no_wipe = shift || $cache->{dirs}{$dir}{no_wipe};
-		$cache->{dirs}{$dir} = {
-			'path' => $dir,
-			'files' => [],
-			'dirs' => [],
-			'mtime' => (stat($dir))[9],
-			'no_wipe' => $no_wipe,
+		$$cache{dirs}{$dir} = {
+			path => $dir,
+			mtime => (stat($dir))[9],
+			cache_atime => time,
+			no_wipe => $no_wipe,
 		};
-		$cache->{dirs}{$dir}{path} =~ s#/?$#/#;
-		opendir DIR, $dir;
-		my $item;
-		while ($item = readdir DIR) {
-			next if $item =~ /^\.{1,2}$/;
-			if (-d $dir.'/'.$item  || -d readlink($dir.'/'.$item)) { 
-				push @{$cache->{dirs}{$dir}{dirs}}, $item;
-			}
-			else { push @{$cache->{dirs}{$dir}{files}}, $item }
-		}
+		opendir DIR, $dir or croak "could not open dir: $dir";
+		$$cache{dirs}{$dir}{items} = [ grep {$_ !~ /^\.{1,2}$/} readdir DIR ];
 		closedir DIR;
-		$cache->{dirs}{$dir}{cache_time} = time;
 	}
-	else { croak "no such dir $dir" }
-	return $cache->{dirs}{$dir};
+	else { croak "no such dir: $dir" }
+	return $$cache{dirs}{$dir};
 }
 
-sub list_path { return map { @{&get_dir($_)->{files}} } grep { -d $_ } @PATH }
-
-sub is_exec_in_path {
-	my $cmd = shift;
-	my $file;
-	for my $dir (@PATH) {
-		next unless -d $dir;
-		($file) = grep { -x $_ }
-			map  { $dir.'/'.$_ }
-			grep { $_ eq $cmd  }
-			@{&get_dir($dir)->{files}};
-		return $file if $file;
-	}
-	return 0;
-}
+sub list_path { return map list_dir($_), grep {-d $_} @PATH }
 
 sub unique_file {
 	my $string = pop || "untitledXXXX";
@@ -130,24 +111,26 @@ sub unique_file {
 
 ## Engine routines ##
 
-sub index_path { foreach my $dir (grep {-e $_} @PATH) { read_dir($dir, 1) } }
+sub index_path { read_dir($_, 1) for grep {-d $_} @PATH }
 
 sub wipe_cache { 
-	foreach my $dir (keys %{$cache->{dirs}})  {
-		unless ($cache->{dirs}{$dir}{no_wipe}) {
-			my $diff = time - $cache->{dirs}{$dir}{cache_time};
-			if ($diff > $cache_time) { delete ${$cache->{dirs}}{$dir} }
-		}
+	foreach my $dir (keys %{$$cache{dirs}})  {
+		next if $$cache{dirs}{$dir}{no_wipe};
+		my $diff = time - $$cache{dirs}{$dir}{cache_atime};
+		delete $$cache{dirs}{$dir} if $diff > $cache_atime;
 	}
 }
 
 sub read_cache {
 	my $file = _shift_file(@_);
-	if (-s $file) { $cache = lock_retrieve($file); } # _our_ $cache
+	return unless $_storable;
+	eval { $cache = lock_retrieve($file) } if -s $file;
+	$cache = { VERSION => $VERSION } unless $$cache{VERSION} eq $VERSION;
 }
 
 sub save_cache {
 	my $file = _shift_file(@_);
+	return unless $_storable;
 	lock_store($cache, $file);
 }
 
@@ -189,28 +172,17 @@ By default none, potentially all functions listed below.
 Returns the absolute path for possible relative C<$file>
 C<$reference> is optional an defaults to C<$ENV{PWD}>
 
-=item C<get_dir($dir)>
+=item C<list_dir($dir)>
 
-Returns contents of $dir as a hash ref containing :
-	'files' => [@files],
-	'dirs' => [@dirs],
-Array files contains everything that ain't a dir.
+Returns list of content of dir.
+This is B<not> simply an alias for C<readdir> but uses caching.
 
 =item C<list_path()>
 
-Returns a list of all the files found in directories listed in C<$ENV{PATH}>.
-Non existing directories in C<$ENV{PATH}> are silently ignored.
-
-=item C<is_exec_in_path($cmd)>
-
-Returns absolute path if C<$cmd> exists in a directory listed in C<$ENV{PATH}>
-and is executable. If C<$cmd> can't be found or isn't executable undef is returned.
+Returns a list of all items found in directories listed in C<$ENV{PATH}>,
+non existing directories in C<$ENV{PATH}> are silently ignored.
 
 =back
-
-=head1 TODO
-
-This module could benefit from using C<tie()>.
 
 =head1 AUTHOR
 

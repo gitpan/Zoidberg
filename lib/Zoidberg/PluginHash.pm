@@ -1,9 +1,9 @@
 package Zoidberg::PluginHash;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 use strict;
-use Zoidberg::Utils qw/:error read_file merge_hash get_dir/;
+use Zoidberg::Utils qw/:default read_file merge_hash list_dir/;
 use Zoidberg::DispatchTable qw/wipe/;
 use UNIVERSAL qw/isa/;
 
@@ -29,15 +29,8 @@ sub FETCH {
 		error "No such object \'$key\' as requested by $caller[1] line $caller[2]";
 	}
 
-	$self->load($key);
+	$self->load($key) or return sub { undef };
 	return $self->[0]{$key};
-
-#	if (grep {lc($_) eq lc($name)} @Zoidberg::core_objects) { # use stub
-#		my $pack = 'Zoidberg::stub::'.lc($name);
-#		$self->{objects}{$name} = $pack->new($self);
-#		return $self->{objects}{$name};
-#	}
-
 }
 
 sub STORE {
@@ -55,7 +48,7 @@ sub STORE {
 	$self->[2]{settings}{$name} = merge_hash(
 		$$data{config},
 		$self->[2]{settings}{$name}
-	);
+	) || {};
 	delete $$data{config};
 	
 	# commands
@@ -103,8 +96,7 @@ sub DELETE {
 		and isa $self->[0]{$key}, 'Zoidberg::Fish';
 	my $re = delete $self->[1]{$key};
 	$$re{object} = delete $self->[0]{$key};
-	$$re{$_} = wipe($self->[2]{$_}, $key)
-		for qw/events commands/;
+	$$re{$_} = wipe($self->[2]{$_}, $key) for qw/events commands/;
 	return $re;
 }
 
@@ -118,21 +110,23 @@ sub hash {
 	$self->[1] = {};
 	for my $dir (map "$_/plugins", @{$self->[2]{settings}{data_dirs}}) {
 		next unless -d $dir;
-		for (@{get_dir($dir)->{files}}) {
-			/^(\w+)/ || next;
-			next if exists $self->[1]{$1};
-			eval { $self->STORE($1, "$dir/$_") };
-			complain if $@;
-		}
-		for (@{get_dir($dir)->{dirs}}) {
-			/^(\w+)/ || next;
-			my ($conf) = grep /^PluginConf/, @{get_dir("$dir/$_")->{files}};
-			next unless $conf and ! exists $self->[1]{$1};
-			unshift @INC, "$dir/$_";
-			unshift @{$self->[2]{settings}{data_dirs}}, "$dir/$_/data"
-				if -d "$dir/$_/data";
-			eval { $self->STORE($1, "$dir/$_/$conf") };
-			complain if $@;
+		for (list_dir($dir)) {
+			if (-d "$dir/$_") {
+				/^(\w+)/ || next;
+				my ($conf) = grep /^PluginConf/, list_dir("$dir/$_");
+				next unless $conf and ! exists $self->[1]{$1};
+				unshift @INC, "$dir/$_";
+				unshift @{$self->[2]{settings}{data_dirs}}, "$dir/$_/data"
+					if -d "$dir/$_/data";
+				eval { $self->STORE($1, "$dir/$_/$conf") };
+				complain if $@;
+			}
+			else {
+				/^(\w+)/ || next;
+				next if exists $self->[1]{$1};
+				eval { $self->STORE($1, "$dir/$_") };
+				complain if $@;
+			}
 		}
 	}
 }
@@ -152,32 +146,31 @@ sub load {
 		};
 		return $self->[0]{$zoidname};
 	}
-	
-	#$self->require($class);
-	eval "require $class";
-	error "Failed to load class: $class ($@)" if $@;
 
-	if ($class->isa('Zoidberg::Fish')) {
-		$self->[0]{$zoidname} = $class->new($self->[2], $zoidname);
-		$self->[0]{$zoidname}->init(@args);
+	eval "require $class" and eval {
+		if ($class->isa('Zoidberg::Fish')) {
+			$self->[0]{$zoidname} = $class->new($self->[2], $zoidname);
+			$self->[0]{$zoidname}->init(@args);
+		}
+		elsif ($class->can('new')) { $self->[0]{$zoidname} = $class->new(@args) }
+		else { error "Module $class doesn't seem to be Object Oriented" }
+	};
+	if ($@) {
+		$@ =~ s/\n$/ /;
+		complain "Failed to load class: $class ($@)\nDisabling plugin: $zoidname";
+		$self->DELETE($zoidname);
+		return undef;
 	}
-	elsif ($class->can('new')) { $self->[0]{$zoidname} = $class->new(@args) }
-	else { error "Module $class doesn't seem to be Object Oriented" }
-	return $self->[0]{$zoidname};
+	else { return $self->[0]{$zoidname} }
 }
 
-=cut
-
-sub require {
-	my $class = pop;
-	my $file = "$class.pm";
-	$file =~ s{::}{/}g;
-	unless ($INC{$file}) {
-		require $file || error "Failed to include \"$file\"";
+sub round_up {
+	my $self = shift;
+	for (keys %{$$self[0]}) {
+		$$self[0]{$_}->round_up(@_)
+			if $$self[0]{$_}->isa('Zoidberg::Fish');
 	}
 }
-
-=cut 
 
 1;
 
@@ -192,7 +185,7 @@ Zoidberg::PluginHash - magic plugin loader
 	use Zoidberg::PluginHash;
 	my %plugins;
 	tie %plugins, q/Zoidberg::PluginHash/, $parent;
-	my $input = $plugins{Buffer}->get_string();
+	$plugins{foo}->bar();
 
 =head1 DESCRIPTION
 

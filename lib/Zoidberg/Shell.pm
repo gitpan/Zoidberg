@@ -1,6 +1,6 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -10,10 +10,11 @@ use Exporter::Tidy
 	other	=> [qw/alias unalias set setting source/];
 use UNIVERSAL qw/isa/;
 
-sub new { return $ENV{ZOIDREF} }
-# TODO unless ref($ENV{ZOIDREF}) start ipc
+sub new { return $Zoidberg::CURRENT }
 
-sub _self { (isa $_[0], __PACKAGE__) ? shift : $ENV{ZOIDREF} }
+sub current { return $Zoidberg::CURRENT }
+
+sub _self { (isa $_[0], __PACKAGE__) ? shift : $Zoidberg::CURRENT }
 
 # ################ #
 # Parser interface #
@@ -29,16 +30,17 @@ sub AUTOLOAD {
 	goto \&shell;
 }
 
-sub shell {
+sub shell { # FIXME FIXME should not return after ^Z
 	my $self = &_self;
 	my $pipe = ($_[0] =~ /^-\||\|-$/) ? shift : undef ;
 	todo 'pipeline syntax' if $pipe;
-	my $c = defined wantarray;
+	my $c = wantarray;
 	my @re;
-	if (grep {ref $_} @_) { @re = $self->shell_list({capture => $c}, @_) }
-	elsif (@_ > 1) { @re = $self->shell_list({capture => $c}, \@_) }
-	else { @re = $self->shell_string({capture => $c}, @_) }
-	return ! $c ? undef : wantarray ? (map {chomp; $_} @re) : join('', @re);
+	if (grep {ref $_} @_) { @re = $self->shell_list({capture => $c}, @_)   }
+	elsif (@_ > 1)        { @re = $self->shell_list({capture => $c}, \@_)  }
+	else                  { @re = $self->shell_string({capture => $c}, @_) }
+	$@ = $$self{error} if $$self{error};
+	return $c ? (map {chomp; $_} @re) : $@ ? 0 : 1 ;
 }
 
 sub system {
@@ -91,13 +93,13 @@ sub setting {
 
 sub source {
 	my $self = &_self;
-	local $ENV{ZOIDREF} = $self;
-	for (@_) {
-		my $file = abs_path($_);
+	local $Zoidberg::CURRENT = $self;
+	for my $file (@_) {
+		my $file = abs_path($file);
 		error "source: no such file: $file" unless -f $file;
 		debug "going to source: $file";
 		# FIXME more intelligent behaviour -- see bash man page
-		eval q{package Main; do $file; die $@ if $@ };
+		eval q{package Main; do $file; error $@ if $@ };
 		# FIXME wipe Main
 		complain if $@;
 	}
@@ -114,7 +116,7 @@ Zoidberg::Shell - a scripting interface to the Zoidberg shell
 =head1 SYNOPSIS
 
         use Zoidberg::Shell;
-	my $shell = Zoidberg::Shell->new();
+	my $shell = Zoidberg::Shell->current();
        
 	# Order parent shell to 'cd' to /usr
 	# If you let your shell do 'cd' that is _NOT_ the same as doing 'chdir'
@@ -158,8 +160,14 @@ B<Be aware:> All commands are executed in the B<parent> shell environment.
 
 =item C<new()>
 
-Simple constructor. Doesn't actually construct a new object but just returns
-the current L<Zoidberg> object, which in turn inherits from this package.
+TODO wrapper to create a new Zoidberg object
+
+=item C<current()>
+
+Returns the current L<Zoidberg> object, which in turn inherits from this package,
+or undef when there is no such object.
+
+TODO should also do ipc
 
 =item C<system($command, @_)>
 

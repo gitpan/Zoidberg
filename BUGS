@@ -22,4 +22,4 @@ In theory 'do filename' should create a clean namespace 'main' for each script, 
 
 * The Buffer tends to overwrite the last line if it didn't end with a "\n"
 
-* when expanding subroutines of class Zoidberg they get wrong postfixes
+* aliases can't contain pipelines etc. ... yet

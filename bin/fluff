@@ -1,3 +1,4 @@
+#!/usr/bin/perl
 
 # ############################################################## #
 # Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.    #
@@ -13,7 +14,9 @@
 
 use strict;
 use Cwd qw/cwd/;
-our $VERSION = '0.42';
+our $VERSION = '0.50';
+
+my @inc = (); # You can list custom includes here
 
 # ############### #
 # set environment #
@@ -24,10 +27,11 @@ $ENV{USER} ||= $user_info[0];
 $ENV{HOME} ||= $user_info[7];
 $ENV{ZOID} = $0; # _Don't_ change this to ENV{SHELL} !
 
-# ########## #
-# Parse ARGV #
-# ########## #
-my %args = ();
+# ########### #
+# Get Options #
+# ########### #
+
+my (%settings, %args);
 my %opts = (
 	# name	=> [char, expect_arg_bit ]
 	'help'		=> ['h'],
@@ -49,25 +53,23 @@ my %opts = (
 	#     diagnostic output. This is very common. Examples: ci(1), co(1), make(1).
 	#
 );
-my %conf;
-my @conf_opts = qw/data-dirs rcfiles cache-dir/; 
-	# FIXME undocumented options -- see Zoidberg::Config
 
-while ((@ARGV) && ($ARGV[0] =~ /^-/)) {
+while ((@ARGV) && ($ARGV[0] =~ /^[+\-]/)) {
 	my $opt = shift @ARGV;
 	if ($opt =~ /^--?$/) { last; }
 	# specials
 	elsif ($opt =~ s/^-I//) { $args{inc} .= ($args{inc} ? ',' : '').$opt }
 	elsif ($opt =~ /^-D(.+)/) { no strict 'refs'; ${$1.'::DEBUG'}++ }
+	elsif ($opt =~ /^([+\-])o/) {
+		my $arg = shift @ARGV;
+		complain($opt, 2) unless defined $arg;
+		if ($1 eq '+') { $settings{$_} = 0 for split ',', $arg }
+		elsif ($arg =~ s/^(\w+)=//) { $settings{$1} = $arg }
+		else { $settings{$_} = 1 for split ',', $arg }
+	}
 	# default
 	elsif ($opt =~ s/^--([\w-]+)(?:=['"]?(.*)['"]?)?/$1/) {
-		if (grep {$opt eq $_} @conf_opts) {
-			my $arg = $2 || shift @ARGV;
-			complain('--'.$opt, 2) unless defined $arg;
-			$opt =~ s/-/_/g;
-			$conf{$opt} .= ( $conf{$opt} ? ':' : '' ) . $arg;
-		}
-		elsif (exists $opts{$opt}) {
+		if (exists $opts{$opt}) {
 			if ($opts{$opt}[1]) { 
 				my $arg = $2 || shift @ARGV;
 				complain('--'.$opt, 2) unless defined $arg;
@@ -93,48 +95,76 @@ while ((@ARGV) && ($ARGV[0] =~ /^-/)) {
 	else { complain($opt) }
 }
 
-# parse includes
-my $cwd = cwd;
-my @inc = split /\,/, $args{inc};
-$0 =~ s!(.*/)!!;
-if (defined $1) {
-	$Zoidberg::Config::ScriptDir = $1;
-	push @inc, "$1/lib" if -d "$1/lib";
-}
-for (grep {defined $_} @inc, $Zoidberg::Config::ScriptDir) { 
-	$_ = "$cwd/$_" unless m!^/!
-}
-unshift @INC, @inc;
-
-# load some packages - force runtime eval to get includes right
-for (qw/Zoidberg Zoidberg::Config Zoidberg::Utils/) {
-	eval "require $_";
-	die $@ if $@;
-}
-Zoidberg::Utils->import(':output');
-
-$conf{rcfiles} = $args{rcfile} if $args{rcfile};
-$Zoidberg::Config::settings{cache_dir} = $conf{cache_dir} if $conf{cache_dir};
-for (qw/data_dirs rcfiles/) {
-	next unless $conf{$_};
-	$Zoidberg::Config::settings{$_} = [ split /:/, $conf{$_} ];
-}
-$Zoidberg::Config::settings{rcfiles} = [] if $args{norc};
-
-if ($args{help} || $args{usage}) {
+if ($args{help} || $args{usage}) { # pre-emptive #1
 	print (<DATA>);
 	exit 0;
 }
-elsif ($args{version}) {
+
+# ############# #
+# Load includes #
+# ############# #
+
+my $cwd = cwd;
+
+# fix environment
+$args{login} = 1 unless $ENV{PWD}; # FIXME a better check ?
+if ($args{login}) {
+	$ENV{LOGNAME} = $ENV{USER} = $user_info[0];
+	$ENV{HOME} = $user_info[7];
+	$ENV{PWD} = $ENV{HOME} || '/';
+	chdir $ENV{PWD} ;
+}
+else { $ENV{PWD} = $cwd }
+
+# parse includes
+push @inc, split /\,/, $args{inc};
+
+$0 =~ s!(.*/)!!;
+if (defined $1) {
+	$Zoidberg::_base_dir = $1;
+	push @inc, "$1/lib" if -d "$1/lib";
+}
+else { $Zoidberg::_base_dir = '' }
+
+for (grep @inc, $Zoidberg::_base_dir) {
+	next if m!^/!;
+	$_ = defined($_) ? "$cwd/$_" : $cwd
+}
+
+unshift @INC, @inc;
+
+# load Zoidberg.pm
+eval "require Zoidberg" or die $@;
+
+if ($args{version}) { # pre-emptive #2
 	print "zoid $VERSION\n$Zoidberg::LONG_VERSION\n";
 	exit 0;
 }
-elsif ($args{config}) {
-	while ( my ($k,$v) = each %Zoidberg::Config::settings) {
-		print $k, ' = ', ref($v) ? join(', ', @$v) : $v, "\n";
+
+# ############## #
+# Parse settings #
+# ############## #
+
+$settings{rcfiles} = $args{rcfile} if defined $args{rcfile};
+$settings{$_} = [ split /:/, $settings{$_} ]
+	for grep {defined $settings{$_}} qw/data_dirs rcfiles/;
+$settings{rcfiles} = [] if $args{norc};
+for (qw/verbose debug login/) {
+	$settings{$_} = $args{$_} unless defined $settings{$_};
+}
+
+if ($args{config}) { # pre-emptive #3
+	%settings = (%Zoidberg::_settings, %settings);
+	while ( my ($k,$v) = each %settings) {
+		next unless defined $v;
+		print $k, ' = ', ref($v) ? join(', ', @$v) : $v, "\n"
 	}
 	exit 0;
 }
+
+# ################## #
+# prepare for launch #
+# ################## #
 
 my $exec_string = $args{exec} || $args{command} || '';
 
@@ -147,20 +177,6 @@ elsif (!@ARGV && !$exec_string && !$args{stdin}) {
 	$interact = (-t STDIN) && (-t STDOUT); 
 }
 else { $interact = 0; }
-#print "debug: interact: $interact, interact_opt: $interact_opt, string: $exec_string\n";
-
-# ################## #
-# prepare for launch #
-# ################## #
-
-# check for login shell
-$args{login} = 1 unless $ENV{PWD};
-if ($args{login}) {
-	$ENV{USER} = $user_info[0];
-	$ENV{HOME} = $user_info[7];
-	$ENV{PWD} = $ENV{HOME} || '/';
-	chdir $ENV{PWD} ;
-}
 
 # ############## #
 # AND Lift-off ! #
@@ -168,7 +184,7 @@ if ($args{login}) {
 
 my $cube = Zoidberg->new( {
 	settings => {
-		login       => $args{login},
+		%settings,
 		interactive => $interact,
 		output => {
 			( $interact ? () : (
@@ -176,12 +192,8 @@ my $cube = Zoidberg->new( {
 				warning => 'mute',
 			) ),
 		},
-		verbose => $args{verbose},
-		debug   => $args{debug},
 	}
 } );
-
-$cube->source( grep {-f $_} @{$cube->{settings}{rcfiles}}, @ARGV );
 
 if ($exec_string) {
 #	if ($args{command}) { $cube->{ipc}->do($exec_string) }
@@ -189,6 +201,8 @@ if ($exec_string) {
 		$cube->shell_string($exec_string)
 #	}
 }
+
+$cube->source($_) for @ARGV;
 
 if ( $args{stdin} || -p STDIN || (!$interact && !$exec_string) ) {
 	while (<STDIN>) { $cube->shell_string($_) }

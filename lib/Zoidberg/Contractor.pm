@@ -1,11 +1,11 @@
 package Zoidberg::Contractor;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 use strict;
 use POSIX ();
 use Config;
-use Zoidberg::Utils qw/:error :output/;
+use Zoidberg::Utils;
 use Zoidberg::Eval;
 
 sub new {
@@ -23,9 +23,8 @@ sub shell_init {
 	my $self = shift;
 	bug 'Contractor can\'t live without a shell' unless $$self{shell};
 
-	## add some commands and events
+	## add some commands
 	$self->{shell}{commands}{$_}   = $_  for qw/fg bg kill jobs/;
-	$self->{shell}{events}{postcmd} = '->reap_jobs';
 
 	## jobs stuff
 	$self->{jobs} = [];
@@ -43,7 +42,7 @@ sub shell_init {
 			# not using constants to prevent namespace pollution
 		}
 		# ignore interactive and job control signals
-		$SIG{$_} = 'IGNORE' for qw/INT QUIT TSTP TTIN TTOU CHLD/;
+		$SIG{$_} = 'IGNORE' for qw/INT QUIT TSTP TTIN TTOU/;
 		# Put ourselves in our own process group, just to be sure.
 		#$self->{pgid} = $$;
 		#POSIX::setpgid(0, $self->{pgid}); # fails for login shell
@@ -65,6 +64,7 @@ sub shell_list {
 
 	return $$self{shell}{fg_job}->shell_list($meta, @list)
 		if $$self{shell}{fg_job} && $self ne $$self{shell}{fg_job};
+	my $save_fg_job = $$self{shell}{fg_job}; # could be ubdef
 
 	unless (ref($meta) eq 'HASH' and @list) { # wasn't really meta
 		unshift @list, $meta;
@@ -76,33 +76,34 @@ sub shell_list {
 	my ($prev_sign, @chunk) = ('', $self->_next_chunk);
 	%{$chunk[0][0][0]} = (%{$chunk[0][0][0]}, %$meta) if defined $meta;
 	while (@chunk) { # @chunk = pipe, sign
-		if (
-			defined($self->{error}) 
-			? ( $prev_sign eq 'AND' )
-			: ( $prev_sign eq 'OR'  )
-		) {
-			debug 'skipping chunk ', $chunk[0];
-			$prev_sign = $chunk[1] 
-				if grep {$_ eq $chunk[1]} qw/EOS EOL BGS/;
+		# mind that logic grouping for AND and OR isn't the same, OR is stronger
+		if ($$self{shell}{error} ? ($prev_sign eq 'AND') : ($prev_sign eq 'OR')) {
+			my $i;
+			++$i and @chunk = $self->_next_chunk
+				while @chunk and ! grep {$_ eq $chunk[1]} qw/EOL EOS BGS OR/;
+			$prev_sign = $chunk[1];
+			debug "skipped $i chunks";
 		}
 		else {
-			debug 'doing chunk ', $chunk[0];
+			debug 'going to do chunk: ', $chunk[0];
 			$prev_sign = $chunk[1];
 			if (@{$chunk[0]}) {
 				@re = Zoidberg::Job->exec(
 					boss => $self,
 					tree => $chunk[0],
 					bg   => $chunk[1] eq 'BGS', );
-				$$self{shell}->broadcast('postcmd');
+				$$self{shell}->broadcast('envupdate');
 			}
 		}
 		@chunk = $self->_next_chunk;
 	}
+
+	$$self{shell}{fg_job} = $save_fg_job;
 	return @re;
 }
 
 sub _next_chunk {
-	my $self = shift;
+	my ($self, $skip) = @_;
 	my @r;
 	my $ref = $$self{queue};
 	unless (@$ref) {
@@ -111,7 +112,7 @@ sub _next_chunk {
 	}
 	while ( @$ref && ! grep {$_ eq $$ref[0]} qw/AND OR EOS EOL BGS/ ) {
 		my $b = shift @$ref;
-		$b = ref($b) ? $$self{shell}->parse_block($b, $$self{queue}) : $b;
+		$b = (!$skip && ref $b) ? $$self{shell}->parse_block($b, $$self{queue}) : $b;
 		push @r, $b if defined $b;
 	}
 	my $sign = @$ref ? shift @$ref : '' ;
@@ -124,57 +125,53 @@ sub _next_chunk {
 
 sub jobs { 
 	my $self = shift;
-	my $j = scalar(@_) ? \@_ : $self->{jobs};
-	$_->print_status for grep {$_->{bg} || $_->{stopped}} @$j;
+	my $j = @_ ? \@_ : $self->{jobs};
+	if (@$j) { output $_->status_string for sort {$$a{id} <=> $$b{id}} @$j }
+	else { message "No jobs" } # message won't show in pipeline
 }
 
 sub bg {
 	my ($self, $id) = @_;
-	my $j = defined($id)
-		? $self->_job_by_spec($id)
-		: $self->_current_job;
-
-	error 'No such job'.($id ? ": $id" : '') unless ref $j;
+	my $j = $self->_job_by_spec($id)
+		or error 'No such job'.($id ? ": $id" : '');
+	debug "putting bg: $$j{id} == $j";
 	$j->put_bg;
 }
 
 sub fg {
 	my ($self, $id) = @_;
-	my $j = defined($id)
-		? $self->_job_by_spec($id)
-		: $self->_current_job;
-
-	error 'No such job'.($id ? ": $id" : '') unless ref $j;
+	my $j = $self->_job_by_spec($id)
+		or error 'No such job'.($id ? ": $id" : '');
+	debug "putting fg: $$j{id} == $j";
 	$j->put_fg;
 }
 
+# from bash-2.05/builtins/kill.def:
+# kill [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspec]
+# Send the processes named by PID (or JOB) the signal SIGSPEC.  If
+# SIGSPEC is not present, then SIGTERM is assumed.  An argument of `-l'
+# lists the signal names; if arguments follow `-l' they are assumed to
+# be signal numbers for which names should be listed.  Kill is a shell
+# builtin for two reasons: it allows job IDs to be used instead of
+# process IDs, and, if you have reached the limit on processes that
+# you can create, you don't have to start a process to kill another one.
+
+# Notice that POSIX specifies another list format then the one bash uses
+
 sub kill {
 	my $self = shift;
-	# from bash-2.05/builtins/kill.def:
-	# kill [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspec]
-	# Send the processes named by PID (or JOB) the signal SIGSPEC.  If
-	# SIGSPEC is not present, then SIGTERM is assumed.  An argument of `-l'
-	# lists the signal names; if arguments follow `-l' they are assumed to
-	# be signal numbers for which names should be listed.  Kill is a shell
-	# builtin for two reasons: it allows job IDs to be used instead of
-	# process IDs, and, if you have reached the limit on processes that
-	# you can create, you don't have to start a process to kill another one.
-	if ($_[0] eq '-l') {
+	error "usage:  kill [-s sigspec | -n signum | -sigspec] [pid | job]... or kill -l [sigspec]"
+		unless defined $_[0];
+	if ($_[0] eq '-l') { # list sigs
 		shift;
-		my @l;
-		if (@_) { @l = @_ }
-		else { @l = sort keys %{$self->{_sighash}} }
-		for (@l) {
-			print "$_) $self->{_sighash}{$_}\n"
-				if exists $self->{_sighash}{$_}
-		}
+		my @k = @_ ? (grep exists $$self{_sighash}{$_}, @_) : (keys %{$$self{_sighash}});
+		output [ map {sprintf '%2i) %s', $_, $$self{_sighash}{$_}} sort {$a <=> $b} @k ];
 		return;
 	}
-	return unless defined $_[0];
-	my $sig = '15';
-	if ($_[0] =~ /^-?(\d+)$/ or $_[0] =~ /^-?([a-z\d]+)$/i) {
-		# this _could_ be a sigspec
-		if ( defined( my $s = $self->_sig_by_spec($1) ) ) {
+
+	my $sig = '15'; # sigterm, the default
+	if ($_[0] =~ /^--?(\w+)/) {
+		if ( defined (my $s = $self->_sig_by_spec($1)) ) {
 			$sig = $s;
 			shift;
 		}
@@ -183,61 +180,17 @@ sub kill {
 		shift;
 		$sig = $self->_sig_by_spec(shift);
 	}
-	foreach my $p (@_) {
-		my $j = $self->_job_by_spec($p);
-		if (ref($j)) {
-			CORE::kill($sig,-$j->{pgid});
-		}
-		elsif ($j =~ /^-?\d+/) {
-			CORE::kill($sig,$p);
-		}
-		else { error("No such job: $p") }
-	}
-}
 
-sub _sig_by_spec {
-	my ($self, $z) = @_;
-	if ($z =~ /\D/) {
-		$z =~ s{^(sig)?(.*)$}{uc($2)}ei;
-		while (my ($k, $v) = each %{$self->{_sighash}}) {
-			return $k if $v eq $z
+	for (@_) {
+		if (/^\%/) {
+			my $j = $self->_job_by_spec($_);
+			CORE::kill($sig, -$j->{pgid});
 		}
+		else { CORE::kill($sig, $_) }
 	}
-	else { return $z if exists $self->{_sighash}{$z} }
-	return undef;
-}
-
-sub _job_by_spec {
-	my ($self, $spec) = @_;
-	# see posix 1003.2 speculation for arbitrary cruft
-	if ($spec =~ /^ \% (?: (\d+) | (\??) (.*) ) $/x) {
-		my $m = $3;
-		if ($1) {
-			for (@{$self->{jobs}}) { return $_ if $_->{id} == $1 }
-		}
-		elsif ($2) { # command begins with $3
-			for (@{$self->{jobs}}) { return if $_->{string} =~ /^$m/ }
-		}
-		elsif ($m eq '%' or $m eq '+') { return $self->{jobs}[-1] if scalar @{$self->{jobs}} }
-		elsif ($m eq '-') { return $self->{jobs}[-2] if scalar(@{$self->{jobs}}) > 1 }
-		else { # command contains $3
-			for (@{$self->{jobs}}) { return if $_->{string} =~ /$m/ }
-		}
-	}
-	return $spec;
 }
 
 sub disown { # dissociate job ... remove from @jobs, nohup
-	my $self = shift;
-	my $id = shift;
-	unless ($id) {
-		my @jobs = grep { ($_->{bg}) || ($_->{stopped}) } @{$self->{jobs}};
-		error "No background job!" unless scalar @jobs;
-		if (scalar(@jobs) == 1) { $id = $jobs[0]->{id} }
-		else { error "Which job?" }
-	}
-	my $job = $self->_jobbyid($id);
-	error "No such job: $id" unless $job;
 	todo 'see bash manpage for implementaion details';
 
 	# is disowning the same as deamonizing the process ?
@@ -251,38 +204,43 @@ sub disown { # dissociate job ... remove from @jobs, nohup
 # Internal interface #
 # ################## #
 
-sub _sigspec {
-    my $self = shift;
-    my $sig = shift;
-    if ($sig =~ /^-(\d+)$/) {
-        my $num = $1;
-        if (grep {$_==$num} keys %{$self->{_sighash}}) { return $num }
-        else { return }
-    }
-    elsif ($sig =~ /^-?([a-z]+)$/i) {
-        my $name = uc $1;
-        if (my ($num) = grep {$self->{_sighash}{$_} eq $name} keys %{$self->{_sighash}}) {
-            return $num;
-        }
-        else { return }
-    }
-    return;
+sub _job_by_id {
+	my ($self, $id) = @_;
+	for (@{$$self{jobs}}) { return $_ if $$_{id} eq $id }
+	return undef;
 }
 
-sub _jobbyid {
-    my ($self, $id) = @_;
-    ( grep {$_->{id} == $id} @{$self->{jobs}} )[0];
+sub _job_by_spec {
+	my ($self, $spec) = @_;
+	return @{$$self{jobs}} ? $$self{jobs}[-1] : undef unless $spec;
+	# see posix 1003.2 speculation for arbitrary cruft
+	$spec = '%+' if $spec eq '%%' or $spec eq '%';
+	$spec =~ /^ \%? (?: (\d+) | ([\+\-\?]?) (.*) ) $/x;
+	my ($id, $q, $string) = ($1, $2, $3);
+	if ($id) {
+		for (@{$$self{jobs}}) { return $_ if $$_{id} == $id }
+	}
+	elsif ($q eq '+') { return $$self{jobs}[-1] if @{$$self{jobs}} }
+	elsif ($q eq '-') { return $$self{jobs}[-2] if @{$$self{jobs}} > 1 }
+	elsif ($q eq '?') {
+		for (@{$$self{jobs}}) { return $_ if $$_{string} =~ /$string/ }
+	}
+	else { for (@{$$self{jobs}}) { return $_ if $$_{string} =~ /^\W*$string/ } } # match begin non strict
+	return undef;
 }
 
-sub _current_job {
-	my $self = shift;
-	my @r = ( reverse grep {$_->{stopped} || $_->{bg}} @{$self->{jobs}} )[0,1];
-	return( wantarray ? @r : $r[0] );
+sub _sig_by_spec {
+	my ($self, $z) = @_;
+	return $z if exists $$self{_sighash}{$z};
+	$z =~ s{^(sig)?(.*)$}{uc($2)}ei;
+	while (my ($k, $v) = each %{$$self{_sighash}}) {
+		return $k if $v eq $z
+	}
+	return undef;
 }
 
 sub reap_jobs {
 	my $self = shift;
-	debug 'gonna reap me some jobs';
 	my (@completed, @running);
 	for ( @{$self->{jobs}} ) {
 		$_->update_status;
@@ -290,50 +248,57 @@ sub reap_jobs {
 		else { push @running, $_ }
 	}
 	$self->{jobs} = \@running;
-	if ($$self{shell}{interactive}) {
-		$_->print_status($_->{terminated} ? 'Terminated' : 'Done') 
-			for grep {$_->{bg} && ! $_->{no_notify}} @completed;
+	debug 'reaping jobs, body count: '.scalar(@completed);
+	if ($$self{shell}{settings}{interactive}) {
+		++$$_{completed} and message $_->status_string
+			for sort {$$a{id} <=> $$b{id}} grep {! $$_{no_notify}} @completed;
 	}
 }
+
+# ########### #
+# Job objects #
+# ########### #
 
 package Zoidberg::Job;
 
 use strict;
 use IO::File;
 use POSIX qw/:sys_wait_h :signal_h/;
-use Zoidberg::Utils qw/:error debug/;
+use Zoidberg::Utils;
 
 our @ISA = qw/Zoidberg::Contractor/;
 
 sub exec { # like new() but runs immediatly
 	my $self = ref($_[0]) ? shift : &new;
+	$$self{pwd} = $ENV{PWD};
+	local $ENV{ZOIDREF} = "$$self{shell}";
 
 	my @re = eval { $self->run };
-	$@ ? complain : undef $self->{shell}{error};
+	$$self{shell}{error} = $@ || $$self{status} || undef;
+	complain if $@;
 
 	return @re;
 }
 
 sub new { # @_ should at least contain (tree=>$pipe, boss=>$ref) here
 	shift; # class
-	my $self = { @_ };
-	$self->{id}     ||= ( @{$$self{boss}{jobs}} ? $$self{boss}{jobs}[-1]{id} : 0 ) + 1;
-	$self->{string} ||= $self->{tree}[0][0]{string}; # FIXME something better ?
-	$self->{shell}  ||= $self->{boss}{shell};
-	$self->{jobs} = [];
+	my $self = { id => 0, @_ };
+	my $pipe = @{$$self{tree}} > 1;
+	$$self{string} ||= ($pipe ? '|' : '') . $$self{tree}[-1][0]{string};
+		# last one in the pipe is the one on screen
+	$$self{shell} ||= $$self{boss}{shell};
+	$$self{jobs}  ||= [];
 	$$self{$_} = $$self{boss}{$_} for qw/_sighash terminal/; # FIXME check this
 
-	my $fork_job =
-		(@{$self->{tree}} > 1) ? 1 :
-		defined($$self{tree}[0][0]{fork_job}) ? $$self{tree}[0][0]{fork_job} :
-		(	$$self{tree}[0][0]{context} eq 'SH'
-			or $$self{bg} 
-			or $$self{tree}[0][0]{capture} ) ? 1 : 0 ;
+	my $meta = $$self{tree}[0][0];
+	my $fork_job = $pipe
+		|| ( defined($$meta{fork_job}) ? $$meta{fork_job} : 0 )
+		|| $$self{bg}
+		|| $$meta{capture} ;
 	unless ($fork_job) { bless $self, 'Zoidberg::Job::builtin' }
 #	elsif ( grep {! ref $_} @{$self->{tree}}) { bless $self, 'Zoidberg::Job::meta' }
 	else { bless $self, 'Zoidberg::Job' }
 
-	push @{$$self{boss}{jobs}}, $self;
 	return $self;
 }
 
@@ -360,6 +325,8 @@ sub round_up {
 
 sub run {
 	my $self = shift;
+	$$self{shell}{fg_job} = $self;
+
 	$self->{tmodes}	= POSIX::Termios->new;
 	# fixme procs and tree can be merged
 	$self->{procs} = [ map {block => $_, completed => 0, stopped => 0}, @{$self->{tree}} ];
@@ -389,7 +356,7 @@ sub run {
 			$proc->{pid} = $pid;
 			$self->{pgid} ||= $pid ;
 			POSIX::setpgid($pid, $self->{pgid});
-			debug "job $$self{id} part $i has pid $pid and pgid $$self{pgid}";
+			debug "job \%$$self{id} part $i has pid $pid and pgid $$self{pgid}";
 			# set terminal control
 			POSIX::tcsetpgrp($self->{shell}{terminal}, $self->{pgid}) 
 				if $$self{shell}{settings}{interactive} && ! $$self{bg};
@@ -412,13 +379,11 @@ sub run {
 		$stdin = $pipe[0] unless $proc->{last} ;
 	}
 
-	my @re = $$self{bg} ? $self->put_bg : $capture ? ($self->_capture($stdin)) : $self->put_fg;
+	my @re  = $$self{bg} ? $self->put_bg
+		: $capture   ? ($self->_capture($stdin)) : $self->put_fg ;
  
 	# postrun
 	POSIX::tcsetpgrp($$self{shell}{terminal}, $$self{shell}{pgid});
-#	my $exit_status = $self->{procs}[-1]->{status};
-#	error {printed => 1}, $exit_status if $exit_status; # silent error
-#	FIXME where should this go ?
 
 	return @re;
 }
@@ -442,7 +407,7 @@ sub _run_child { # called in child process
 
 	$self->{shell}{round_up} = 0; # FIXME this bit has to many use
 	$self->{shell}{settings}{interactive} = 0; # idem
-	map { $SIG{$_} = 'DEFAULT' } qw{INT QUIT TSTP TTIN TTOU CHLD};
+	map { $SIG{$_} = 'DEFAULT' } qw{INT QUIT TSTP TTIN TTOU};
 
 	# make sure stdin and stdout are right, else dup them
 	for ([$stdin, fileno STDIN], [$stdout, fileno STDOUT]) {
@@ -450,8 +415,6 @@ sub _run_child { # called in child process
 		POSIX::dup2(@$_);
 		POSIX::close($_->[0]);
 	}
-
-	$$self{shell}{fg_job} = $self;
 
 	# do redirections and env
 	$self->do_redirect($proc->{block});
@@ -516,14 +479,18 @@ sub undo_env {
 # ########### #
 
 sub put_fg {
-	my ($self, $cont) = @_;
-	$self->print_status('Running') if $self->{bg};
+	my $self = shift;
+
+	message $self->status_string('Running') if $self->{bg};
  	$self->{bg} = 0;
+
+	@{$$self{boss}{jobs}} = grep {$_ ne $self} @{$$self{boss}{jobs}};
+	$$self{shell}{fg_job} = $self;
 
 	POSIX::tcsetpgrp($self->{shell}{terminal}, $self->{pgid})
 		if $self->{shell}{settings}{interactive};
 
-	if ($cont || $self->{stopped}) {
+	if ($self->{stopped}) {
 		kill(SIGCONT, -$self->{pgid});
 		$self->{stopped} = 0;
 	}
@@ -531,18 +498,41 @@ sub put_fg {
 
 	POSIX::tcsetpgrp($self->{shell}{terminal}, $self->{shell}{pgid})
 		if $self->{shell}{settings}{interactive};
+	
+	if ($$self{stopped} or $$self{terminated}) {
+		if ($$self{stopped} and $$self{shell}{settings}{notify_verbose}) {
+			$$self{shell}->jobs();
+		}
+		else {
+			message $self->status_string;
+		}
+	}
 }
 
 sub put_bg {
-	my ($self, $cont) = @_;
-	$self->{bg} = 1;
+	my $self = shift;
+	$self->_put_bg;
 
-	if ($cont || $self->{stopped}) {
+	if ($self->{stopped}) {
 		kill(SIGCONT, -$self->{pgid});
 		$self->{stopped} = 0;
 	}
 
-	$self->print_status('Running');
+	message $self->status_string('Running');
+}
+
+sub _put_bg {
+	my $self = shift;
+
+	unless ($$self{id}) {
+		$$_{id} > $$self{id} and $$self{id} = $$_{id} for @{$$self{boss}{jobs}};
+		$$self{id}++;
+	}
+
+	@{$$self{boss}{jobs}} = grep {$_ ne $self} @{$$self{boss}{jobs}};
+	push @{$$self{boss}{jobs}}, $self;
+
+	$self->{bg} = 1;
 }
 
 sub wait_job {
@@ -572,26 +562,32 @@ sub completed { ! grep { ! $_->{completed} } @{$_[0]->{procs}} }
 sub _update_child {
 	my ($self, $pid, $status) = @_;
 	return unless $pid; # 0 == all is well
+	debug "pid: $pid returned: $status";
 
 	if ($pid == -1) { # -1 == all processes in group ended
-		my $r = kill(0,-$self->{pgid});
-#		unless ($r > 0 or ! $!{ESRCH}) { # `No such process' (zombie)
-			debug "$self->{pgid} has disappeared:($!)";
-			$_->{completed}++ for @{$self->{procs}};
-#		}
+		kill( 15 => -$self->{pgid} ); # SIGTERM just to be sure
+		debug "group $$self{pgid} has disappeared:($!)";
+		$_->{completed}++ for @{$self->{procs}};
 	}
 	else {
-		my ($child) = grep {$_->{pid} == $pid} @{$self->{procs}};
-		$self->{status} = $child->{status} = $status;
+		my ($child) = grep {$$_{pid} == $pid} @{$$self{procs}};
+		bug "Don't know this pid: $pid" unless $child;
+		$$child{status} = $status;
 		if (WIFSTOPPED($status)) {
-			$self->{stopped} = 1;
-			$self->put_fg('FORCE')
-				if WSTOPSIG($status) == 22	# SIGTTIN
-				or WSTOPSIG($status) == 21 ;	# SIGTTOU
+			$$self{stopped} = 1;
+			(WSTOPSIG($status) == 22 or WSTOPSIG($status) == 21 ) # SIGTT(IN|OUT)
+				? $self->put_fg : $self->_put_bg;
 		}
-		else { 
-			$self->{terminated}++ if WIFSIGNALED($status);
-			$child->{completed} = 1
+		else {
+			$$child{completed} = 1;
+			if ($pid == $$self{procs}[-1]{pid}) { # the end of the line ..
+				$$self{status} = $status;
+				$$self{terminated}++ if WIFSIGNALED($status);
+				unless ($self->completed) {
+					local $SIG{PIPE} = 'IGNORE';
+					kill( 13 => -$$self{pgid} ); # SIGPIPE
+				}
+			}
 		}
 	}
 }
@@ -600,26 +596,33 @@ sub _update_child {
 # Notification #
 # ############ #
 
-sub print_status {
+sub status_string {
 	# POSIX: "[%d]%c %s %s\n", <job-number>, <current>, <status>, <job-name>
 	my ($self, $status) = @_;
 
-	my @c = $self->{shell}->_current_job;
-	my $current =
-		($self eq $c[0]) ? '+' : 
-		($self eq $c[1]) ? '-' : ' ' ;
+	my $pref = '';
+	if ($$self{id}) {
+		$pref = "[$$self{id}]" . (
+			($self eq $$self{boss}{jobs}[-1]) ? '+ ' :
+			($self eq $$self{boss}{jobs}[-2]) ? '- ' : '  ' );
+	}
 
-	$status ||= $self->{stopped} ? 'Stopped' : 'Running' ;
+	$status ||=
+		$$self{stopped}    ? 'Stopped'    :
+		$$self{terminated} ? 'Terminated' :
+		$$self{completed}  ? 'Done'       : 'Running' ;
 
-	my $string = $self->{string};
+	my $string = $$self{string};
 	$string =~ s/\n$//;
-	print "[$$self{id}]$current $status\t$string\n"; # FIXME shouldn't this be message ?
+	$string .= "\t\t(pwd: $$self{pwd})" unless $$self{pwd} eq $ENV{PWD};
+
+	return $pref . $status . "\t$string";
 }
 
 package Zoidberg::Job::builtin;
 
 use strict;
-use Zoidberg::Utils qw/:error message/;
+use Zoidberg::Utils;
 
 our @ISA = qw/Zoidberg::Job/;
 
@@ -628,6 +631,7 @@ sub round_up { $_->round_up() for @{$_[0]->{jobs}} }
 sub run {
 	my $self = shift;
 	my $block = $self->{tree}[0];
+	$$self{shell}{fg_job} = $self;
 
 	my $saveint = $SIG{INT};
 	if ($self->{settings}{interactive}) {
@@ -638,9 +642,6 @@ sub run {
 		};
 	}
 	else { $SIG{INT} = sub { die "[SIGINT]\n" } }
-
-	my $save_fg = $$self{shell}{fg_job};
-	$$self{shell}{fg_job} = $self;
 
 	# do redirections and env
 	my $save_fd = $self->do_redirect($block);
@@ -654,7 +655,6 @@ sub run {
 	$self->undo_env($save_env);
 
 	# restore other stuff
-	$$self{shell}{fg_job} = $save_fg;
 	$SIG{INT} = $saveint;
 	$self->{completed}++;
 	
@@ -672,7 +672,7 @@ package Zoidberg::Job::meta;
 
 use strict;
 use vars qw/$AUTOLOAD/;
-use Zoidberg::Utils qw/:error/;
+use Zoidberg::Utils;
 
 # sign: XF ==> Xargs Forward
 #       XB <== Xargs Backwards

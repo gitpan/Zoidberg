@@ -1,12 +1,11 @@
 
 package Zoidberg::Utils;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 use strict;
 use vars '$AUTOLOAD';
 use Carp;
-use Storable qw/dclone/;
 use Zoidberg::Utils::Error;
 
 our $ERROR_CALLER = 1;
@@ -17,12 +16,12 @@ my %tags = (
 	default => [qw/:output :error/],
 
 	output	=> [qw/output message debug/],
-	fs	=> [qw/abs_path get_dir/],
+	fs	=> [qw/abs_path list_dir/],
 	fs_engine => [qw/f_index_path f_wipe_cache f_read_cache f_save_cache/],
 	error	=> [qw/error bug todo complain/],
 	other	=> [qw/setting read_data_file read_file merge_hash/],
 
-	_fs	=> [qw/abs_path list_path get_dir unique_file is_exec_in_path/],
+	_fs	=> [qw/abs_path list_path list_dir unique_file/],
 	_output	=> [qw/output message debug complain typed_output/],
 	_cluster => {
 		fs_engine => [qw/Zoidberg::Utils::FileSystem _prefix f_ :engine/],
@@ -91,8 +90,8 @@ sub _load {
 sub setting {
 	# FIXME support for Fish argument and namespace
 	my $key = shift;
-	return undef unless exists $ENV{ZOIDREF}->{settings}{$key};
-	my $ref = $ENV{ZOIDREF}->{settings}{$key};
+	return undef unless exists $Zoidberg::CURRENT->{settings}{$key};
+	my $ref = $Zoidberg::CURRENT->{settings}{$key};
 	return (wantarray && ref($ref) eq 'ARRAY') ? (@$ref) : $ref;
 }
 
@@ -107,7 +106,7 @@ sub read_data_file {
 			return read_file($_);
 		}
 	}
-	error "Could not find file '$file' in (" .join(', ', setting('data_dirs')).')';
+	error "Could not find 'data/$file' in (" .join(', ', setting('data_dirs')).')';
 }
 
 sub read_file {
@@ -116,14 +115,14 @@ sub read_file {
 
 	my $ref;
 	if ($file =~ /^\w+$/) { todo 'executable data file' }
+	elsif ($file =~ /\.(pl)$/i) { $ref = do $file }
 	elsif ($file =~ /\.(pd)$/i) { $ref = pd_read($file) }
 	elsif ($file =~ /\.(yaml)$/i) { todo qq/yaml data file support\n/ }
 	else { error qq/Unkown file type: "$file"\n/ }
 
-	error "File $file did not return a defined value"
-		unless defined $ref;
+	error "In file $file\: $@" if $@;
+	error "File $file did not return a defined value" unless defined $ref;
 	return $ref;
-	
 }
 
 sub pd_read {
@@ -138,15 +137,12 @@ sub pd_read {
 }
 
 sub merge_hash {
-    my $ref = shift;
-    foreach my $ding (@_) { 
-    	$ding = dclone($ding) if grep {ref($ding) eq $_} qw/HASH ARRAY SCALAR/;
-    	$ref = _merge($ref, $ding);
-    }
+    my $ref = {};
+    $ref = _merge($ref, $_) for @_;
     return $ref;
 }
 
-sub _merge {
+sub _merge { # Removed use of Storable::dclone - can throw nasty bugs
 	my ($ref, $ding) = @_;
 	while (my ($k, $v) = each %{$ding}) {
             if (defined($ref->{$k}) && ref($v)) {
@@ -201,7 +197,7 @@ L<Zoidberg::Utils::Output>.
 
 =item :fs
 
-Gives you C<abs_path> and C<get_dir>, which belong to 
+Gives you C<abs_path> and C<list_dir>, which belong to 
 L<Zoidberg::Utils::FileSystem>.
 
 =back

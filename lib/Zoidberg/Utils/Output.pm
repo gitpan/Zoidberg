@@ -1,22 +1,31 @@
 
 package Zoidberg::Utils::Output;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 use strict;
 use Data::Dumper;
 use POSIX qw/floor ceil/;
-use Term::ANSIScreen qw/color/;
 use Exporter::Tidy
 	default => [qw/output message debug complain/],
 	other   => [qw/typed_output/];
 
-our @ansi_colors = qw/
-	clear rest bold underline underscore blink
-	black red green yellow blue magenta cyan white
-	on_black on_red on_green on_yellow on_blue
-	on_magenta on_cyan on_white
-/;
+our %colours = ( # Copied from Term::ANSIScreen
+	'clear'      => 0,    'reset'      => 0,
+	'bold'       => 1,    'dark'       => 2,
+	'underline'  => 4,    'underscore' => 4,
+	'blink'      => 5,    'reverse'    => 7,
+	'concealed'  => 8,
+
+	'black'      => 30,   'on_black'   => 40,
+	'red'        => 31,   'on_red'     => 41,
+	'green'      => 32,   'on_green'   => 42,
+	'yellow'     => 33,   'on_yellow'  => 43,
+	'blue'       => 34,   'on_blue'    => 44,
+	'magenta'    => 35,   'on_magenta' => 45,
+	'cyan'       => 36,   'on_cyan'    => 46,
+	'white'      => 37,   'on_white'   => 47,
+);
 
 sub output { typed_output('output', @_) }
 
@@ -25,7 +34,7 @@ sub message { typed_output('message', @_) }
 sub debug {
 	my $class = caller;
 	no strict 'refs';
-	return unless $ENV{ZOIDREF}->{settings}{debug} || ${$class.'::DEBUG'};
+	return unless $Zoidberg::CURRENT->{settings}{debug} || ${$class.'::DEBUG'};
 	my @caller = caller;
 	{
 		no strict 'refs';
@@ -38,11 +47,11 @@ sub debug {
 	1;
 }
 
-sub complain {
+sub complain { # strip @INC: for little less verbose output
 	@_ = ($@) || return 0 unless @_;
-	$ENV{ZOIDREF}->{error} = (@_ > 1) ? \@_ : $_[0];
 	my $fh = select STDERR;
-	typed_output('error', @_);
+	my @copy = @_;
+	typed_output('error', map {s/\(\@INC contains\: (.*?)\)\s*//g; $_} @copy);
 	select $fh;
 	1;
 }
@@ -53,69 +62,66 @@ sub typed_output {	# TODO term->no_color bitje s{\e.*?m}{}g
 	return unless @dinge > 0;
 #	$self->silent unless -t STDOUT && -t STDIN; # FIXME what about -p ??
 
-	$type = $ENV{ZOIDREF}->{settings}{output}{$type} || $type;
+	$type = $Zoidberg::CURRENT->{settings}{output}{$type} || $type;
 	return 1 if $type eq 'mute';
 
 	my $coloured;
-	if (grep {$_ eq $type} @ansi_colors) {
-		if ($ENV{ZOIDREF}->{settings}{interactive}) {
-			$coloured++;
-			print color($type);
-		}
-	}
+	print "\e[$colours{$type}m" and $coloured = 1
+		if exists $colours{$type}
+		and $Zoidberg::CURRENT->{settings}{interactive} and $ENV{CLICOLOR};
 
 	$dinge[-1] .= "\n" unless ref $dinge[-1];
 	for (@dinge) {
 		unless (ref $_) { print $_ }
-		elsif (ref($_) eq 'Zoidberg::Utils::Error' and !$$_{debug}) {
-			next if $_->{printed}++;
-			print $_->stringify(format => 'gnu');
+		elsif (ref($_) eq 'ARRAY' and ! grep { ref($_) } @$_) { output_list(@$_) }
+		elsif (ref($_) eq 'Zoidberg::Utils::Error') {
+			if ($$_{debug}) { print map {s/^\$VAR1 = //; $_} Dumper $_ }
+			else {
+				next if $$_{silent} || $$_{printed}++;
+				print $_->stringify(format => 'gnu');
+			}
 		}
-		elsif (
-			ref($_) eq 'ARRAY' 
-			and ! grep { ref($_) } @$_
-		) { output_list(@$_) }
+		elsif (ref($_) =~ 'Zoidberg') {
+			 print 'Cowardly refusing to dump object of class '.ref($_)."\n";
+		}
 		else { print map {s/^\$VAR1 = //; $_} Dumper $_ }
 	}
 
-	print color('reset') if $coloured;
+	print "\e[$colours{reset}m" if $coloured;
 	
 	1;
 }
 
-sub output_list {
-	my (@strings) = @_;
-	my $width = ($ENV{ZOIDREF}->Buffer->size)[0]; # FIXME FIXME FIXME hardcoded plugin name
+sub output_list { # takes minimum number of rows, but fills cols first
+	my (@items) = @_;
+	my $width = $ENV{COLUMNS};
 
-	if (
-		   ! $ENV{ZOIDREF}->{settings}{interactive}
-		|| ! defined $width
-	) {
-		print join("\n", @strings), "\n";
-		return;
+	return print join("\n", @items), "\n" unless $Zoidberg::CURRENT->{settings}{interactive};
+
+	my $len = 0;
+	$_ > $len and $len = $_ for map {length $_} @items;
+	$len += 2; # spacing
+	return print join("\n", @items), "\n" if $width < (2 * $len);      # rows == items
+	return print join('  ', @items), "\n" if $width > (@items * $len); # 1 row
+
+	my $cols = int($width / $len ) - 1; # 0 based
+	my $rows = int(@items / ($cols+1)); # 0 based ceil
+	$rows -= 1 unless @items % ($cols+1); # tune ceil
+	my @rows;
+	for my $r (0 .. $rows) {
+		my @row = map { $items[ ($_ * ($rows+1)) + $r] } 0 .. $cols;
+		push @rows, join '', map { $_ .= ' 'x($len - length $_) } @row;
 	}
-
-	my $longest = 1;
-	for (@strings) { $longest = length $_ if $longest < length $_ }
-	$longest += 2; # we want two spaces to saperate coloms
-	my $cols = floor($width / $longest);
-
-	if ($cols < 1) { print map "$_\n", @strings }
-	else {
-		my $rows = ceil @strings / $cols;
-		@strings = map {$_.(' 'x($longest - length $_))} @strings;
-
-		foreach my $i (0..$rows-1) {
-			print $strings[$_*$rows+$i] for (0..$cols);
-			print "\n";
-		}
-	}
+	#print STDERR scalar(@items)." items, $len long, $width width, $cols+1 cols, $rows+1 rows\n";
+	print join("\n", @rows), "\n";
 }
 
-sub output_sql { # FIXME FIXME FIXME unmaintained :((
-	my $self = $ENV{ZOIDREF}->{zoid};
-	my $width = ($self->Buffer->size)[0];
-	if (!$self->{settings}{interactive} || !defined $width) { return (print join("\n", map {join(', ', @{$_})} @_)."\n"); }
+sub output_sql { # kan vast schoner
+	shift unless ref($_[0]) eq 'ARRAY';
+	my $width = $ENV{COLUMNS};
+	if (! $Zoidberg::CURRENT->{settings}{interactive} || !defined $width) {
+		return (print join("\n", map {join(', ', @{$_})} @_)."\n");
+	}
 	my @records = @_;
 	my @longest = ();
 	@records = map {[map {s/\'/\\\'/g; "'".$_."'"} @{$_}]} @records; # escape quotes + safety quotes
@@ -182,7 +188,8 @@ By default all of the below except C<typed_output>.
 =item C<output(@_)>
 
 Output a list of possibly mixed data structs as nice as possible.
-Lists of plain scalars may be outputted in a multi column list,
+
+A reference to an array of plain scalars may be outputted as a multicolumn list,
 more complex data will be dumped using L<Data::Dumper>.
 
 =item C<message(@_)>

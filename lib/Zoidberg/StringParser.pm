@@ -196,7 +196,7 @@ sub fetch { $_[0]->[1]{$_[1]} }
 
 package Zoidberg::StringParser;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 use strict;
 no warnings; # can't stand the nagging
@@ -228,9 +228,7 @@ sub set {
 	}
 	elsif (ref($gram) eq 'ARRAY') {
 		$gram = [ map {
-			ref($_) 
-			? $_ 
-			: ($self->{collection}{$_} || croak "No such grammar: $_")
+			ref($_) ? $_ : ($self->{collection}{$_} || croak "No such grammar: $_")
 		} @$gram ];
 	}
 	my %gram;

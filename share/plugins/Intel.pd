@@ -6,4 +6,5 @@ $VAR1 = {
 			cd => 'dirs',
 		},
 	},
+	import => [qw/complete completion_function/],
 }

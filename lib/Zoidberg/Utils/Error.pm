@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils::Error;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 use strict;
 use Carp;
@@ -31,10 +31,15 @@ sub error {
 		if (isa $_, 'HASH') { %$error = (%$error, %$_) }
 		else { $$error{string} .= $_ }
 	}
-	
-	$$error{string} ||=
-		  $$error{is_bug}  ? 'This is a bug'
-		: $$error{is_todo} ? 'Something TODO here' : 'Error' ;
+
+	unless ($$error{string}) {
+		$$error{string} =
+			  $$error{is_bug}  ? 'This is a bug'
+			: $$error{is_todo} ? 'Something TODO here' : 'Error' ;
+	}
+	elsif ($$error{string} =~ s/\(\@INC contains\: (.*?)\)\s*//g) { # make it less verbose
+		$$error{INC} = $1;
+	}
 
 	# trace stack
 	$$error{stack} ||= [];
@@ -46,7 +51,7 @@ sub error {
 
 		if ( # debug code
 			$$error{debug} = ${$caller[0].'::DEBUG'}
-				|| $ENV{ZOIDREF}{settings}{debug}
+				|| $Zoidberg::CURRENT->{settings}{debug}
 		) {
 			push @{$$error{stack}}, [ (caller $_)[0..2] ]
 				for (1..$$error{debug});

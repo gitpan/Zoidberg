@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.42';
+our $VERSION = '0.50';
 
 use strict;
 use Cwd;
@@ -30,19 +30,22 @@ sub exec { # FIXME not completely stable I'm afraid
 sub eval {
 	my $self = shift;
 	$self->parent->shell( join( ' ', @_) );
-	error $self->{parent}{error}
-		if $self->{parent}{error};
 }
 
 sub setenv {
+	my (undef, $var, $val) = @_;
+	$ENV{$var} = $val;
+}
+
+sub export {
 	my $self = shift;
 	for (@_) {
 		if ($_ =~ m/^\s*(\w*)\s*=\s*['"]?(.*?)['"]?\s*$/) { $ENV{$1} = $2 }
-		else { error 'argument syntax error' }
+		else { error 'syntax error' }
 	}
 }
 
-sub unset {
+sub unsetenv {
 	my $self = shift;
 	delete $ENV{$_} for @_;
 }
@@ -73,18 +76,27 @@ sub set {
 	else { 
 		$opt = shift;
 		$sw = '-';
-		if ($opt =~ m/^(\w+)=(.*)$/) { ($opt, $val) = ($1, $2) }
-		elsif ($opt =~ m/^(.*)([+-]{2})$/) { 
+		if ($opt =~ m/^(.+?)=(.*)$/) { ($opt, $val) = ($1, $2) }
+		elsif ($opt =~ m/^(.*)([+-]{2})$/) {
 			$opt = $1;
 			$sw = '+' if $2 eq '--'; # sh has evil logic
 		}
 	}
 	
-	$val = shift unless defined $val;
-	error "Setting $opt contains a data structure" if ref $self->{settings}{$opt};
-	
-	if ($sw eq '+') { delete $self->{settings}{$opt} }
-	else { $self->{settings}{$opt} = $val || 1 }
+	$val = shift || 1 unless defined $val;
+	error "$opt : this setting contains a reference" if ref $self->{settings}{$opt};
+
+	my ($path, $ref) = ('/', $$self{parent}{settings});
+	while ($opt =~ s#^/*(.+?)/##) {
+		$path .= $1 . '/';
+		if (! defined $$ref{$1}) { $$ref{$1} = {} }
+		elsif (ref($ref) ne 'HASH') { error "$path : no such settings hash" }
+		$ref = $$ref{$1};
+	}
+	debug "setting: $opt, value: $val, path: $path";
+
+	if ($sw eq '+') { delete $$ref{$opt} }
+	else { $$ref{$opt} = $val }
 }
 
 sub source {
@@ -96,12 +108,23 @@ sub source {
 sub alias {
 	my $self = shift;
 	unless (@_) {
-		output [ map "alias $_='$$self{parent}{aliases}{$_}'", keys %{$$self{parent}{aliases}} ];
+		my @aliases;
+		for (my ($k, $v) = each %{$$self{parent}{aliases}}) {
+			push @aliases, "alias $k='%v'";
+		}
+		output \@aliases;
 		return;
 	}
-	for (@_) {
-		error 'alias: wrong argument format' unless /^(\w+)=['"]?(.*?)['"]?$/;
-		$self->{parent}{aliases}{$1} = $2;
+	elsif ($_[0] !~ /\W/) { # tcsh alias format
+		my $cmd = shift;
+		$self->{parent}{aliases}{$cmd} = join ' ', @_;
+	}
+	else {
+		for (@_) {
+			error 'alias: wrong argument format'
+				unless /^(\w+)=['"]?(.*?)['"]?$/;
+			$self->{parent}{aliases}{$1} = $2;
+		}
 	}
 }
 
@@ -130,7 +153,7 @@ sub newgrp { todo }
 
 sub umask { todo }
 
-sub false { error {silent => 1} }
+sub false { error {silent => 1}, 'the "false" builtin' }
 
 sub true { 1 }
 
@@ -270,25 +293,17 @@ sub _unhide {
 	else { error 'Dunno such a thing' }
 }
 
-sub quit {
-	my $self = shift;
-	output join " ", @_ if @_;
-	$self->{parent}->History->del; # leave no trace # FIXME - ergggg vunzig
-	$self->{parent}->exit;
-}
-
 1;
 
 __END__
 
 =head1 NAME
 
-Zoidberg::Fish::Commands - Zoidberg plugin for internal commands
+Zoidberg::Fish::Commands - Zoidberg plugin with builtin commands
 
 =head1 SYNOPSIS
 
-This module is a Zoidberg plugin,
-see Zoidberg::Fish for details.
+This module is a Zoidberg plugin, see Zoidberg::Fish for details.
 
 =head1 DESCRIPTION
 
@@ -299,9 +314,9 @@ for the Zoidberg shell.
 
 None by default.
 
-=head1 METHODS
+=head1 COMMANDS
 
-FIXME
+FIXME FIXME FIXME
 
 =head1 AUTHOR
 

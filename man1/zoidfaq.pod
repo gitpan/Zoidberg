@@ -25,13 +25,19 @@ This program was from the very beginning intended to become a huge and bloated m
 =head3 Is it stable yet ?
 
 B<NO !> If it is stable we'll call it 1.00 .
+Currently we are working towards a 0.50 release that will be the first candidate
+for a stable version.
 
 =head3 Is it safe to use it already ?
 
 Kind of, as long as you don't try too fancy stuff with too many privileges.
 
 
-=head2 Syntax
+=head2 Features
+
+=head3 How do I turn off ansi colours ?
+
+Set the environment variable CLICOLOR to 0 (null).
 
 =head3 What's with the single arrow ?
 
@@ -42,75 +48,18 @@ When you type perl code without brackets around it, zoid does a little source fi
  zoid$ $shell->Commands->cd(q/../)
 
 
-=head2 Unexpected behaviour
+=head2 Errors
 
-=head3 The backspace seems rather trigger happy !?
+=head3 I upgraded to a new version of zoid and it crash immediately !?
 
-In Zoidbergs default input buffer the backspace is more like an 'undo'
-then like delete, especially after an expansion using backspace
-removes the entire expansion.
+If you have all dependencies right you probably need to remove 
+either the directory C<< ~/.zoid >> or the file C<< ~/.cache/zoid_path_cache >>.
 
 =head3 I got a segfault after using perl syntax, is this a bug ?
 
 Well, if it _is_ a bug then probably it's a bug in perl, not in zoid.
 Most notoriously if you use globs in perl code, perl 5.8.0 can segfault;
 upgrading to perl 5.8.2 fixes this problem.
-
-
-=head2 Examples
-
-=head3 How to add a keybinding ?
-
-Take a look at the file "key-bindings.pd" in your zoidberg directory. If, for example, you would like to bind the key ^f (control & f) to a subroutine 'bar' of a plugin 'foo' with arguments  qw/f00 b4r/, and you need this binding while in insert modus, you put the line
-
-  ctrl_f => '->foo->bar(qw/f00 b4r/)',
-
-in the nested hash called 'insert' in "key-bindings.pd".
-You can also bind command sequences to a key like this:
-
-  ctrl_b => '->shell(q{perl Makefile.PL && make && make test install})'
-
-=head3 How to write a "hello world" plugin ?
-
-First create a dir '~/.zoid/plugins/HelloWorld'.
-
-Next create a module, for example :
-
-  package HelloWorldZoid;
-
-  # Zoidberg::Fish is the base class for plugins
-  use Zoidberg::Fish;
-  our @ISA = qw/Zoidberg::Fish/;
-
-  # Zoidberg::Utils provides the output method
-  use Zoidberg::Utils;
-
-  # no need for a constructor, bootstrap with init
-  sub init { $$_[0]{config}{string} ||= "Hello world !" }
-
-  # and in this sub we actually print the string
-  sub hello_world { output $$_[0]{config}{string} }
-
-  # this will be called when the plugin is unloaded
-  sub round_up { output "someone help me" }
-
-  1; # keep require happy
-
-Save the module as '~/.zoid/plugins/HelloWorld/HelloWorldZoid.pm'.
-
-Then create a config file, for the syntax think Data::Dumper output.
-
-  $VAR1 = {
-    module => q/HelloWorldZoid/,
-    config => { string => q/Hello cruel world !/ },
-    export => ['hello_world'],
-  }
-
-Save the config file as '~/.zoid/plugins/HelloWorld/PluginConf.pd'.
-
-After restarting zoid, you should have a builtin command "hello_world" that prints the string "Hello cruel world !", and an object called "HelloWorld".
-Of course you guessed already that you can control the string that will be printed from the config file, and also that it defaults to "Hello world !".
-On run-time this string is available under '->{settings}{HelloWorld}{string}', it can be changed at any time.
 
 =head1 SEE ALSO
 

@@ -69,11 +69,42 @@ Because the Job class also inherits from it sub-jobs are possible.
 
 FIXME explanation
 
-=head3 State diagram
+=head3 Process flow
 
-TODO
+       start
+         |
+         |        incomplete input - readmore
+         |        .----------------+----------------------.
+         |        |                A                      |
+         |        V                |                      |
+         V        string           |           tree       |
+   input loop     -------->  parse string      ------>  execute tree
+   Z:main_loop()             Z:shell_string()    ,--->  Z:C:shell_list()
+   readline                                      |        | 
+         A                                       |        | logic chunk
+         |                                       |        V
+  new    |                                next   |     Z:parse_block()
+  input  |                                chunk  |     (per block)
+         |                                       |        |
+         |                                       |        V
+         '---------------------------------------+---  execute job
+                                                       Z:J:exec()
+  Z:   = Zoidberg::
+  Z:C: = Zoidberg::Contractor::
+  Z:J: = Zoidberg::Job::
+
+The parse tree going to C<shell_list()> is a simple parse tree consisting of scalars
+and scalar references (see FIXME below). This tree is processed in logic chunks,
+corresponding to one job each.
+The blocks references in a logic chunk are parsed by C<parse_block()> just before 
+executing. This is where the context is determined and things like expansions and
+subtitutions are done.
 
 =head2 Parse tree
+
+FIXME tell about the blocks used in lots of hooks
+
+FIXME renice this stuff
 
 This part describes the form of a parse tree as used between the various Zoidberg objects.
 
@@ -113,13 +144,15 @@ This part describes the form of a parse tree as used between the various Zoidber
 
 =head3 Basics
 
-A parse tree is an array consisting of blocks and tokens. A block can be any kind of code and is stored in
-a nested array. Blocks directly following each other are supposed to be a pipeline. A token is a delimiter 
-between blocks.
+A parse tree is an array consisting of blocks and tokens. A block can be any kind of code 
+and is stored in a nested array.
+Blocks directly following each other are supposed to be a pipeline. 
+A token is a delimiter between blocks.
 
 The first field of a block is a hash which contains information about the block, 
 all other field in a block make up the content.
-The most important information about a block is the context, which tells the parser how to execute the block.
+The most important information about a block is the context, 
+which tells the parser how to execute the block.
 You are  free to store all kinds of specific information in this first field, but some
 key names are reserved.
 
@@ -149,7 +182,15 @@ the command is but you have some clues.
 
 =head2 Settings
 
-These are advanced settings only needed for development. Common settings can be found in L<zoiduser>.
+Notice that every plugin has it's own config hash in the settings hash,
+it is suggested that settings only affecting one plugin are placed in this sub-hash.
+This rule is broken for some settings required by the posix specification of
+the C<set> built-in.
+
+FIXME list these posix settings somwhere
+
+Below are listed advanced settings only needed for development.
+Common settings can be found in L<zoiduser>.
 
 =over 4
 
@@ -187,17 +228,26 @@ FIXME more events
 
 =over 4
 
-=item precmd
+=item newpwd
 
-This event is called from the main loop just before respawning the input buffer.
+Called if C<$ENV{PWD}> has changed. The old pwd can be found in C<$ENV{OLDPWD}>.
+
+=item prompt
+
+This event is called from the main loop just before respawning the prompt.
 It can be used to update routines.
 
-=item postcmd
+=item cmd
 
-This event is called after the spawning of every job. Like 'precmd' it can be used
-for update routines; since 'postcmd' is called much more often then 'precmd'
-use 'precmd' if it makes no difference, 'postcmd' should only be used for atomic stuff
-like updating C<$ENV{PATH}>.
+This event is called after the input prompt with the commandline as the first argument.
+
+=item envupdate
+
+This event is called after the spawning of every job. Like 'prompt' it can be used for
+update routines; since 'postcmd' is called more often then 'prompt', use 'prompt' if it
+makes no difference, 'postcmd' should only be used for atomic updates.
+
+Note this event is _not_ identical to the "special alias" 'postcmd' in tcsh(1).
 
 =item exit
 
@@ -211,17 +261,24 @@ Events of the 'call' type used by Zoidberg include:
 
 =over 4
 
-=item get_input C<($event, $broken)>
+=item readline
 
-This method is used to get (interactive) input, by default this event would be set by the Buffer 
-plugin or an alternative input plugin. The boolean C<$broken> signifies that the previous input
+This method is used to get interactive input, by default this event would be handled
+by the ReadLine plugin or an alternative input plugin.
+The boolean C<$broken> signifies that the previous input
 wasn't complete and thus more input is requested.
 
-FIXME where to find doc on input plugins with more details ?
+=item readmore
+
+This typically would do a C<readline> with C<$PS2> as prompt instead of C<$PS1>,
+although if you use the ReadLine plugin with L<Term::ReadLine::Zoid> it would
+open the original buffer with an empty line appended.
 
 =back
 
-=head2 PluginConf
+=head2 Plugins
+
+=head3 PluginConf
 
 A plugin configuration file can use the following keys:
 
@@ -261,7 +318,7 @@ Like C<export> but used for events.
 
 =back
 
-=head2 Custom contexts
+=head3 Custom contexts
 
 Typically you'll want to set a custom context from a plugin.
 To do this you set the L</load_on_init> setting in the L</PluginConf> and then 
@@ -270,32 +327,89 @@ using the C<add_context()> method in C<Zoidberg::Fish>.
 
 A context config hash can contain the following routines:
 
+FIXME more verbose description
+
 =over 4
 
-=item wordlist BLOCK
+=item word_list BLOCK
 
-FIXME
-
-On wantarray should return a list of possible completions for the word in C<$$block[1]>;
-else it  should check whether the word is his and return true on success.
+If you want your context to work with words you should have this hook to recognize
+and list commands.
+On wantarray it should return a list of possible completions for the word in C<$$block[1]>;
+else it  should check whether the word is a recognized command and return true on success.
 In both cases it is also allowed to return a block ref, this is for the more advanced options.
 
-=item intel BLOCK
+=item parser BLOCK
 
-FIXME
+Here you can set options like for example C<fork_job> or C<no_words> for your context.
 
 =item handler BLOCK
 
-FIXME
+This is the part where your command gets executed.
+
+=item intel BLOCK
+
+Hook used by the Intel plugin for custom completion.
 
 =item filter BLOCK
 
-FIXME
+Hook to filter blocks before they are parsed, this can be used for example
+for custom redirection code.
 
 Be aware that the a block might be filtered twice with the same meta hash,
 the second time should reset any meta fields set by the first time.
 
 =back
+
+=head3 "Hello World" plugin
+
+Here follows an example to create a simple plugin with the "hello_world" builtin.
+
+First create a dir F<~/.zoid/plugins/HelloWorld>.
+
+Next create a module, for example :
+
+  package HelloWorldZoid;
+
+  # Zoidberg::Fish is the base class for plugins
+  use Zoidberg::Fish;
+  our @ISA = qw/Zoidberg::Fish/;
+
+  # Zoidberg::Utils provides the output method
+  use Zoidberg::Utils;
+
+  # no need for a constructor, bootstrap with init
+  sub init { $$_[0]{config}{string} ||= "Hello world !" }
+
+  # and in this sub we actually print the string
+  sub hello_world { output $$_[0]{config}{string} }
+
+  # this will be called when the plugin is unloaded
+  sub round_up { output "someone help me" }
+
+  1; # keep require happy
+
+Save the module as F<~/.zoid/plugins/HelloWorld/HelloWorldFish.pm>.
+
+Then create a config file, this is just a perl script returning a config hash.
+
+  {
+    module => q/HelloWorldFish/,
+    config => { # This hash will be accessible as $shell->{settings}{HelloWorld}
+      string => q/Hello cruel world !/
+    },
+    export => ['hello_world'],
+  }
+
+Save the config file as F<~/.zoid/plugins/HelloWorld/PluginConf.pl>.
+
+After restarting zoid, you should have a builtin command "hello_world" that prints the string
+"Hello cruel world !", and an object called "HelloWorld".
+Of course you guessed already that you can control the string that will be printed from the
+config file, and also that it defaults to "Hello world !".
+On run-time this string is available under C<< $shell->{settings}{HelloWorld}{string} >>,
+it can be changed at any time.
+
 
 =head1 ENVIRONMENT
 
@@ -305,18 +419,26 @@ The following environment variables are used be Zoidberg.
 
 =item ZOIDPID
 
-Contains the process id of the above zoid, intended to be used for an IPC mechanism.
+Contains the process id of a parent zoidberg shell, intended to be used for an IPC mechanism.
 
 =item ZOIDREF
 
-This variable should contain a reference to the Zoidberg object
-currently in charge. This is mainly used for obtaining settings 
-from the parent object behind non-OO interfaces (like builtin shell commands).
+In forked child processes this variable contains a stringyfied version of the current Zoidberg
+object in charge. The parent process has a global hash C<%Zoidberg::OBJECTS> which maps these
+strings to the original references.
+It is intended that an IPC mechanism uses this hash to convert strings back to references.
 
-In (non-forked) child processes this variable contains a stringyfied version.
-The parent process will has a global hash C<%Zoidberg::Objects> which uses these
-strings as keys to the original references. It is intended that an IPC mechanism
-should use this hash to convert strings back to references.
+This value should correspond to the object stored in the global C<$Zoidberg::CURRENT> at
+the time of forking.
+
+In secundairy scripts it is better to use C<< Zoidberg::Shell->current() >>.
+
+TODO this mechanism seems to have some problems
+
+=item ZOIDCMD
+
+Contains the string that caused the current command to be executed.
+Can be used by a command to inspect its arguments as they were before path expansions etc. .
 
 =head1 SEE ALSO
 

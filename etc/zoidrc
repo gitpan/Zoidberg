@@ -2,36 +2,39 @@
 use Zoidberg::Shell qw/:all/;
 use Zoidberg::Utils qw/:output/;
 
-### welcome message
+$shell = Zoidberg::Shell->current(); # get object
+
+### welcome and exit messages
 message(
 "--[ This is the Zoidberg shell ]--[ Version $Zoidberg::VERSION ]--
 ### This is a development version, consider it unstable" );
-
-# FIXME set exit message
-$shell = Zoidberg::Shell->new(); # get object
 $shell->{events}{exit} = sub { message("--[ CU ]--[ Please report all bugs ]--") };
 
 ### set environment
-%env = (
-	EDITOR	=> 'vim',
-	MAILER	=> '',
-	PAGER	=> 'less',
-	BROWSER	=> 'lynx',
-#	PS1	=> '[\u@\h(\L) \W]',
-);
+$ENV{PS1} = '\C{bold,blue}\u@\H \A \C{green}\W\$\C{reset} ';
+$ENV{PS2} = '\C{bold,blue}>\C{reset} ';
+# For those wannabe l337 people ;)
+#$ENV{PS1} = '\C{bold,black}/--( \u@\H )-( \t )-( \w )-( load \P{%l} ) * *\n\\-- * \$\C{reset} ';
+#$ENV{PS2} = ' \C{bold,black}* *\C{reset} ';
+defined $ENV{$$_[0]} or $ENV{$$_[0]} = $$_[1] for
+	[ EDITOR   => 'vim'  ],
+	[ VISUAL   => 'vim'  ],
+#	[ MAILER   => ?      ],
+	[ PAGER    => 'less' ],
+	[ BROWSER  => 'lynx' ],
+	[ CLICOLOR => 1      ];
 
 # some glue for the Gentoo distrobution
-if (-e '/etc/profile.env') {
-	open EXP, '/etc/profile.env';
+if (
+	-e '/etc/profile.env' and
+	open EXP, '/etc/profile.env'
+) {
 	while (<EXP>) {
 		next unless /^\s*export\s*(\w+)=['"](.*?)['"]/;
-		$env{$1} = $2;
+		$ENV{$1} = $2 unless defined $ENV{$1};
 	}
 	close EXP;
 }
-
-# do not overwrite existing values
-$ENV{$_} ||= $env{$_} for keys %env;
 
 # Some programs expect this var to point to a fully posix compliant shell.
 # Since zoid doesn't use this var, no harm is done.
@@ -40,11 +43,13 @@ $ENV{SHELL} = '/bin/sh';
 
 ### set aliases
 alias( {
-	export   => 'setenv', # setenv provided by Commands plugin
-	ls       => 'ls --color=auto',
-	ll       => 'ls --color=auto -l',
-	up       => 'cd ..',
-	bye      => 'exit',
+	up  => 'cd ..',
+	bye => 'exit Bye bye',
+	l   => 'ls',
+	ll  => 'ls -l',
+	la  => 'ls -la',
+	j   => 'jobs',
+	'?' => 'help',
 	( ($> == 0) # root gets other aliases
 		? ( perldoc => 'perldoc -U', perlfunc => 'perldoc -Uf' )
 		: ( perlfunc => 'perldoc -f' )
@@ -54,18 +59,7 @@ alias( {
 ### set default settings
 # set( );
 
-__END__
-
-TODO for PS1
-
-['[',{color=>'red'}],
-['\u',{color=>'magenta'}],
-['@',{color=>'blue'}],
-['\h',{color=>'green'}],
-['(\L)',{color=>'yellow',if=>'sub{my$s=$self->stringify;$s=~s{\e.*?m}{}g;if($s=~/\d/){return 1} else { return 0 }}'}],
-' ',
-['\W',{color=>'cyan'}],
-[']',{color=>'red'}],
-' ',
-],
-
+### OS dependent stuff
+if ($^O eq 'linux' and $ENV{CLICOLOR}) { # _GNU_/Linux rigth ?
+	alias( { ls => 'ls --color=auto' } );
+}

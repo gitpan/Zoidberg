@@ -9,7 +9,8 @@ zoiduser - Extended user documentation for zoid
 The location of config and data files can be installation specific.
 You can check the location where zoid looks for them with the command C<zoid --config>.
 
-By default zoid uses two run control files: F</etc/zoidrc> and F<~/.zoidrc>,
+By default zoid uses two run control files:
+F</etc/zoidrc> and F<~/.zoidrc> or F<~/.zoid/zoidrc>,
 these are ordinary perl scripts that can interface with zoid.
 In general data files are found in F<~/.zoid/>, F</usr/local/share/zoid/>
 or F</usr/share/zoid/> these are called 'data_dirs'.
@@ -25,33 +26,32 @@ The following plugins are included in the standard distribution:
 
 =over 4
 
-=item Buffer
-
-Input buffer for interactive mode, not entirely stable but beats
-typing on STDIN.
-
 =item Commands
 
 Ships a collection of standard builtin commands that one 
 would expects to have in a shell.
 
-=item History
+=item Log
 
-Keeps a log of your doings.
+Keeps a history of your doings.
 
 =item Intel
 
 Takes care of tab expansion.
 
-=item Prompt
+=item ReadLine
 
-Deprecated but for the time being this plugin allows to
-include information in your prompt. Will be removed without warning.
+Tries to load a module from the L<Term::ReadLine> family of modules.
 
 =back
 
 In theory you should be able to remove or replace any of these plugins,
 but you better not try this till a more stable version of zoid.
+
+=head2 Key Bindings
+
+Key bindings depend on the ReadLine module that is loaded. See for example
+L<Term::ReadLine::Zoid>.
 
 =head2 Settings
 
@@ -85,10 +85,6 @@ unless they are asked for explicitly.
 Hide all filesystem nodes which have a name starting with a '.'
 unless they are asked for explicitly.
 
-=item no_hist
-
-Turn off commandline history logging.
-
 =item ignoreeof
 
 When this setting is in effect a ^D char, also known as EOF or EOT,
@@ -97,7 +93,12 @@ won't exit the shell.
 =item naked_zoid
 
 Don't hide the root object behind clothes for things like tab
-expansion and the single arrow operator, but show it in full glory.
+completion and the single arrow operator, but show it in full glory.
+
+=item notify_verbose
+
+When you stop a job the shell will show all jobs instead of just notifying
+just of the one you stopped; makes the behaviour more tcsh(1) like.
 
 =back
 
@@ -315,6 +316,13 @@ This makes the precedence of this example as follows.
 	2 = { print "This is perl code." }
 	3 = less 
 	4 = sql{SELECT * FROM users WHERE clue > 0}
+
+=head2 Notes
+
+(random notes that probably belong elsewhere in this document)
+
+Files starting with a '-' are ignored in globs unless the glob starts with a '-', this is to
+prevent globs from accidentally adding switches to a command.
 
 =head1 SEE ALSO
 
