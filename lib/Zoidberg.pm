@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.2';
+our $VERSION = '0.2a';
 our $VERSION_NAME = '-mudpool-release';
 our $LONG_VERSION =
 "Zoidberg - a modular perl shell, version $VERSION$VERSION_NAME
@@ -380,7 +380,7 @@ sub init_postponed {
 	#print "debug postponed init got : ".join("--", @_)."\n";
 	my $zoidname = shift;
 	my $class = shift;
-    if ($class =~ /::Crab::/) {
+    if (($class =~ /::Crab::/)&&(0)) {
         if (my $pid = $self->IPC->_locate_object($zoidname,$class)) {
             if (my $obj = $self->_generate_crab($pid,$class,$zoidname)) {
                 $self->{objects}{$zoidname} = $obj;

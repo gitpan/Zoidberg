@@ -3,7 +3,7 @@ package Zoidberg::Fish;
 ##Insert version Zoidberg here##
 
 use Devel::Symdump;
-use Zoidberg::Fish::Crab;
+#use Zoidberg::Fish::Crab;
 
 sub new {
     my $class = shift;
