@@ -13,7 +13,7 @@
 
 use strict;
 use Cwd qw/cwd/;
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 # ############### #
 # set environment #
@@ -96,10 +96,14 @@ while ((@ARGV) && ($ARGV[0] =~ /^-/)) {
 # parse includes
 my $cwd = cwd;
 my @inc = split /\,/, $args{inc};
-$0 =~ m!(.*/)!;
-$Zoidberg::Config::ScriptDir = $1;
-push @inc, "$1/lib" if -d "$1/lib";
-for (@inc, $Zoidberg::Config::ScriptDir) { $_ = "$cwd/$_" unless m!^/! }
+$0 =~ s!(.*/)!!;
+if (defined $1) {
+	$Zoidberg::Config::ScriptDir = $1;
+	push @inc, "$1/lib" if -d "$1/lib";
+}
+for (grep {defined $_} @inc, $Zoidberg::Config::ScriptDir) { 
+	$_ = "$cwd/$_" unless m!^/!
+}
 unshift @INC, @inc;
 
 # load some packages - force runtime eval to get includes right
@@ -139,7 +143,9 @@ for (@ARGV) { complain($_, 3) unless -f $_ }
 
 my $interact;
 if ($args{interactive}) { $interact = 1; }
-elsif (!$exec_string && !$args{stdin}) { $interact = (-t STDIN) && (-t STDOUT); }
+elsif (!@ARGV && !$exec_string && !$args{stdin}) { 
+	$interact = (-t STDIN) && (-t STDOUT); 
+}
 else { $interact = 0; }
 #print "debug: interact: $interact, interact_opt: $interact_opt, string: $exec_string\n";
 
@@ -175,10 +181,6 @@ my $cube = Zoidberg->new( {
 	}
 } );
 
-message( 
-"--[ This is the Zoidberg shell ]--[ Version $Zoidberg::VERSION ]--
-### This is a development version, consider it unstable" );
-
 $cube->source( grep {-f $_} @{$cube->{settings}{rcfiles}}, @ARGV );
 
 if ($exec_string) {
@@ -195,8 +197,6 @@ if ( $args{stdin} || -p STDIN || (!$interact && !$exec_string) ) {
 }
 
 $cube->main_loop if $interact;
-
-message("--[ CU ]--[ Please report all bugs ]--");
 
 my $exit = $cube->round_up ? 1 : 0;
 

@@ -19,19 +19,20 @@ use Zoidberg::Eval;
 require Test::More;
 
 my @test_data1 = (
-	['->dus', '$shell->dus', 'basic'],
-	['$f00->dus', '$f00->dus', 'normal arrow'],
-	['->Plug', '$shell->{objects}{Plug}', 'objects'],
-	['->{Var}', '$shell->{vars}{Var}', 'vars'],
+	['->dus', '$shell->dus', 'basic'], # 1
+	['$f00->dus', '$f00->dus', 'normal arrow'], # 2
+	['->Plug', '$shell->{objects}{Plug}', 'objects'], # 3
+	['->{Var}', '$shell->{vars}{Var}', 'vars'], # 4
 	[
 		q/print 'OK' if ->{settings}{notify}/,
 		q/print 'OK' if $shell->{settings}{notify}/,
 		'old quoting bug'
-	],
+	], # 5
+	['print $PATH, "\n"', 'print $ENV{PATH}, "\n"', 'env variabele'], # 6
 );
 my @test_data2 = (
-	['->Plug', '$shell->Plug', 'naked objects'],
-	['->{Var}', '$shell->{Var}', 'naked vars'],
+	['->Plug', '$shell->Plug', 'naked objects'], # 7
+	['->{Var}', '$shell->{Var}', 'naked vars'], # 8
 );
 
 import Test::More tests => @test_data1 + @test_data2;

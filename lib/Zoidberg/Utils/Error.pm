@@ -1,11 +1,11 @@
 
 package Zoidberg::Utils::Error;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 use Carp;
-use UNIVERSAL qw/isa/;
+use UNIVERSAL qw/isa can/;
 use Exporter::Tidy default => [qw/error bug todo/];
 use overload
 	'""' => \&stringify,
@@ -18,44 +18,48 @@ our $Scope = 'zoid';
 # ################ #
 
 sub error {
-	my %error;
 	my @caller = caller;
+	
+	if ($@ && !@_) { # make it work more like die
+		die $@->PROPAGATE(@caller[1,2]) if can $@, 'PROPAGATE';
+		unshift @_, PROPAGATE({}, @caller[1,2]), $@;
+	}
+
+	my $error = bless {};
+
+	for (@_) { # compiling the error here
+		if (isa $_, 'HASH') { %$error = (%$error, %$_) }
+		else { $$error{string} .= $_ }
+	}
+	
+	$$error{string} ||=
+		  $$error{is_bug}  ? 'This is a bug'
+		: $$error{is_todo} ? 'Something TODO here' : 'Error' ;
+
+	# trace stack
+	$$error{stack} ||= [];
 	{
 		no strict 'refs';
 		@caller = caller(${$caller[0].'::ERROR_CALLER'}) 
 			if ${$caller[0].'::ERROR_CALLER'};
+		push @{$$error{stack}}, \@caller;
 
 		if ( # debug code
-			$error{debug} = ${$caller[0].'::DEBUG'} 
+			$$error{debug} = ${$caller[0].'::DEBUG'}
 				|| $ENV{ZOIDREF}{settings}{debug}
 		) {
-			$error{stack} = [];
-			push @{$error{stack}}, [ (caller $_)[0..2] ]
-				for (1..$error{debug});
+			push @{$$error{stack}}, [ (caller $_)[0..2] ]
+				for (1..$$error{debug});
 		}
 	}
-	@error{qw/package file line/} = @caller;
 	
-	if (defined $Scope) { # Code to fake caller
-		$error{scope} = ref($Scope) ? $Scope  : [$Scope, undef];
-		$error{scope}[1] += $error{line} if defined $error{scope}[1];
+	if (defined $Scope) { # set fake caller
+		$$error{scope} ||= ref($Scope)
+			? [ $$Scope[0], $$Scope[1] || $caller[2] ]
+			: [ $Scope ];
 	}
-	
 
-	die PROPAGATE($@, @error{qw/file line/}) if $@ && !@_; # make it work more like die
-
-	for (@_) { # compiling the error here
-		unless (ref $_) { $error{string} .= $_ }
-		elsif (isa $_, 'HASH') { %error = (%error, %$_) }
-		else { croak "subroutine error can't handle argument: $_" }
-	}
-	
-	$error{string} = $error{is_bug}	? 'This is a bug'
-		: $error{is_todo}  	? 'Something TODO here'
-		: 'Error'
-		unless $error{string};
-
-	die bless \%error;
+	die $error;
 }
 
 sub bug {
@@ -79,35 +83,27 @@ sub stringify {
 	my %opt = @_;
 	my $string;
 	if ($opt{format} eq 'gnu') {
-		$string = join ': ', grep {defined $_} ( $$self{scope} 
-			? ( @{$$self{scope}}, $$self{string} )
-			: ( @$self{qw/package line string/}  ) );
-		$string .= "\n";
+		$string = join( ': ', grep {defined $_} 
+			( $$self{scope}  ? (@{$$self{scope}}) : (@{$$self{stack}[0]}) ),
+			( $$self{is_bug} ? 'BUG' : $$self{is_todo} ? 'TODO' : undef   ),
+			$$self{string} ) . "\n" ;
 	}
-	else { $string = $self->_perl_string }
-	for (qw/bug todo/) { $string = uc($_) .': '.$string if $self->{'is_'.$_} }
-	return $string;
-}
-
-sub _perl_string {
-	my $self = shift;
-	my $string = $self->{string};
-	$string .= qq# at $self->{file} line $self->{line}\n# unless $string =~ /\n$/;
-	$string = PROPAGATE($string, $_->{file}, $_->{line})
-		for @{$self->{propagated}}; # recurs
+	else {
+		$string = ($$self{is_bug} ? 'BUG: ' : $$self{is_todo} ? 'TODO: ' : '')
+			. $self->{string};
+		$string .= qq# at $$self{stack}[0][1] line $$self{stack}[0][2]\n# 
+				unless $string =~ /\n$/;
+		$string = PROPAGATE($string, @$_) for @{$self->{propagated}};
+	}
 	return $string;
 }
 
 sub PROPAGATE { # see perldoc -f die
 	my ($self, $file, $line) = @_;
-	if (ref($self) eq __PACKAGE__) {
-		$self->{propagated} = [] unless $self->{propagated};
-		push @{$self->{propagated}}, {
-			'file' => $file,
-			'line' => $line,
-		};
+	if (ref $self) {
+		$self->{propagated} ||= [];
+		push @{$self->{propagated}}, [$file, $line];
 	}
-	elsif (ref($self) && $self->can('PROPAGATE')) { $self = $self->PROPAGATE }
 	else { $self .= "\t...propagated at $file line $line\n" }
 	return $self;
 }
@@ -126,7 +122,7 @@ Zoidberg::Utils::Error - OO error handling
 	use Zoidberg::Utils qw/:error/;
 	
 	sub some_command {
-		error("Wrong number of arguments")
+		error "Wrong number of arguments"
 			unless scalar(@_) == 3;
 		# do stuff
 	}
@@ -146,7 +142,7 @@ the L<Zoidberg::Utils> interface, it also can be used on it's own.
 =head1 EXPORT
 
 By default C<error()>, C<bug()> and C<todo()>. When using the L<Zoidberg::Utils> interface
-you also get C<complain()>, which in reality belongs to L<Zoidberg::Utils::Output>.
+you also get C<complain()>, which actually belongs to L<Zoidberg::Utils::Output>.
 
 =head1 METHODS
 
@@ -183,7 +179,7 @@ Known options:
 =item format
 
 Types 'gnu' and 'perl' are supported. 
-The format 'perl' is the default.
+The format 'perl' is the default, 'gnu' is used by zoidberg's C<complain()> function.
 
 =back
 
@@ -196,7 +192,7 @@ Is automaticly called by C<die()> when you use for example:
 	eval { error 'test' }
 	die if $@; # die is called without explicit argument !
 
-See L<perlfunc/die>.
+See also L<perlfunc/die>.
 
 =back
 
@@ -247,7 +243,7 @@ This exception is raised because some feature isn't yet implemented.
 
 =item propagated
 
-Array of hashes containg information about files and line numbers where
+Array of arrays containg information about file and line numbers where
 this error was propagated, see L</PROPAGATE>.
 
 =back

@@ -1,7 +1,5 @@
- Zoidberg - a modular perl shell, version 0.41
+ Zoidberg - a modular perl shell, version 0.42
 ===============================================
-
-** Laziness, Impatience, Hubris ! **
 
  http://zoidberg.sourceforge.net
  
@@ -11,45 +9,20 @@
   objects and data structures from the command line, and allows you to run Perl 
   code within the scope of your commandline.
 
- Features include:
-    - runs perl code from shell prompt (duh!)
-    - sh like evaluation of system executables
-    - extendible and configable syntax
-    - comes with a SQL syntax plugin (DBI) ( temporarily broken )
-    - perl codable config
-    - runtime (re-)loadable modules
-    - tab expansion through your perl data structure and objects
-    - event based plugin engine
-    - support for pipelines
-    - support for job control
-    - advanced commandline editor
-    - vi-style escape modus for commandline editing
+INSTALLATION
 
- planned:
-    - screen like functionality
-    - glue for other (non-perl) languages
+  See the 'Install' file
 
 BUGS AND LIMITATIONS
 
-  Since we are still in alpha/development fase there will be a lot of bugs.
+  Visit the web page to submit bug reports or mail the author.
+  Known bugs are listed in the BUGS file.
 
-  Visit the web page to submit bug reports.
+  Currently we test with perl 5.8.2 and perl 5.6.2. 
+  Please _do_ bug report for other  perl versions.
 
-  The Zoidberg shell is being developed for GNU/Linux. It will be tested for
-  other UNIX variants - but we garuantee nothing. It is not (yet) (really)
-  POSIX compliant.
-
-  Unlike all sh clones Zoidberg is _not_ a command language interpreter, it 
-  provides a minimal syntax layer but leaves the real parsing to real 
-  interpreters like perl. Zoidberg is a interface to language interpreters.
-  Allthough in some cases native interpreters could be added as an
-  compatibility layer.
-
-  Since Zoidberg completely relies on perl, it has both the advantages and
-  disadvantages of this language, one of the last kind for example is having a
-  rather large footprint. We wouldn't like zoidberg to get really slow,
-  but speed isn't our first priority - hardware is cheap. Make sure you have
-  enough swap.
+  The Zoidberg shell is being developed for GNU/Linux, but should also run on
+  other flavours of unix. Please _do_ bug report for other operatings systems.
 
 AUTHORS
 

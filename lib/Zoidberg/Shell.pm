@@ -1,10 +1,9 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 use vars qw/$AUTOLOAD/;
-use Carp;
 use Zoidberg::Utils qw/:error :output abs_path/;
 use Exporter::Tidy
 	default	=> [qw/AUTOLOAD shell/],
@@ -32,22 +31,14 @@ sub AUTOLOAD {
 
 sub shell {
 	my $self = &_self;
-	my @tree;
-	if (grep {ref $_} @_) {
-		@tree = map {
-			my $t = ref $_;
-			unless ($t) { $_ }
-			elsif ($t eq 'ARRAY') {
-				(ref $$_[0]) ? $_ : 
-					[$self->parse_words({}, @$_)]
-			}
-			else { $self->parse_block($$_) }
-		} @_ ;
-	}
-	elsif (@_ > 1) { @tree = [ $self->parse_words({}, @_) ] }
-	else { @tree = $self->parse(@_) }
-	$self->shell_list(@tree);
-	# TODO use wantarray
+	my $pipe = ($_[0] =~ /^-\||\|-$/) ? shift : undef ;
+	todo 'pipeline syntax' if $pipe;
+	my $c = defined wantarray;
+	my @re;
+	if (grep {ref $_} @_) { @re = $self->shell_list({capture => $c}, @_) }
+	elsif (@_ > 1) { @re = $self->shell_list({capture => $c}, \@_) }
+	else { @re = $self->shell_string({capture => $c}, @_) }
+	return ! $c ? undef : wantarray ? (map {chomp; $_} @re) : join('', @re);
 }
 
 sub system {
@@ -89,9 +80,7 @@ sub set {
 		%{$self->{settings}} = ( %{$self->{settings}}, %{$_[0]} );
 	}
 	elsif (ref $_[0]) { error 'set: no support for data type'.ref($_[0]) }
-	else {
-		for (@_) { $self->{settings}{$_}++ }
-	}
+	else {  $self->{settings}{$_}++ for @_ }
 }
 
 sub setting {
@@ -184,20 +173,13 @@ external commands with it.
 If C<$command> is a built-in shell function (possibly defined by a plugin)
 or a system binary, it will be run with arguments C<@_>.
 The command won't be subject to alias expansion, arguments might be subject
-to glob expansion.
-
-If you just want the output of a system command use the L<system> method.
-
-If you want to make I<sure> you get a built-in command use L<builtin>, you might
-prevent some strange bugs.
+to glob expansion. FIXME double check this
 
 =item C<shell($string)>
 
 Parse and execute C<$string> like it was entered from the commandline.
 You should realise that the parsing is dependent on grammars currently in use,
 and also on things like aliases etc.
-
-I<Using this form in a source script _will_ attract nasty bugs>
 
 =item C<shell([$command, @_], [..], 'AND', [..])>
 

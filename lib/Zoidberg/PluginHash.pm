@@ -1,6 +1,6 @@
 package Zoidberg::PluginHash;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 use Zoidberg::Utils qw/:error read_file merge_hash get_dir/;
@@ -88,17 +88,6 @@ sub STORE {
 	$self->[1]{$name} = $data;
 	$self->load($name) if $$data{load_on_init};
 }
-
-=cut
-
-			if ($self->{plugins}{$plug}{events}) { # Register events
-				for (@{$self->{plugins}{$plug}{events}}) {
-					unless ($self->{events}{$_}) { $self->{events}{$_} = [] }
-					push @{$self->{events}{$_}}, $plug;
-				}
-			}
-
-=cut
 
 sub FIRSTKEY { my $a = scalar keys %{$_[0][1]}; each %{$_[0][1]} }
 

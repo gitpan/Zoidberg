@@ -1,6 +1,6 @@
 package Zoidberg::Fish::History;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 use IO::File();
@@ -74,7 +74,7 @@ sub add {
 			# t for time, r for redundancy
 			# dclone just to be sure
 			my $record = dclone([ [@r], [@_], { 't' => time, 'r' => 1, } ]);
-			$self->broadcast_event("history_add",$record);
+			$self->broadcast("history_add",$record);
 
 			unshift @{$self->{data}{hist}}, $record;
 			my $max = $self->{config}{max_hist} || 100;
@@ -135,7 +135,7 @@ sub del {
 	my $off = shift || 0;
 	my $len = shift || 1;
 	my @removed = splice(@{$self->{data}{hist}}, $off, $len);
-	$self->broadcast_event("history_delete", @removed);
+	$self->broadcast("history_delete", @removed);
 }
 
 sub set_prop {

@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 use Cwd;
@@ -18,10 +18,10 @@ sub init {
 	$_[0]->{_dir_hist_i} = 0;
 }
 
-sub exec { # not completely stable I'm afraid
+sub exec { # FIXME not completely stable I'm afraid
 	my $self = shift;
 	$self->{parent}->{round_up} = 0;
-	$self->{parent}->parse(join(" ", @_));
+	$self->{parent}->shell_string({fork_job => 0}, join(" ", @_));
 	# the process should not make it to this line
 	$self->{parent}->{round_up} = 1;
 	$self->{parent}->exit;
@@ -36,9 +36,15 @@ sub eval {
 
 sub setenv {
 	my $self = shift;
-	my $string = join(" ", @_);
-	if ($string =~ m/^\s*(\w*)\s*=\s*['"]?(.*?)['"]?\s*$/) { $ENV{$1} = $2; }
-	else { error 'argument syntax error' }
+	for (@_) {
+		if ($_ =~ m/^\s*(\w*)\s*=\s*['"]?(.*?)['"]?\s*$/) { $ENV{$1} = $2 }
+		else { error 'argument syntax error' }
+	}
+}
+
+sub unset {
+	my $self = shift;
+	delete $ENV{$_} for @_;
 }
 
 sub set {
@@ -90,7 +96,7 @@ sub source {
 sub alias {
 	my $self = shift;
 	unless (@_) {
-		output map "alias $_='$$self{parent}{aliases}{$_}'", keys %{$$self{parent}{aliases}};
+		output [ map "alias $_='$$self{parent}{aliases}{$_}'", keys %{$$self{parent}{aliases}} ];
 		return;
 	}
 	for (@_) {
@@ -132,10 +138,14 @@ sub cd { # TODO [-L|-P] see man 1 bash
 	my $self = shift;
 	my ($dir, $browse_hack, $done);
 
-	if ($_[0] =~ /^-[bf]?$/) {
+	if ($_[0] =~ /^-[bf]$/) {
 		$dir = $self->__get_dir_hist(@_);
 		error q{History index out of range} unless defined $dir;
 		$browse_hack++;
+	}
+	elsif ($_[0] eq '-') { 
+		$dir = $ENV{OLDPWD};
+		output $dir;
 	}
 	else { $dir = shift }
 

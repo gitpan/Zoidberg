@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 use vars qw/$DEVNULL/;
@@ -18,74 +18,85 @@ sub expand {
 	my ($self, $string, $i_feel_lucky) = @_;
 
 	# fetch block
-	my $l_block;
-	($string, $l_block) = $self->_get_last_block($string);
-	debug "string is -->$string<--\nl_block is -->$l_block<--\n";
+	my ($pref, $block) = $self->_get_last_block($string);
 
-	# find context of block
-	my $block = $self->{parent}->parse_block($l_block, 'BROKEN');
-	return '', $string.$l_block, [] unless $block;
+	$$block[0]{i_feel_lucky} = $i_feel_lucky;
+	$$block[0]{poss} = [];
 
-	if ($#$block > 0) {
-		# get pref right
-		$block->[0]{pref} = $l_block;
-		unless ( ! length $block->[-1] or $block->[0]{pref} =~ s/\Q$block->[-1]\E$//) {
-			# probably escape chars make the match fail
-			my @words = $self->{parent}{stringparser}->split(
-				['word_gram', {no_esc_rm => 1}],
-				$l_block );
-			return '', $string.$l_block, []
-				unless $block->[0]{pref} =~ s/\Q$words[-1]\E$//;
-		}
-	}
-	$block->[0]{i_feel_lucky} = $i_feel_lucky;
-	$block->[0]{poss} = [];
-
-	$block = $self->do($block, $block->[0]{context});
+	$block = $self->do($block, $$block[0]{context});
 
 	# recombine --  if $block->[0] is an array ref , $block is really a list of blocks
 	my $poss;
-	if (ref($block->[0]) eq 'ARRAY') {
-		($block, $poss) = $self->_unwrap_nested_poss(@{$block});
+	if (ref($$block[0]) eq 'ARRAY') {
+		($block, $poss) = $self->_unwrap_nested_poss(@$block);
 	}
 	else { $poss = $block->[0]{poss} }
 
-	if (scalar @{$poss}) {
+	unless (@$poss) { return ($$block[0]{message}, $string, []) } #failure
+	else {
 		my ($match, $winner);
-		if (scalar(@{$poss}) == 1) {  # we have a winner
+		if (@$poss == 1) {  # we have a winner
 			$winner++;
 			$match = shift @{$poss} 
 		}
 		else {
 			# cross match all poss
-			$match = $poss->[0];
-			for my $p (@{$poss}) {
+			$match = $$poss[0];
+			for my $p (@$poss) {
 				while ($p !~ /^\Q$match\E/) {
-					$match = substr($match, 0, length($match)-1);
+					$match = substr $match, 0, length($match) - 1;
 				}
 				last unless $match;
 			}
 		}
+		
 		# wrap it
-		if ($match) {
-			my $m_l_block = $self->_wrap($block, $match, $winner);
-			return ($block->[0]{message}, $string.$m_l_block, $poss);
-				# if length($m_l_block) > length($l_block); # Conflicts with escape chars
-		}
+		my $block_string = $self->_wrap($block, $match, $winner);
+		return ($block->[0]{message}, $pref.$block_string, $poss);
 	}
-
-	return ($block->[0]{message}, $string.$l_block, $poss);
 }
 
 sub _get_last_block {
 	my ($self, $string) = @_;
-	my @dinge = $self->{parent}{stringparser}->split('script_gram', $string);
-	# remember @dinge contains scalar refs
 
-	unless (scalar(@dinge) && ref $dinge[-1]) { return ($string, '') }
+	my @blocks = $self->{parent}{stringparser}->split('script_gram', $string);
 
-	my $block = ${$dinge[-1]};
-	$string =~ s/\Q$block\E$//;
+	my ($last_block, @words);
+	if (@blocks && ref $blocks[-1]) {
+		$last_block = ${$blocks[-1]};
+		$string =~ s/\Q$last_block\E$//;
+		@words = grep {length $_} 
+			$self->{parent}{stringparser}->split('word_gram', $last_block);
+	}
+	else { $last_block = '' }
+
+	my $block;
+	if (@words) {
+		$block = $self->{parent}->parse_block(
+			[{string => $last_block}, @words], undef, 'BROKEN' );
+	}
+	else { $block = [{context => '_WORDS', string => $last_block}, ''] }
+
+	# get words right
+	# FIXME what to do with {start} ?
+	if (exists $$block[0]{end} and @{$$block[0]{end}}) {
+		$$block[0]{context} = '_END';
+		push @$block, @{$$block[0]{end}};
+	}
+	elsif (@$block == 1) { push @$block, '' } # empty string
+
+	# get pref right
+	$$block[0]{pref} = $last_block;
+	unless ($$block[0]{pref} =~ s/\Q$$block[-1]\E$//) {
+		my @words = $self->{parent}{stringparser}->split(
+			['word_gram', {no_esc_rm => 1}], $$block[0]{pref} );
+		push @$block, '' unless $$block[0]{pref} =~ s/\Q$words[-1]\E$//;
+	}
+
+	$$block[0]{context} = (@$block > 2) ? 'SH' : '_WORDS' 
+		unless $$block[0]{context}; # default context
+
+	debug 'block: ', $block;
 	return ($string, $block);
 }
 
@@ -129,7 +140,7 @@ sub do {
 	my @re;
 	if (ref($try) eq 'CODE') { @re = $try->($self, $block) }
 	elsif (exists $self->{parent}{contexts}{$try}{intel}) {
-		@re = $self->{parent}{contexts}{$try}{intel}->($self, $block)
+		@re = $self->{parent}{contexts}{$try}{intel}->($block)
 	}
 	elsif ($self->can('i_'.lc($try))) {
 		my $sub = 'i_'.lc($try);
@@ -138,7 +149,7 @@ sub do {
 	else { debug $try.': no such expansion available' }
 
 	if (defined $re[0]) { ($block, @try) = (@re, @try) }
-	else { return scalar(@try) ? $self->do($block, @try) : $block } # recurs
+	else { return @try ? $self->do($block, @try) : $block } # recurs
 
 	my $succes = 0;
 	if (ref($block->[0]) eq 'ARRAY') { $succes++ if grep {$_->[0]{poss}} @{$block} }
@@ -172,7 +183,7 @@ sub i__zoid {
 	elsif ($type eq 'CODE' ) { $block->[0]{message} = "\'$pref\' is a CODE reference"   } # do nothing (?)
 	else { # $ding is object
 		if ( ($type eq ref $self->{parent}) && (!$ding->{settings}{naked_zoid} || $pref =~ /\xA3/) ) {
-			# only dispay clothes
+			# only display clothes
 			push @poss, grep m/$arg/, @{$self->parent->list_vars};
 			push @poss, grep m/$arg/, @{$self->parent->list_clothes};
 			push @poss, grep m/$arg/, @{$self->parent->list_objects};
@@ -184,7 +195,13 @@ sub i__zoid {
 
 			unless ($arg =~ /[\[\{]/) {
 				no strict 'refs';
-				my @m_poss = map { grep  m/$arg/, _subs($_) } ($type, @{$type.'::ISA'});
+				my @isa = ($type);
+				my @m_poss;
+				while (my $c = shift @isa) {
+					push @m_poss, grep  m/$arg/, _subs($c);
+					debug "class $c, ISA ", @{$c.'::ISA'};
+					push @isa, @{$c.'::ISA'};
+				}
 				push @poss, remove_doubles(@m_poss);
 			}
 			$block->[0]{postf} = '(';
@@ -205,7 +222,7 @@ sub _subs {
 
 sub i__perl_data { return undef } # TODO
 
-sub i__words {
+sub i__words { # to expand the first word
 	my ($self, $block) = @_;
 
 	my $arg = $block->[-1];
@@ -217,16 +234,20 @@ sub i__words {
 
 	for (keys %{$self->{parent}{contexts}}) {
 		next unless exists $self->{parent}{contexts}{$_}{word_list};
-		push @{$block->[0]{poss}}, grep {defined $_}
-			$self->{parent}{contexts}{$_}{word_list}->($block->[-1]);
+		my @re = $self->{parent}{contexts}{$_}{word_list}->($block);
+		unless (@re) { next }
+		elsif (ref $re[0]) { todo 'support for advanced stuff' }
+		else { push @{$block->[0]{poss}}, grep {defined $_} @re }
 	}
 
 	return $block;
 }
 
+sub i__end { i_dirs_n_files(@_) } # to expand after redirections
+
 sub i_sh { return $_[1], ($_[1]->[-1] =~ /^-/) ? 'man_opts' : 'cmd' }
 
-sub i_cmd { 
+sub i_cmd {
 	my ($self, $block) = @_;
 	my @exp = qw/dirs_n_files/;
 	if (exists $self->{config}{commands}{$$block[1]}) {

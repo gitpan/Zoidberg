@@ -7,7 +7,7 @@ zoiddevel - Development documentation for zoid
 =head2 Debugging
 
 If you switch on the global debug bit and the verbose bit both your input
-and debug information are echoed to STERR. Thus by piping both STDOUT and
+and debug information are echoed to STDERR. Thus by piping both STDOUT and
 STDERR to a file you get a detailed log of what is happening.
 
 To set both bits type:
@@ -27,29 +27,51 @@ of that number of frames for each exception thrown using the C<error()> method.
 
 =head2 Structure
 
-On the website can be found a PDF document with a more detailed overview.
+=head3 class diagram
 
+   Zoidberg::Shell
+         /|\            Zoidberg::Contractor
+          |                 /|\   /|\
+          |__________________|     |
+               |                   |
+               |            Zoidberg::Job
+            Zoidberg              /|\
+                                   |
+                                   |
+                            Zoidberg::Job::Builtin
 
-                 Zoidberg::Contractor ----- Zoidberg::Job::*
-		     |
-                     |
-                  Zoidberg::Parser ----- Zoidberg::StringParser
-                     | 
-                     |  _____________ Zoidberg::Shell
-                     | |
- zoid       ____  Zoidberg _____ Zoidberg::Eval
- executable       Engine
-                     |
-                     |
-                     |___ {objects}  Plugins
-                     |___ {contexts} Plugin defined contexts
-                     |___ {settings} Options and config hashes
-                     |___ {events}   DispatchTable with events
-                     |___ {commands} DispatchTable with commands
-		     |___ {aliases}  Alias definitions
+All other classes stand on their own 
+(except perhaps for some internal helper classes).
 
+Zoidberg::Shell is an interface class to be used in perl scripts like F<zoidrc>.
+Zoidberg inheriting from it in order to make this interface also available through
+the C<$shell> object in the eval scope.
 
-FIXME some text explaning the desing in more details
+The Zoidberg::Contractor class contains the code to manage Jobs.
+Because the Job class also inherits from it sub-jobs are possible.
+
+=head3 object structure
+
+   main object  class Zoidberg
+     |
+     |___ {eval}          Zoidberg::Eval object
+     |___ {stringparser}  Zoidberg::StringParser object
+     |
+     |___ {jobs}          Array with Job objects
+     |      |_ items of class Zoidberg::Job
+     |
+     |___ {settings}      Settings and config hashes
+     |___ {objects}       Plugin objects       - tied Zoidberg::PluginHash
+     |___ {contexts}      Custom contexts      - tied Zoidberg::DispatchTable
+     |___ {events}        Event code refs      - tied Zoidberg::DispatchTable
+     |___ {commands}      Command code refs    - tied Zoidberg::DispatchTable
+     |___ {aliases}       Alias definitions
+
+FIXME explanation
+
+=head3 State diagram
+
+TODO
 
 =head2 Parse tree
 
@@ -106,17 +128,18 @@ FIXME reserved meta fields
 =head3 Pseudo parse trees
 
 These are forms that can be used with the C<shell()> function provided by L<Zoidberg::Shell>.
-Just as by the real parse tree blocks of code are references and tokens are plain
-scalars. A block that is a scalar reference will be parsed completely (although expected to be one block).
-A block that is a array referenc will be considered completely parsed if the first element
-is a hash reference, else it is considered a word list.
+Just as by the real parse tree blocks of code are references and tokens are plain scalars. 
+A block that is a scalar reference will be split into words and parsed completely 
+(although still expected to be one block).
+A block that is an array reference will be considered to be completely parsed if the first element
+is a hash reference and the context defined, else it is considered a word list, possibly with
+meta data defined in the first element.
 
-	# for example ls -al | perl{ while (<STDIN>) { print $_ }  }abc && echo done
-	# can executed as :
-	
+	# for example "ls -al | perl{ while (<STDIN>) { print $_ }  }abc && echo done"
+	# can be executed by calling :
 	shell(
-		[qw/ls -al/], 
-		\'perl{ while (<STDIN>) { print $_ }  }abc', 
+		[qw/ls -al/],
+		\'perl{ while (<STDIN>) { print $_ }  }abc',
 		'AND'
 		[{context => 'SH'}, qw/echo done/]
 	);
@@ -124,7 +147,79 @@ is a hash reference, else it is considered a word list.
 Using this kind of pseudo trees only makes sense if you are lazy or you don't know exactly what
 the command is but you have some clues.
 
-FIXME explain which kind of (pseudo) parse tree fits in each of the Parser and Contractor routines
+=head2 Settings
+
+These are advanced settings only needed for development. Common settings can be found in L<zoiduser>.
+
+=over 4
+
+=item _no_redirection
+
+Disable builtin parsing for redirections. Probably needed if you want to do this yourself.
+
+=item _no_env
+
+Disable builtin parsing for local environment settings. Probably needed if you want to do this yourself.
+
+=item _no_hardcoded_context
+
+Disable hard-coded contexts like PERL, SH and CMD. This might be useful
+to make for example a restricted shell.
+
+=item debug
+
+Turn on _all_ debug messages.
+
+=back
+
+=head2 Events
+
+The hash called 'events' in the main object is a tied hash of the class L<Zoidberg::DispatchTable>. 
+This hash contains code refs to be called when certain events happen, thus providing a hook mechanism.
+
+Events of two types are used, first there is the 'broadcast' type in which case all code refs on the 
+stack are called; second there is the 'call' type, in this case only the ref on top of the stack is called
+and it's return value is passed on to the caller.
+
+=head3 broadcast events
+
+FIXME more events
+
+=over 4
+
+=item precmd
+
+This event is called from the main loop just before respawning the input buffer.
+It can be used to update routines.
+
+=item postcmd
+
+This event is called after the spawning of every job. Like 'precmd' it can be used
+for update routines; since 'postcmd' is called much more often then 'precmd'
+use 'precmd' if it makes no difference, 'postcmd' should only be used for atomic stuff
+like updating C<$ENV{PATH}>.
+
+=item exit
+
+Called just before C<round_up()>, used as replacement for F<.bash_logout>.
+
+=back
+
+=head3 call events
+
+Events of the 'call' type used by Zoidberg include:
+
+=over 4
+
+=item get_input C<($event, $broken)>
+
+This method is used to get (interactive) input, by default this event would be set by the Buffer 
+plugin or an alternative input plugin. The boolean C<$broken> signifies that the previous input
+wasn't complete and thus more input is requested.
+
+FIXME where to find doc on input plugins with more details ?
+
+=back
 
 =head2 PluginConf
 
@@ -136,29 +231,69 @@ A plugin configuration file can use the following keys:
 
 The class to bless the plugin object in.
 
+=item load_on_init
+
+Boolean to force the plugin to be loaded during shell initialisation.
+By default plugins are loaded on first use to keep initialisation as fast as possible.
+
 =item config
 
 Hash with plugin specific config stuff. For plugins that inherit from
-Zoidberg::Fish this will automaticly become the C<{config}> attribute.
+Zoidberg::Fish this will automatically become the C<{config}> attribute.
 
 =item commands
 
-Hash linking command names to subroutines.
-
-FIXME link to dispatch string format
+Hash linking command names to subroutines. 
+See L<Zoidberg::DispatchTable> for the string format used in this hash.
 
 =item export
 
-Array with commands automaticly linking to a subroutine of the same name 
+Array with commands automatically linking to a subroutine of the same name 
 in the plugin object.
 
 =item events
 
-Like C<commands> but specifying events the plugin wants to have.
+Like C<commands> but used for events.
 
 =item import
 
 Like C<export> but used for events.
+
+=back
+
+=head2 Custom contexts
+
+Typically you'll want to set a custom context from a plugin.
+To do this you set the L</load_on_init> setting in the L</PluginConf> and then 
+setup the context parser and handlers routines from the plugin's C<init()> routine,
+using the C<add_context()> method in C<Zoidberg::Fish>.
+
+A context config hash can contain the following routines:
+
+=over 4
+
+=item wordlist BLOCK
+
+FIXME
+
+On wantarray should return a list of possible completions for the word in C<$$block[1]>;
+else it  should check whether the word is his and return true on success.
+In both cases it is also allowed to return a block ref, this is for the more advanced options.
+
+=item intel BLOCK
+
+FIXME
+
+=item handler BLOCK
+
+FIXME
+
+=item filter BLOCK
+
+FIXME
+
+Be aware that the a block might be filtered twice with the same meta hash,
+the second time should reset any meta fields set by the first time.
 
 =back
 

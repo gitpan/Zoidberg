@@ -61,7 +61,7 @@ Also the builtin C<set> command acts on this hash.
 
 ( FIXME link to doc on set command )
 
-=head3 Common Settings
+More advanced settings can be found in L<zoiddevel>.
 
 =over 4
 
@@ -69,7 +69,7 @@ Also the builtin C<set> command acts on this hash.
 
 It allows to have wildcard patterns that expand into an empty list.
 The default behavior is to leave the pattern unchanged  
-when it  is  syntactically  incorrect,  or the list of matching pathnames is empty.  
+when it is syntactically incorrect, or when the list of matching pathnames is empty.
 
 =item noglob
 
@@ -94,28 +94,9 @@ Turn off commandline history logging.
 When this setting is in effect a ^D char, also known as EOF or EOT,
 won't exit the shell.
 
-=back
-
-=head3 Devel Settings
-
-=over 4
-
-=item _no_redirection
-
-Disable builtin parsing for redirections. Probably needed if you want to do this yourself.
-
-=item _no_hardcoded_context
-
-Disable hardcoded contexts like PERL, SH and CMD. This might be useful
-to make for example a restricted shell.
-
-=item debug
-
-Turn on _all_ debug messages.
-
 =item naked_zoid
 
-Don't hide the root object behind clothes for things like tab 
+Don't hide the root object behind clothes for things like tab
 expansion and the single arrow operator, but show it in full glory.
 
 =back
@@ -191,19 +172,51 @@ Perl code can have modifiers after the last curly. Currently supported are :
 	n: enclose the expression in a "while STDIN" loop
 	p: like 'n' but also print $_ at the end of each loop
 	g: grep lines from STDIN that make the expression return non-zero
+	z: use strict, no strict is the default
 	
 	# example
 	zoid> ls -al | { s/^(d)\S+/DIR:/ }g
 
-If you use the "naked" form (without the enclosing curlies) a bit of source
-filtering is applied rendering a lonesome dereference operator C<< -> >> with 
-into C<< $self-> >>.
+Zoidberg applies a bit of source filtering is applied to the perl code.
+This renders a lonesome dereference operator C<< -> >> into C<< $self-> >>.
 
 	# Thus
 	zoid> ->kill('1230')
-
+	
 	# is the same as
 	zoid> $self->kill('1230')
+
+Also variables in all capitals get translated to environment variables,
+arrays in all capitals cause a tied array to be imported from L<Env>.
+
+	# Thus
+	zoid> print $PATH
+	
+	# is the same as
+	zoid> print $ENV{PATH}
+	
+	# and this also works
+	zoid> push @PATH, '/usr/X11R6/bin/'
+
+To avoid this source filtering you can use the C<perl{ ... }> syntax.
+( Although once a tied array is imported, it's there. )
+
+Non-existent sub routines are AUTOLOAD'ed to be built-in or system commands,
+alias- and other expansions apply.
+
+	# Thus
+	zoid> ls('*')
+	# is perl, but does exactly the same as
+	zoid> ls *
+
+When such a AUTOLOAD'ed routine is used in scalar or list context it's output will
+be captured and returned as scalar or list.
+
+	# examples
+	zoid> ls($_) for cat('MANIFEST')
+	zoid> mplayer( locate('blinkenlights.mpg') )
+
+For this "capturing mode" the record separator (C<$/>) can be set by using C<$ENV{RS}>.
 
 =item SH
 

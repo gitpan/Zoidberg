@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 our $LONG_VERSION =
 "Zoidberg $VERSION
 
@@ -16,19 +16,22 @@ http://zoidberg.sourceforge.net";
 
 use strict;
 use vars qw/$AUTOLOAD/;
-use Carp;
+
+require Cwd;
+require File::Glob;
+require Zoidberg::Config;
+require Zoidberg::Contractor;
+require Zoidberg::Shell;
+require Zoidberg::PluginHash;
+require Zoidberg::StringParser;
+
 use Data::Dumper;
-use Cwd ();
-use Zoidberg::Config;
-use Zoidberg::Parser;
-use Zoidberg::Shell ();
-use Zoidberg::PluginHash;
-use Zoidberg::DispatchTable _prefix => 'dt_', 'stack';
+use Zoidberg::DispatchTable _prefix => '_', 'stack';
 use Zoidberg::Utils 
-	qw/:error :output :fs read_data_file merge_hash :fs_engine/;
+	qw/:error :output :fs :fs_engine read_data_file merge_hash is_exec_in_path/;
 #use Zoidberg::IPC;
 
-our @ISA = qw/Zoidberg::Parser Zoidberg::Shell/;
+our @ISA = qw/Zoidberg::Contractor Zoidberg::Shell/;
 
 our %Objects; # used to store refs to ALL Zoidberg objects
 our @core_objects = qw/Buffer Intel Prompt Commands History/; # DEPRECATED
@@ -44,6 +47,7 @@ sub new {
 
 	$Objects{"$self"} = $self;
 	$ENV{ZOIDREF} = $self unless ref $ENV{ZOIDREF};
+	$self->{shell} = $self; # for Contractor
 
 	## settings
 	my %default = %Zoidberg::Config::settings;
@@ -69,13 +73,29 @@ sub new {
 	my %events;
 	tie %events, 'Zoidberg::DispatchTable', $self, $self->{events};
 	$self->{events} = \%events;
-	$self->{events}{precmd} = sub { @ENV{qw/OLDPWD PWD/} = ($ENV{PWD}, Cwd::cwd()) };
+	$self->{events}{postcmd} = sub {
+		my $pwd = Cwd::cwd();
+		@ENV{qw/OLDPWD PWD/} = ($ENV{PWD}, $pwd)
+			unless $pwd eq $ENV{PWD} ;
+	};
+
+	## contexts
+	my %contexts;
+	tie %contexts, 'Zoidberg::DispatchTable', $self;
+	$self->{contexts} = \%contexts;
 
 #    $self->{ipc} = Zoidberg::IPC->new($self);
 #    $self->{ipc}->init;
 
 	## parser 
-	Zoidberg::Parser::init($self);
+	my $coll = read_data_file('grammar');
+	$self->{stringparser} = Zoidberg::StringParser->new($coll->{_base_gram}, $coll);
+
+	## setup eval namespace
+	$self->{eval} = Zoidberg::Eval->_new($self);
+	
+	## initialize contractor
+	$self->shell_init;
 
 	## plugins
 	my %objects;
@@ -87,7 +107,7 @@ sub new {
 	if (-s $file_cache) { f_read_cache($file_cache) }
 	else {
 		message 'Initializing PATH cache.';
-		&f_index_path;
+		f_index_path();
 	}
 	$self->{events}{precmd} = \&f_wipe_cache;
 
@@ -106,23 +126,22 @@ sub main_loop { # FIXME use @input_methods instead of buffer
 	error "Could not initialize plugin 'Buffer'" unless $self->{objects}{Buffer};
 	$self->{_continue}++;
 	
-	my $counter;
 	while ($self->{_continue}) {
-		$self->broadcast_event('precmd');
+		$self->broadcast('precmd');
 
 		my $cmd = eval { $self->Buffer->get_string };
 		last unless $self->{_continue}; # buffer can call exit
 		if ($@) {
-			complain "\nBuffer died. \n$@";
+			complain "\nBuffer died. (You can interrupt zoid NOW)\n$@";
+			local $SIG{INT} = 'DEFAULT';
 			sleep 1; # infinite loop protection
-			next;
 		}
-		else { $counter = 0 }
+		else { 
+			$self->broadcast('cmd', $cmd);
+			print STDERR $cmd if $self->{settings}{verbose}; # posix spec
 
-		$self->broadcast_event('cmd', $cmd);
-		print STDERR $cmd if $self->{settings}{verbose}; # posix spec
-
-		$self->shell_string($cmd);
+			$self->shell_string($cmd);
+		}
 	}
 }
 
@@ -143,11 +162,6 @@ sub test_object {
 	return 0;
 }
 
-#sub list_aliases { # DEPRECATED
-#	my $self = shift;
-#	return $self->{grammar}{aliases};
-#}
-
 sub list_clothes { # includes $self->{vars}
 	my $self = shift;
 	my @return = map {'{'.$_.'}'} sort @{$self->{settings}{clothes}{keys}};
@@ -156,6 +170,247 @@ sub list_clothes { # includes $self->{vars}
 }
 
 sub list_vars { return [map {'{'.$_.'}'} sort keys %{$_[0]->{vars}}]; }
+
+# ############ #
+# Parser stuff #
+# ############ #
+
+sub shell_string {
+	my ($self, $meta, @list) = @_;
+	unless (ref($meta) eq 'HASH') {
+			unshift @list, $meta;
+			undef $meta;
+	}
+	local $ENV{ZOIDREF} = $self;
+	@list = $$self{stringparser}->split('script_gram', @list);
+	my $e = $$self{stringparser}->error;
+	return complain $e if $e;
+	# TODO pull code here
+	debug 'block list: ', \@list;
+	return $self->shell_list($meta, @list); # calling contractor
+}
+
+sub parse_block  { 
+	# call as late as possible before execution
+	# bit is "broken bit" (also known as "Intel bit")
+	my ($self, $block, $queue, $bit) = @_;
+	my ($meta, @words) = ({broken => $bit});
+
+	# decipher block
+	my $t = ref $block;
+	if (!$t or $t eq 'SCALAR') {
+		$$meta{string} = $t ? $$block : $block;
+		@words = grep {length $_} $self->{stringparser}->split('word_gram', $$meta{string});
+	}
+	elsif ($t eq 'ARRAY') {
+		$meta = { %$meta, %{shift @$block} }
+			if ref($$block[0]) eq 'HASH';
+		@words = @$block;
+	}
+	else { bug "parse tree contains $t reference" }
+
+	return undef unless grep {length $_} @words;
+
+	($meta, @words) = $self->_filter($meta, @words);
+	return [$meta, @words] if $$meta{context};
+
+	# check builtin contexts
+	unless ($$meta{context} || $$self{settings}{_no_hardcoded_context}) {
+		debug 'trying builtin contexts';
+		my $perl_regexp = join '|', @{$self->{settings}{perl_keywords}};
+		if (
+			(@words == 1) && $words[0] =~ s/^\s*(\w*){(.*)}(\w*)\s*$/$2/s
+			or $$meta{broken} && $words[0] =~ s/^\s*(\w*){(.*)$/$2/s
+		) {
+			if (! $1 or uc($1) eq 'ZOID') {
+				@$meta{qw/context dezoidify _no_words opts/} = ('PERL', 1, 1, $3 || '');
+			}
+			elsif (grep {$_ eq $1} qw/s tr y/) {
+				@$meta{qw/context _no_words/} = ('PERL', 1);
+				$words[0] = $1.'{'.$2.'}'.$3 ;
+			}
+			else {
+				@$meta{qw/context opts/} = (uc($1), $3 || '');
+				if (
+					$$meta{context} eq 'SH' or $$meta{context} eq 'CMD'
+					or exists $self->{contexts}{$$meta{context}}{word_list}
+				) { # split words agan
+					@words = $self->_split_words($words[0], $$meta{broken});
+				}
+			}
+		}
+		elsif ($words[0] =~ /^\s*(->|[\$\@\%\&\*\xA3]\S|\w+[\(\{]|($perl_regexp)\b)/s) {
+			@$meta{qw/context dezoidify/} = ('PERL', 1);
+			($meta, @words) = @{ $self->_no_words([$meta, @words]) };
+		} 
+	}
+
+	# check custom contexts
+	unless ($$meta{context}) {
+		debug 'trying custom contexts';
+		for (keys %{$self->{contexts}}) {
+			next unless exists $self->{contexts}{$_}{word_list};
+			my $r = $self->{contexts}{$_}{word_list}->([$meta, @words]);
+			unless ($r) { next }
+			elsif (ref $r) { ($meta , @words) = @$r }
+			else { $$meta{context} = length($r) > 1 ? $r : $_ }
+			last if $$meta{context};
+		}
+	}
+	
+	# check more builtin contexts
+	unless ($$meta{context} || $$self{settings}{_no_hardcoded_context}) {
+		debug 'trying more builtin contexts';
+#		no strict 'refs';
+		if (
+#			defined *{"Zoidberg::Eval::$words[0]"}{CODE} or
+			exists $self->{commands}{$words[0]}
+		) { $$meta{context} = 'CMD' }
+		elsif (
+			($words[0] =~ m!/! and -x $words[0] and ! -d $words[0])
+			or is_exec_in_path($words[0])
+		) { $$meta{context} = 'SH' }
+		$$meta{_is_checked}++ if $$meta{context};
+
+		# hardcoded default context
+		unless ($$meta{context} || $$meta{broken}) {
+			debug 'going for the default context';
+			$$meta{context} = 'SH';
+		} # just leave blank for broken syntax
+	}
+
+	($meta, @words) = @{ $self->_do_words([$meta, @words]) }
+		if @words && ! @$meta{qw/broken _no_words/} ;
+	return [$meta, @words];
+}
+
+sub _filter {
+	my ($self, $meta, @words) = @_;
+
+	# parse environment
+	unless ( $$self{settings}{_no_env} ) {
+		while ($words[0] =~ /^([A-Z][A-Z_\-\d]*)=(.*)/) {
+			$$meta{start} ||= [];
+			my (undef, @w) = @{ $self->_do_words([{_no_topic => 1}, $2]) };
+			$$meta{env}{$1} = join ':', @w;
+			push @{$$meta{start}}, shift @words;
+		}
+	}
+
+	# parse redirections
+	unless (
+		$$self{settings}{_no_redirection}
+		|| ($#words < 2)
+		|| $words[-2] !~ /^(\d?)(>>|>|<)$/
+	) {
+		# FIXME what about escapes ? (see posix spec)
+		# FIXME more types of redirection
+		# FIXME are it always _2_ words ?
+		$$meta{end} = [ splice @words, -2 ];
+		my $num = $1 || ( ($2 eq '<') ? 0 : 1 );
+		my (undef, @w) = @{ $self->_do_words([{_no_topic => 1}, $$meta{end}[-1]]) };
+		my $file = (@w == 1) ? $w[0] : $$meta{end}[-1];
+		$$meta{fd}{$num} = [ $file, $2 ];
+	}
+
+	# check custom filters
+	for (keys %{$self->{contexts}}) {
+		next unless exists $self->{contexts}{$_}{filter};
+		my $r = $self->{contexts}{$_}{filter}->([$meta, @words]);
+		($meta, @words) = @$r if $r; # skip on undef
+	}
+
+	@words = $self->_do_aliases(@words) if @words && ! $$meta{broken};
+
+	return ($meta, @words);
+}
+
+sub _do_aliases {
+	my ($self, $key, @rest) = @_;
+	if (exists $self->{aliases}{$key}) {
+		my $string = $self->{aliases}{$key}; # TODO Should we support other data types ?
+		@rest = $self->_do_aliases(@rest)
+			if $string =~ /\s$/; # recurs for 2nd word - see posix spec
+		unshift @rest, grep {defined $_} $self->{stringparser}->split('word_gram', $string);
+		return $self->_do_aliases(@rest) unless $rest[0] eq $key; # recurs
+		return @rest;
+	}
+	else { return ($key, @rest) }
+}
+
+sub _no_words { # reconstruct original string
+	my ($self, $block) = @_;
+	my $string = $$block[0]{string};
+	bug 'need meta field "string" to do _no_words' unless $string;
+	if (exists $$block[0]{end}) {
+		$string =~ s/\s*\Q$_\E\s*$//
+			for reverse @{$$block[0]{end}};
+	}
+	if (exists $$block[0]{start}) {
+		$string =~ s/^\s*\Q$_\E\s*//
+			for @{$$block[0]{start}};
+	}
+	$$block[0]{_no_words}++;
+	$block = [ $$block[0], $string ];
+	return $block;
+}
+
+sub _do_words { # expand words etc.
+	my ($self, $block) = @_;
+#	@$block = $_->(@$block) for _stack($$self{contexts}, 'words_expansion');
+	@$block = $self->$_(@$block) for qw/_expand_param _expand_path/;
+	$self->{topic} = $$block[-1] unless $$block[0]{_no_topic};
+	return $block;
+}
+
+sub _expand_param { # FIXME @_ implementation
+	my ($self, $meta, @words) = @_;
+	for (@words) {
+		next if /^'.*'$/;
+		s{ (?<!\\) \$ (?: \{ (.*?) \} | (\w+) ) (?: \[(\d+)\] )? }{
+			my ($w, $i) = ($1 || $2, $3);
+			error "no advanced expansion for \$\{$w\}" if $w =~ /\W/;
+			$w = 	($w eq '_') ? $$self{topic} :
+				(exists $$meta{env}{$w}) ? $$meta{env}{$w}  : $ENV{$w};
+			$i ? (split /:/, $w)[$i] : $w;
+		}exg;
+	}
+	@words = map {
+		if (m/^ \@ (?: \{ (.*?) \} | (\w+) ) $/x) {
+			my $w = $1 || $2;
+			error "no advanced expansion for \@\{$w\}" if $w =~ /\W/;
+			$w = (exists $$meta{env}{$w}) ? $$meta{env}{$w}  : $ENV{$w};
+			split /:/, $w;
+		}
+		else { $_ }
+	} @words;
+	return ($meta, @words);
+}
+
+sub _command_subst {
+	my ($self, $meta, @words) = @_;
+	for (@words) {
+		next if /^'.*'$/;
+		# FIXME FIXME FIXME this should be done by stringparser
+		# s{ (?<!\\) (?: \$\( (.*?) \) | \` (.*?) (?<!\\) \` }{
+		# if wantarray @parts else join ':', @parts
+	}
+}
+
+# See File::Glob for explanation of behaviour
+our $_GLOB_OPTS = File::Glob::GLOB_TILDE() | File::Glob::GLOB_BRACE() | File::Glob::GLOB_QUOTE() ;
+our $_NC_GLOB_OPTS = $_GLOB_OPTS | File::Glob::GLOB_NOCHECK();
+
+sub _expand_path { # path expansion
+	my ($self, $meta, @files) = @_;
+	unless ($self->{shell}{settings}{noglob}) {
+		@files = map { /^['"](.*)['"]$/ ? $1 : File::Glob::bsd_glob($_, 
+			$$self{settings}{allow_null_glob_expansion} ? $_GLOB_OPTS : $_NC_GLOB_OPTS
+		) } @files ;
+	}
+	else {  @files = map { /^['"](.*)['"]$/ ? $1 : $_ } @files  } # quote removal
+	return ($meta, @files);
+}
 
 # ############## #
 # some functions #
@@ -192,17 +447,22 @@ sub dev_null {} # does absolutely nothing
 # Event logic #
 # ########### #
 
-sub broadcast_event { # eval to be sure we return
-	my ($self, $event) = @_;
+sub broadcast { # eval to be sure we return
+	my ($self, $event) = (shift(), shift());
 	return unless exists $self->{events}{$event};
-	debug "Broadcasting event '$event'";
-	for my $sub (dt_stack($self->{events}, $event)) {
-		eval { $sub->($self, $event, @_) };
+	debug "Broadcasting event: $event";
+	for my $sub (_stack($self->{events}, $event)) {
+		eval { $sub->($event, @_) };
 		complain("$sub died on event $event ($@)") if $@;
 	}
 }
 
-# more glue for using events can be found in the Zoidberg::Fish class
+sub call {
+	my ($self, $event) = (shift(), shift());
+	return unless exists $self->{events}{$event};
+	debug "Calling event: $event";
+	$self->{events}{$event}->($event, @_);
+}
 
 # ########### #
 # auto loader #
@@ -244,6 +504,7 @@ sub exit {
 
 sub round_up {
 	my $self = shift;
+	$self->broadcast('exit');
 	if ($self->{round_up}) {
 		foreach my $n (keys %{$self->{objects}}) {
 			#print "debug roud up: ".ref( $self->{objects}{$n})."\n";
@@ -251,7 +512,7 @@ sub round_up {
 				$self->{objects}{$n}->round_up;
 			}
 		}
-		Zoidberg::Parser::round_up($self);
+		Zoidberg::Contractor::round_up($self);
 
 		f_save_cache($self->{settings}{cache_dir}.'/zoid_path_cache');
 
@@ -334,7 +595,9 @@ Zoidberg - a modular perl shell
 
 =head1 SYNOPSIS
 
-FIXME
+Probably you just want the program F<zoid> which is the system command
+to start the Zoidberg shell. If you really want to initialize the module directly 
+you should check the code of F<zoid> for an elaborate example.
 
 =head1 DESCRIPTION
 
@@ -378,48 +641,9 @@ initialise it.
 Returns true if object $zoidname exists and is blessed as $class. Since this calls C<object($zoidname)> the object
 will be initialised when tested.
 
-=item C<print($ding, $type, $options)>
-
-I<DEPRECATED - in time this will be moved to a package Zoidberg::Utils::Output>
-
-I<Use this in secondary objects and plugins.> 
-
-Fancy print function -- used by plugins to print instead of
-perl function "print". It uses Data::Dumper for complex data
-
-C<$ding> can be ref or string of any kind C<$type> can be any string and is optional.
-Common types: "debug", "message", "warning" and "error". C<$type> also can be an ansi color.
-C<$options> is an string containing chars as option switches.
-
-	n : put no newline after string
-	m : force markup
-	s : data is ref to array of arrays of scalars -- think sql records
-
-=item C<ask($question)>
-
-I<DEPRECATED - in time this will be moved to a package Zoidberg::Utils::Output>
-
-Prompts C<$question> to user and returns answer
-
-=item C<reload($class)>
-
-Re-read the source file for class C<$class>. This can be used to upgrade packages on runtime.
-This might cause real nasty bugs when versions are incompatible.
-
-=item C<rehash_plugins()>
-
-Re-read config files for plugins and cache the contents. This is needed after adding a new 
-plugin config file. I<When changing plugins it might not always be a "seamless upgrade".>
-
-=item C<init_object($zoidname)>
-
-Initialise a secundary object or plugin by the name of C<$zoidname>. This is used to 
-autoload plugins. The plugin's meta data is taken from the (cached) configuration file
-in the plugins dir by the same name (and the extension ".pd").
-
 =item C<exit()>
 
-Called by plugins exit zoidberg -- this ends a interactive C<main_loop()> loop
+Called by plugins to exit zoidberg -- this ends a interactive C<main_loop()> loop
 
 =item C<round_up()>
 

@@ -22,7 +22,6 @@ $VAR1 = {
     'Zoidberg::Utils::Error',
     'Zoidberg::Utils::FileSystem',
     'Zoidberg::Utils::Output',
-    'Zoidberg::Parser',
     'Zoidberg::PluginHash',
     'Zoidberg::Shell',
     'Zoidberg::StringParser'

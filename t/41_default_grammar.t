@@ -7,39 +7,39 @@ require Test::More;
 my @test_data1 = (
 	[
 		qq/ls -al | dus\n/,
-		[\'ls -al ', \" dus\n"],
+		[\'ls -al ', \' dus', 'EOL'],
 		'simple pipeline 1'
-	],
+	], # 1
 	[
 		qq/ls -al | grep dus | xargs dus\n/,
-		[\'ls -al ', \' grep dus ', \" xargs dus\n"],
+		[\'ls -al ', \' grep dus ', \' xargs dus', 'EOL'],
 		'simple pipeline 2'
-	],
+	], # 2
 	[
 		q/ # | $ | @ | ! | % | ^ | * /,
 		[map {\" $_ "} '#', qw/$ @ ! % ^ */],
 		'some non word chars'
-	],
+	], # 3
 	[
 		qq/cd .. && for (glob('*')) { print '> '.\$_ }\n/,
-		[\'cd .. ', 'AND', \" for (glob('*')) { print '> '.\$_ }\n"],
+		[\'cd .. ', 'AND', \" for (glob('*')) { print '> '.\$_ }", 'EOL'],
 		'simple logic and'
-	],
+	], # 4
 	[
 		qq{ls .. || ls /\n},
-		[\'ls .. ', 'OR', \" ls /\n"],
+		[\'ls .. ', 'OR', \' ls /', 'EOL'],
 		'simple logic or'
-	],
+	], # 5
 	[
 		 qq#ls .. || ls / ; cd .. && for (glob('*')) { print '> '.\$_ }\n#,
-		 [\'ls .. ', 'OR', \" ls / ", 'EOS', \' cd .. ', 'AND', \" for (glob('*')) { print '> '.\$_ }\n"],
+		 [\'ls .. ', 'OR', \' ls / ', 'EOS', \' cd .. ', 'AND', \" for (glob('*')) { print '> '.\$_ }", 'EOL'],
 		'logic list 1'
-	],
+	], # 6
 	[
 		qq#cd .. | dus || cd / || cat error.txt | bieper\n#,
-		[\'cd .. ', \' dus ', 'OR', \' cd / ', 'OR', \' cat error.txt ', \" bieper\n"],
+		[\'cd .. ', \' dus ', 'OR', \' cd / ', 'OR', \' cat error.txt ', \' bieper', 'EOL'],
 		'logic list 2'
-	],
+	], # 7
 	# TODO more test data
 );
 

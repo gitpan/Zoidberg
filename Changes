@@ -1,6 +1,47 @@
 Revision history for Zoidberg -- a modular perl shell
 <http://zoidberg.sourceforge.net>
 
+0.42 Sa Jan 10
+        - Tested compat for 5.6.2, fixed a few oddities
+
+     Th Jan 08
+        - Changed parsing order for word expansions so $_ / $shell{topic}
+	now also works for shell context
+
+     We Jan 07
+        - Aliases can now be recursive
+
+     Mo Jan 05
+        - Added a filter layer before context parsing
+
+     Sa Jan 03 2004
+        Nerd weekend at carl0s' place -- fooled around with the parser
+        - Added redirection for block contexts
+	- Added local env syntax for all contexts
+	- Fixed bug with multiple procs in pipeline segment
+	- Cleaned up the interfaces for custom contexts
+	- Added wantarray detection to shell()
+
+     Th Jan 01 2004
+        - Removed Zoidberg::Parser and merged it's code into Zoidberg
+
+     Mo Dec 29 2003
+        - Done some cleanups and some prep to dance with the parser
+	- Removed Term::ANSIColor deps in favour of Term::ANSIScreen
+
+     We Dec 10 2003
+        - added environment variables to dezoidify(), scalars just get translated,
+	arrays get imported from Env.pm
+	- fixed @ISA bug in expanding objects
+	- added dezoidify for { .. } syntax, but not for perl{ .. } syntax
+
+     Mo Dec 08 2003
+        - added DESTDIR make variable to allow packaging as an ebuild
+
+     Sa Dec 06 2003
+        - added currying for closures to DispatchTable
+	- carl0s made meta key combo's work transparent
+
 0.41 Fr Dec 05 2003
         Maintenance release, also know as "the sinterklaas release" (yes you have 
 	to be dutch to pronounce that correctly). Not really new features but some

@@ -1,12 +1,12 @@
 
 package Zoidberg::Utils::Output;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 use Data::Dumper;
 use POSIX qw/floor ceil/;
-use Term::ANSIColor;
+use Term::ANSIScreen qw/color/;
 use Exporter::Tidy
 	default => [qw/output message debug complain/],
 	other   => [qw/typed_output/];

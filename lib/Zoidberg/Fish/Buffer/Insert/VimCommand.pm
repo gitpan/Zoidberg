@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer::Insert::VimCommand;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use Zoidberg::Fish::Buffer::Insert;
 use Zoidberg::Fish::Buffer::Meta;
@@ -16,8 +16,8 @@ sub _switch_on {
     $self->{pos} = [0, 0];
     $self->_part_reset;
     $self->{custom_prompt} = 1;
-    $self->{prompt} = ': ';
-    $self->{prompt_lenght} = 2;
+    $self->{prompt} = ':';
+    $self->{prompt_lenght} = 1;
 }
 
 sub _switch_off {

@@ -101,31 +101,15 @@ Display version information.
 
 =head1 ENVIRONMENT
 
-Apart from the standard variables like $HOME and $USER, B<zoid> uses the 
-following environment variables:
+The variables $PWD, $HOME and $USER are set to default values if not yet set by
+the parent process.
 
-=over 4
+The variable $ZOID will point to the location of the B<zoid> executable, it is similar
+to $SHELL for POSIX compliant shells. B<zoid> uses a different variable because
+some programs seem to expect $SHELL to point to a POSIX compliant shell.
 
-=item $XDG_CACHE_HOME
-
-Defines the directory to write temporary files, it defaults to F<$HOME/.cache>.
-
-=item $ZOID
-
-Contains the filename by which B<zoid> was executed. For 'sh-shells' this would
-be $SHELL, but due to this some programs expect $SHELL contain the path to a fully
-POSIX compliant shell.
-
-=item $ZOIDPID
-
-Contains the process id of the current B<zoid>, used for IPC.
-
-=item $ZOIDREF
-
-Contains either a reference or a string representation of the current Zoidberg 
-object, used for IPC.
-
-=back
+B<zoid> also uses $XDG_CACHE_HOME to define the directory to write temporary files,
+it defaults to F<$HOME/.cache>.
 
 =head1 FILES
 

@@ -13,7 +13,7 @@ $VAR1 = {
 		wait		set 		setenv
 		_delete_object	_load_object	_hide
 		_unhide		quit		source
-		alias		unalias
+		alias		unalias		unset
 
 		dirs		popd		pushd
 	/],

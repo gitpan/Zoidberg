@@ -1,6 +1,6 @@
 package Zoidberg::Utils::FileSystem;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 #use File::Spec;
@@ -166,7 +166,7 @@ __END__
 
 =head1 NAME
 
-Zoidberg::Utils::FileRoutines - filesystem routines
+Zoidberg::Utils::FileSystem - filesystem routines
 
 =head1 DESCRIPTION
 

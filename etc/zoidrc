@@ -1,7 +1,17 @@
 
 use Zoidberg::Shell qw/:all/;
+use Zoidberg::Utils qw/:output/;
 
-# set environment
+### welcome message
+message(
+"--[ This is the Zoidberg shell ]--[ Version $Zoidberg::VERSION ]--
+### This is a development version, consider it unstable" );
+
+# FIXME set exit message
+$shell = Zoidberg::Shell->new(); # get object
+$shell->{events}{exit} = sub { message("--[ CU ]--[ Please report all bugs ]--") };
+
+### set environment
 %env = (
 	EDITOR	=> 'vim',
 	MAILER	=> '',
@@ -9,6 +19,18 @@ use Zoidberg::Shell qw/:all/;
 	BROWSER	=> 'lynx',
 #	PS1	=> '[\u@\h(\L) \W]',
 );
+
+# some glue for the Gentoo distrobution
+if (-e '/etc/profile.env') {
+	open EXP, '/etc/profile.env';
+	while (<EXP>) {
+		next unless /^\s*export\s*(\w+)=['"](.*?)['"]/;
+		$env{$1} = $2;
+	}
+	close EXP;
+}
+
+# do not overwrite existing values
 $ENV{$_} ||= $env{$_} for keys %env;
 
 # Some programs expect this var to point to a fully posix compliant shell.
@@ -16,8 +38,9 @@ $ENV{$_} ||= $env{$_} for keys %env;
 # Notice that even perl core utils like perldoc have expectations about it.
 $ENV{SHELL} = '/bin/sh';
 
-# set aliases
+### set aliases
 alias( {
+	export   => 'setenv', # setenv provided by Commands plugin
 	ls       => 'ls --color=auto',
 	ll       => 'ls --color=auto -l',
 	up       => 'cd ..',
@@ -28,7 +51,7 @@ alias( {
 	),
 } );
 
-# set default settings
+### set default settings
 # set( );
 
 __END__

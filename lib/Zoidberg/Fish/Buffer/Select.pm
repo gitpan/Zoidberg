@@ -1,11 +1,11 @@
 package Zoidberg::Fish::Buffer::Select;
-use Term::ANSIColor;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
-use base 'Zoidberg::Fish::Buffer';
+use Term::ANSIScreen qw/color/;
 use Data::Dumper;
+use base 'Zoidberg::Fish::Buffer';
 
 sub _switch_on {
 	$_[0]->{_mark} = [ @{$_[0]->{pos}} ];

@@ -1,6 +1,6 @@
 package Zoidberg::Contractor;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 use POSIX ();
@@ -8,87 +8,113 @@ use Config;
 use Zoidberg::Utils qw/:error :output/;
 use Zoidberg::Eval;
 
-sub new { init(bless {}, shift) }
+sub new {
+	my $class = shift;
+	shell_init(bless {@_}, $class);
+}
 
-sub init {
+# Job control code adapted from example code 
+# in the glibc manual <http://www.gnu.org/software/libc/manual>
+# also some snippets from this manual include as comment blocks
+
+# A subshell that runs non-interactively cannot and should not support job control.
+
+sub shell_init {
 	my $self = shift;
+	bug 'Contractor can\'t live without a shell' unless $$self{shell};
 
 	## add some commands and events
-	$self->{commands}{$_} = $_  for qw/fg bg kill jobs/;
-	$self->{events}{precmd} = '->reap_jobs';
+	$self->{shell}{commands}{$_}   = $_  for qw/fg bg kill jobs/;
+	$self->{shell}{events}{postcmd} = '->reap_jobs';
 
 	## jobs stuff
 	$self->{jobs} = [];
 	$self->{_sighash} = {};
 	$self->{terminal} = fileno(STDIN);
 
-	my @sno = split/[, ]/,$Config{sig_num};
-	my @sna = split/[, ]/,$Config{sig_name};
+	my @sno = split /[, ]/, $Config{sig_num};
+	my @sna = split /[, ]/, $Config{sig_name};
 	$self->{_sighash}{$sno[$_]} = $sna[$_] for (0..$#sno);
 
-	if ($self->{settings}{interactive}) { # FIXME bad for recursiveness
-		# Loop until we are in the foreground.
+	if ($self->{shell}{settings}{interactive}) {
+		# Loop check until we are in the foreground.
 		while (POSIX::tcgetpgrp($self->{terminal}) != ($self->{pgid} = getpgrp)) {
-			kill (21, -$self->{pgid}); # SIGTTIN , 
+			kill (21, -$self->{pgid}); # SIGTTIN, stopping ourselfs 
 			# not using constants to prevent namespace pollution
 		}
 		# ignore interactive and job control signals
-		$SIG{$_} = 'IGNORE' for qw/INT QUIT TSTP TTIN TTOU/;
+		$SIG{$_} = 'IGNORE' for qw/INT QUIT TSTP TTIN TTOU CHLD/;
 		# Put ourselves in our own process group, just to be sure.
-		$self->{pgid} = $$;
-		POSIX::setpgid(0, $self->{pgid});
+		#$self->{pgid} = $$;
+		#POSIX::setpgid(0, $self->{pgid}); # fails for login shell
+		
 		# And get terminal control
 		POSIX::tcsetpgrp($self->{terminal}, $self->{pgid});
 		$self->{tmodes} = POSIX::Termios->new;
 		$self->{tmodes}->getattr;
 	}
-
-	## setup eval namespace
-	$self->{eval} = Zoidberg::Eval->_new($self);
+	else { $self->{pgid} = getpgrp }
 
 	return $self;
 }
 
-sub round_up { # FIXME usage of procs is not transparent
-	kill(1, -$_->{pgid})
-		for grep { $_->{procs} } @{$_[0]->{jobs}};
-}
-
-sub shell_job { todo }
+sub round_up { $_->round_up() for @{$_[0]->{jobs}} }
 
 sub shell_list {
-	my ($self, @list) = @_;
-	return unless grep {defined $_} @list;
-	my $prev_sign = '';
-	while (@list) {
-		my ($pipe, $sign) = $self->_next_statement(\@list);
-		if ( defined($self->{error}) ? ($prev_sign eq 'AND') : ($prev_sign eq 'OR') ) {
-			$prev_sign = $sign if $sign =~ /^(EOS|BGS)$/;
-			next;
+	my ($self, $meta, @list) = grep {defined $_} @_;
+
+	return $$self{shell}{fg_job}->shell_list($meta, @list)
+		if $$self{shell}{fg_job} && $self ne $$self{shell}{fg_job};
+
+	unless (ref($meta) eq 'HASH' and @list) { # wasn't really meta
+		unshift @list, $meta;
+		undef $meta;
+	}
+	else { return unless @list }
+	$$self{queue} = \@list;
+	my @re;
+	my ($prev_sign, @chunk) = ('', $self->_next_chunk);
+	%{$chunk[0][0][0]} = (%{$chunk[0][0][0]}, %$meta) if defined $meta;
+	while (@chunk) { # @chunk = pipe, sign
+		if (
+			defined($self->{error}) 
+			? ( $prev_sign eq 'AND' )
+			: ( $prev_sign eq 'OR'  )
+		) {
+			debug 'skipping chunk ', $chunk[0];
+			$prev_sign = $chunk[1] 
+				if grep {$_ eq $chunk[1]} qw/EOS EOL BGS/;
 		}
 		else {
-			$prev_sign = $sign;
-			next unless @$pipe; # skipping empty pipes
-			Zoidberg::Job->exec(
-				tree => $pipe,
-				zoid => $self,
-				bg   => ($sign eq 'BGS'),
-			);
+			debug 'doing chunk ', $chunk[0];
+			$prev_sign = $chunk[1];
+			if (@{$chunk[0]}) {
+				@re = Zoidberg::Job->exec(
+					boss => $self,
+					tree => $chunk[0],
+					bg   => $chunk[1] eq 'BGS', );
+				$$self{shell}->broadcast('postcmd');
+			}
 		}
+		@chunk = $self->_next_chunk;
 	}
+	return @re;
 }
 
-our @_logic_signs = qw/AND OR EOS BGS/; # && || ; &
-
-sub _next_statement {
-	my ($self, $ref) = @_;
+sub _next_chunk {
+	my $self = shift;
 	my @r;
-	return undef unless scalar(@$ref);
-	while (
-		scalar(@$ref) &&
-		! grep {$_ eq $ref->[0]} @_logic_signs
-	) { push @r, shift @$ref }
-	my $sign = scalar(@$ref) ? shift @$ref : '' ;
+	my $ref = $$self{queue};
+	unless (@$ref) {
+#		@$ref = $self->pull_blocks();
+		return unless @$ref;
+	}
+	while ( @$ref && ! grep {$_ eq $$ref[0]} qw/AND OR EOS EOL BGS/ ) {
+		my $b = shift @$ref;
+		$b = ref($b) ? $$self{shell}->parse_block($b, $$self{queue}) : $b;
+		push @r, $b if defined $b;
+	}
+	my $sign = @$ref ? shift @$ref : '' ;
 	return \@r, $sign;
 }
 
@@ -230,12 +256,12 @@ sub _sigspec {
     my $sig = shift;
     if ($sig =~ /^-(\d+)$/) {
         my $num = $1;
-        if (grep{$_==$num}keys%{$self->{_sighash}}) { return $num }
+        if (grep {$_==$num} keys %{$self->{_sighash}}) { return $num }
         else { return }
     }
     elsif ($sig =~ /^-?([a-z]+)$/i) {
-        my $name=uc($1);
-        if (my($num)=grep{$self->{_sighash}{$_} eq $name}keys%{$self->{_sighash}}) {
+        my $name = uc $1;
+        if (my ($num) = grep {$self->{_sighash}{$_} eq $name} keys %{$self->{_sighash}}) {
             return $num;
         }
         else { return }
@@ -264,7 +290,10 @@ sub reap_jobs {
 		else { push @running, $_ }
 	}
 	$self->{jobs} = \@running;
-	$_->print_status($_->{terminated} ? 'Terminated' : 'Done') for grep {$_->{bg}} @completed;
+	if ($$self{shell}{interactive}) {
+		$_->print_status($_->{terminated} ? 'Terminated' : 'Done') 
+			for grep {$_->{bg} && ! $_->{no_notify}} @completed;
+	}
 }
 
 package Zoidberg::Job;
@@ -274,74 +303,105 @@ use IO::File;
 use POSIX qw/:sys_wait_h :signal_h/;
 use Zoidberg::Utils qw/:error debug/;
 
+our @ISA = qw/Zoidberg::Contractor/;
+
 sub exec { # like new() but runs immediatly
 	my $self = ref($_[0]) ? shift : &new;
 
-	eval { $self->run };
-	$@ ? complain : undef $self->{zoid}{error};
+	my @re = eval { $self->run };
+	$@ ? complain : undef $self->{shell}{error};
 
-	return $self->{id};
+	return @re;
 }
 
-sub new { # @_ should at least contain (tree=>$pipe, zoid=>$ref) here
+sub new { # @_ should at least contain (tree=>$pipe, boss=>$ref) here
 	shift; # class
-	my $self = {@_};
-	my $jobs = delete $self->{jobs} || $self->{zoid}{jobs};
-	$self->{id} = (
-		scalar(@$jobs)
-		? $$jobs[-1]->{id}
-		: 0
-	) + 1;
-	$self->{string} = $self->{tree}[0][0]{string}; # FIXME something better ?
+	my $self = { @_ };
+	$self->{id}     ||= ( @{$$self{boss}{jobs}} ? $$self{boss}{jobs}[-1]{id} : 0 ) + 1;
+	$self->{string} ||= $self->{tree}[0][0]{string}; # FIXME something better ?
+	$self->{shell}  ||= $self->{boss}{shell};
+	$self->{jobs} = [];
+	$$self{$_} = $$self{boss}{$_} for qw/_sighash terminal/; # FIXME check this
 
-	unless ( # FIXME vunzige code
-		@{$self->{tree}} != 1
-		or $self->{bg}
-		or $self->{zoid}{round_up}
-			&& ( $self->{tree}[0][0]{fork_job}
-				|| $self->{tree}[0][0]{context} eq 'SH' )
-	) { bless $self, 'Zoidberg::Job::builtin' }
-	elsif ( grep {! ref $_} @{$self->{tree}}) { bless $self, 'Zoidberg::Job::meta' }
+	my $fork_job =
+		(@{$self->{tree}} > 1) ? 1 :
+		defined($$self{tree}[0][0]{fork_job}) ? $$self{tree}[0][0]{fork_job} :
+		(	$$self{tree}[0][0]{context} eq 'SH'
+			or $$self{bg} 
+			or $$self{tree}[0][0]{capture} ) ? 1 : 0 ;
+	unless ($fork_job) { bless $self, 'Zoidberg::Job::builtin' }
+#	elsif ( grep {! ref $_} @{$self->{tree}}) { bless $self, 'Zoidberg::Job::meta' }
 	else { bless $self, 'Zoidberg::Job' }
 
-	push @$jobs, $self;
+	push @{$$self{boss}{jobs}}, $self;
 	return $self;
 }
 
-sub zoid { $_[0]->{zoid} }
+sub round_up { 
+	kill 1, -$_[0]->{pgid};
+	$_->round_up() for @{$_[0]->{jobs}};
+}
 
 # ######## #
 # Run code #
 # ######## #
 
+# As each process is forked, it should put itself in the new process group by calling setpgid
+# The shell should also call setpgid to put each of its child processes into the new process 
+# group. This is because there is a potential timing problem: each child process must be put 
+# in the process group before it begins executing a new program, and the shell depends on 
+# having all the child processes in the group before it continues executing. If both the child
+# processes and the shell call setpgid, this ensures that the right things happen no matter 
+# which process gets to it first.
+
+# If the job is being launched as a foreground job, the new process group also needs to be 
+# put into the foreground on the controlling terminal using tcsetpgrp. Again, this should be 
+# done by the shell as well as by each of its child processes, to avoid race conditions.
+
 sub run {
 	my $self = shift;
 	$self->{tmodes}	= POSIX::Termios->new;
+	# fixme procs and tree can be merged
 	$self->{procs} = [ map {block => $_, completed => 0, stopped => 0}, @{$self->{tree}} ];
-	$self->{procs}[-1]{last}++;
+
+	my $capture = $self->{tree}[0][0]{capture};
+	$self->{procs}[-1]{last}++ unless $capture;
 
 	my ($pid, @pipe, $stdin, $stdout);
 	my $zoidpid = $$;
 	$stdin = fileno STDIN;
 
+	# use pgid of boss when boss is part of a pipeline
+	$$self{pgid} = $$self{boss}{pgid} unless $$self{shell}{settings}{interactive};
+
+	my $i = 0;
 	for my $proc (@{$self->{procs}}) {
-		unless ($proc->{last}) { # open pipe to next process
+		$i++;
+		if ($proc->{last}) { $stdout = fileno STDOUT }
+		else { # open pipe to next process
 			@pipe = POSIX::pipe;
 			$stdout = $pipe[1];
 		}
-		else { $stdout = fileno STDOUT }
 
 		$pid = fork; # fork process
 		if ($pid) {  # parent process
+			# set pid and pgid
 			$proc->{pid} = $pid;
-			# we take pid from first process and put 
-			# all others in that group
 			$self->{pgid} ||= $pid ;
 			POSIX::setpgid($pid, $self->{pgid});
+			debug "job $$self{id} part $i has pid $pid and pgid $$self{pgid}";
+			# set terminal control
+			POSIX::tcsetpgrp($self->{shell}{terminal}, $self->{pgid}) 
+				if $$self{shell}{settings}{interactive} && ! $$self{bg};
 		}
 		else { # child process
+			# set pgid
 			$self->{pgid} ||= $$; # after first pgid is set allready
-			$self->{zoid}{round_up} = 0; # FIXME this bit has to many uses
+			POSIX::setpgid($$, $self->{pgid});
+			# set terminal control
+			POSIX::tcsetpgrp($self->{shell}{terminal}, $self->{pgid}) 
+				if $$self{shell}{settings}{interactive} && ! $$self{bg};
+			# and run child
 			$ENV{ZOIDPID} = $zoidpid;
 			eval { $self->_run_child($proc, $stdin, $stdout) };
 			exit complain || 0; # exit child process
@@ -351,23 +411,38 @@ sub run {
 		POSIX::close($stdout) unless $stdout == fileno STDOUT;
 		$stdin = $pipe[0] unless $proc->{last} ;
 	}
-	$self->{bg} ? $self->put_bg : $self->put_fg;
+
+	my @re = $$self{bg} ? $self->put_bg : $capture ? ($self->_capture($stdin)) : $self->put_fg;
  
 	# postrun
-	POSIX::tcsetpgrp($self->{zoid}{terminal}, $self->{zoid}{pgid});
-	my $exit_status = $self->{procs}[-1]->{status};
-	error {printed => 1}, $exit_status if $exit_status; # silent error
+	POSIX::tcsetpgrp($$self{shell}{terminal}, $$self{shell}{pgid});
+#	my $exit_status = $self->{procs}[-1]->{status};
+#	error {printed => 1}, $exit_status if $exit_status; # silent error
+#	FIXME where should this go ?
+
+	return @re;
 }
 
-sub _run_child {
+sub _capture { # called in parent when capturing
+	my ($self, $stdin) = @_;
+	local $/ = $ENV{RS}
+		if exists $ENV{RS} and defined $ENV{RS}; # Record Separator
+	debug "capturing output from fd $stdin, \$/ = '$/'";
+	open IN, "<&=$stdin"; # open file descriptor
+	my @re = (<IN>);
+	close IN;
+	POSIX::close($stdin)  unless $stdin  == fileno STDIN ;
+	error if $self->{procs}[-1]->{status};
+	return @re;
+}
+
+sub _run_child { # called in child process
 	my $self = shift;
 	my ($proc, $stdin, $stdout) = @_;
 
-	if ($self->{zoid}{settings}{interactive}) {
-		# get terminal control and set signals
-		POSIX::tcsetpgrp($self->{zoid}{terminal}, $self->{pgid}) unless $self->{bg};
-		map { $SIG{$_} = 'DEFAULT' } qw{INT QUIT TSTP TTIN TTOU CHLD};
-	}
+	$self->{shell}{round_up} = 0; # FIXME this bit has to many use
+	$self->{shell}{settings}{interactive} = 0; # idem
+	map { $SIG{$_} = 'DEFAULT' } qw{INT QUIT TSTP TTIN TTOU CHLD};
 
 	# make sure stdin and stdout are right, else dup them
 	for ([$stdin, fileno STDIN], [$stdout, fileno STDOUT]) {
@@ -376,14 +451,16 @@ sub _run_child {
 		POSIX::close($_->[0]);
 	}
 
-	# do redirections
-	$self->do_redirect($proc->{block});
+	$$self{shell}{fg_job} = $self;
 
-	$self->{zoid}{settings}{interactive} = 0 unless -t STDOUT;
-    	$self->{zoid}->silent;
+	# do redirections and env
+	$self->do_redirect($proc->{block});
+	$self->do_env($proc->{block});
+
+    	$self->{shell}->silent;
 
 	# here we go ... finally
-	$self->{zoid}{eval}->_eval_block($proc->{block});
+	$self->{shell}{eval}->_eval_block($proc->{block});
 }
 
 # ################ #
@@ -395,8 +472,6 @@ sub do_redirect {
 	my @save_fd;
 	for my $fd (keys %{$block->[0]{fd}}) {
 		my @opt = @{$block->[0]{fd}{$fd}};
-		($opt[0]) = $self->{zoid}{eval}->$_($opt[0])
-			for @Zoidberg::Eval::_shell_expand;
 		debug "redirecting fd $fd to $opt[1]$opt[0]";
 		my $fh = ref($opt[0]) ? $opt[0] : IO::File->new(@opt);
 		# FIXME support for >& use IO::Handle for that
@@ -416,6 +491,26 @@ sub undo_redirect {
 	}
 }
 
+# ######## #
+# env code #
+# ######## #
+
+sub do_env {
+	my ($self, $block) = @_;
+	my @save_env;
+	while (my ($env, $val) = each %{$$block[0]{env}}) {
+		debug "env $env, val $val";
+		push @save_env, [$env, $ENV{$env}];
+		$ENV{$env} = $val;
+	}
+	return \@save_env;
+}
+
+sub undo_env {
+	my $save_env = pop;
+	$ENV{$$_[0]} = $$_[1] for @$save_env;
+}
+
 # ########### #
 # Signal code #
 # ########### #
@@ -425,8 +520,8 @@ sub put_fg {
 	$self->print_status('Running') if $self->{bg};
  	$self->{bg} = 0;
 
-	POSIX::tcsetpgrp($self->{zoid}{terminal}, $self->{pgid})
-		if $self->{zoid}{settings}{interactive};
+	POSIX::tcsetpgrp($self->{shell}{terminal}, $self->{pgid})
+		if $self->{shell}{settings}{interactive};
 
 	if ($cont || $self->{stopped}) {
 		kill(SIGCONT, -$self->{pgid});
@@ -434,8 +529,8 @@ sub put_fg {
 	}
 	$self->wait_job;
 
-	POSIX::tcsetpgrp($self->{zoid}{terminal}, $self->{zoid}{pgid})
-		if $self->{zoid}{settings}{interactive};
+	POSIX::tcsetpgrp($self->{shell}{terminal}, $self->{shell}{pgid})
+		if $self->{shell}{settings}{interactive};
 }
 
 sub put_bg {
@@ -456,7 +551,7 @@ sub wait_job {
 		my $pid;
 		until ($pid) {
 			$pid = waitpid(-$self->{pgid}, WUNTRACED|WNOHANG);
-			$self->{zoid}->broadcast_event('poll_socket');
+			$self->{shell}->broadcast('poll_socket');
 			select(undef, undef, undef, 0.001);
 		}
 		$self->_update_child($pid, $?);
@@ -478,12 +573,12 @@ sub _update_child {
 	my ($self, $pid, $status) = @_;
 	return unless $pid; # 0 == all is well
 
-	if ($pid == -1) { # -1 == all processes in groupd ended
+	if ($pid == -1) { # -1 == all processes in group ended
 		my $r = kill(0,-$self->{pgid});
-		unless ($r > 0 or ! $!{ESRCH}) { # `No such process' (zombie)
+#		unless ($r > 0 or ! $!{ESRCH}) { # `No such process' (zombie)
 			debug "$self->{pgid} has disappeared:($!)";
 			$_->{completed}++ for @{$self->{procs}};
-		}
+#		}
 	}
 	else {
 		my ($child) = grep {$_->{pid} == $pid} @{$self->{procs}};
@@ -509,7 +604,7 @@ sub print_status {
 	# POSIX: "[%d]%c %s %s\n", <job-number>, <current>, <status>, <job-name>
 	my ($self, $status) = @_;
 
-	my @c = $self->{zoid}->_current_job;
+	my @c = $self->{shell}->_current_job;
 	my $current =
 		($self eq $c[0]) ? '+' : 
 		($self eq $c[1]) ? '-' : ' ' ;
@@ -528,12 +623,13 @@ use Zoidberg::Utils qw/:error message/;
 
 our @ISA = qw/Zoidberg::Job/;
 
+sub round_up { $_->round_up() for @{$_[0]->{jobs}} }
+
 sub run {
 	my $self = shift;
 	my $block = $self->{tree}[0];
 
-	# prepare some stuff
-	$self->{saveint} = $SIG{INT};
+	my $saveint = $SIG{INT};
 	if ($self->{settings}{interactive}) {
 		my $ii = 0;
 		$SIG{INT} = sub {
@@ -543,25 +639,34 @@ sub run {
 	}
 	else { $SIG{INT} = sub { die "[SIGINT]\n" } }
 
-	# do redirections
+	my $save_fg = $$self{shell}{fg_job};
+	$$self{shell}{fg_job} = $self;
+
+	# do redirections and env
 	my $save_fd = $self->do_redirect($block);
+	my $save_env = $self->do_env($block);
 
 	# here we go !
-	eval { $self->{zoid}{eval}->_eval_block($block) }; # VUNZig om hier een eval te moeten gebruiken
-	die if $@; 
+	eval { $self->{shell}{eval}->_eval_block($block) }; # VUNZig om hier een eval te moeten gebruiken
 
-	# restore file descriptors
+	# restore file descriptors and env
 	$self->undo_redirect($save_fd);
+	$self->undo_env($save_env);
 
 	# restore other stuff
-	$SIG{INT} = delete $self->{saveint};
+	$$self{shell}{fg_job} = $save_fg;
+	$SIG{INT} = $saveint;
 	$self->{completed}++;
+	
+	die if $@;
 }
 
 sub put_bg { error q#Can't put builtin in the background# }
 sub put_fg { error q#Can't put builtin in the foreground# }
 
 sub completed { $_[0]->{completed} }
+
+=cut
 
 package Zoidberg::Job::meta;
 
@@ -604,7 +709,7 @@ sub exec_job {
 	$self->{jobs} ||= [];
 	Zoidberg::Job->exec(
 		tree => $pipe,
-		zoid => $self->{zoid},
+		zoid => $self->{shell},
 		jobs => $self->{jobs},
 	);
 }
@@ -617,6 +722,8 @@ sub completed {
 	# ! jobs_left ||
 	! grep {!$_->completed} @{$self->{jobs}};
 }
+
+=cut
 
 1;
 

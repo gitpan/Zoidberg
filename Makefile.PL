@@ -46,6 +46,7 @@ my %config = (
 		INSTALLDIRS => 'site',
 		MAN2HTML => 0,
 		APPDIR => '',
+		DESTDIR => '',
 	},
 	'include' => {
 		'NAME'		=> 'Zoidberg',
@@ -56,8 +57,7 @@ my %config = (
 
 my $make = Makefile->new(\%config);
 
-if ($make->{vars}{APPDIR}) { # overrule other settings
-	my $App = $make->{vars}{APPDIR};
+if (my $App = $make->{vars}{APPDIR}) { # overrule other settings
 	for (
 		['BIN_DIR',  $App],
 		['LIB_DIR',  "$App/lib/"],
@@ -90,6 +90,18 @@ else {
 	unless ($make->{vars}{MAN_DIR}) {
 		$make->{vars}{MAN1_DIR} ||= "$Pref/man/man1";
 		$make->{vars}{MAN3_DIR} ||= $Config{man3dir} || "$Pref/man/man3";
+	}
+}
+
+if (my $Dest = $make->{vars}{DESTDIR}) {
+	for ( qw/
+		BIN_DIR DOC_DIR LIB_DIR 
+		MAN_DIR MAN1_DIR MAN3_DIR
+		CONFIG DATA APPDIR
+	/ ) {
+		next unless $$make{vars}{$_};
+		$$make{vars}{$_} = $Dest.'/'.$$make{vars}{$_};
+		$$make{vars}{$_} =~ s!/+!/!g;
 	}
 }
 

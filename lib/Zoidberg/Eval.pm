@@ -1,31 +1,31 @@
 package Zoidberg::Eval;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 use vars qw/$AUTOLOAD/;
 
 use Data::Dumper;
-use File::Glob qw/:glob/;
 use Zoidberg::Shell qw/:all/;
 use Zoidberg::Utils qw/:error :output :fs is_exec_in_path/;
+require Env;
 
 our %_REFS; # stores refs to objects of this class for ipc use
 
 $| = 1;
 
-sub _new { bless { zoid => $_[1] }, $_[0] }
+sub _new { bless { shell => $_[1] }, $_[0] }
 
 sub _eval_block {
 	my ($self, $ref) = @_;
 	my $context = $$ref[0]{context};
 
 	if (
-		exists $self->{zoid}{contexts}{$context} and
-		exists $self->{zoid}{contexts}{$context}{handler}
+		exists $self->{shell}{contexts}{$context} and
+		exists $self->{shell}{contexts}{$context}{handler}
 	) {
 		debug "going to call handler for context: $context";
-		$self->{zoid}{contexts}{$context}{handler}->(@$ref);
+		$self->{shell}{contexts}{$context}{handler}->($ref);
 	}
 	elsif ($self->can('_do_'.lc($context))) {
 		my $sub = '_do_'.lc($context);
@@ -39,87 +39,23 @@ sub _eval_block {
 	}
 }
 
-=cut
-
-The  nice  and simple rule given above: `expand a wildcard pattern into
-the list of matching pathnames' was the original  Unix  definition. It
-allowed one to have patterns that expand into an empty list, as in
-xv -wait 0 *.gif *.jpg where  perhaps  no  *.gif files are present 
-(and this is not an error). However, POSIX requires that a wildcard 
-pattern is left unchanged  when it  is  syntactically  incorrect,  
-or the list of matching pathnames is empty.  With bash one can force  
-the  classical  behaviour  by  setting allow_null_glob_expansion=true.
-
-So the setting allow_null_glob_expansion should switch of GLOB_NOCHECK
-
-=cut
-
-our @_shell_expand = qw/_expand_param _expand_path/;
-
 sub _do_sh {
 	my ($self, $meta, @words) = @_;
-
-	$ENV{_} = $self->{zoid}{topic};
-	@words = $self->$_(@words) for @_shell_expand;
 	_check_exec($words[0]) unless $$meta{_is_checked};
-	$self->{zoid}{topic} = $words[-1]; # FIXME we are in fork allready here :(
 	debug 'going to run: ', join ', ', @words;
-
-	if ($self->{zoid}{round_up}) { system @words }
-	else { exec {$words[0]} @words }
+#	if ($self->{shell}{round_up}) { system @words } # FIXME ugly use of this bit
+#	else { 
+	exec {$words[0]} @words 
+#}
 }
 
 sub _do_cmd {
-	my ($self, $meta, @words) = @_;
-
-	@words = $self->$_(@words) for @_shell_expand;
-	my $cmd = shift @words;
-	$self->{zoid}{topic} = $words[-1]; # FIXME check this
-
-	debug 'going to run cmd: ', join ', ', $cmd, @words;
+	my ($self, $meta, $cmd, @args) = @_;
+	debug 'going to run cmd: ', join ', ', $cmd, @args;
 	local $Zoidberg::Utils::Error::Scope = $cmd;
-#	no strict 'refs';
-#	if (defined *{ref($self).'::'.$cmd}{CODE}) {
-#		return output &{ref($self).'::'.$cmd}->(@$block);
-#	}
-#	elsif (exists $self->{zoid}{commands}{$cmd}) {
-	if (exists $self->{zoid}{commands}{$cmd}) {
-		return $self->{zoid}{commands}{$cmd}->(@words);
-	}
-	else { error qq(No such command: $cmd\n) }
-}
-
-sub _expand_param {
-	my ($self, @words) = @_;
-	for (@words) {
-		# TODO array indices -- see man bash -- think Env.pm
-		next if /^'.*'$/;
-		s{ (?<!\\) \$ (?: \{ (.*?) \} | (\w+) ) (?: \[(\d+)\] )? }{
-			my ($w, $i) = ($1 || $2, $3);
-			error "no advanced expansion for \$\{$w\}" if $w =~ /\W/;
-			$w = $ENV{$w};
-			$i ? (split /:/, $w)[$i] : $w;
-		}exg;
-	}
-	return map {
-		if (m/^ \@ (?: \{ (.*?) \} | (\w+) ) $/x) {
-			my $w = $1 || $2;
-			error "no advanced expansion for \@\{$w\}" if $w =~ /\W/;
-			split /:/, $ENV{$w};
-		}
-		else { $_ }
-	} @words;
-}
-
-sub _expand_path { # path expansion
-	my ($self, @files) = @_;
-	unless ($self->{zoid}{settings}{noglob}) {
-		my $glob_opts = GLOB_TILDE|GLOB_BRACE|GLOB_QUOTE;
-		$glob_opts |= GLOB_NOCHECK unless $self->{zoid}{settings}{allow_null_glob_expansion};
-		@files = map { /^['"](.*)['"]$/ ? $1 : bsd_glob($_, $glob_opts) } @files ;
-	}
-	else {  @files = map { /^['"](.*)['"]$/ ? $1 : $_ } @files  }
-	return @files;
+	error qq(No such command: $cmd\n)
+		unless exists $self->{shell}{commands}{$cmd};
+	$self->{shell}{commands}{$cmd}->(@args);
 }
 
 sub _check_exec {
@@ -138,23 +74,28 @@ sub _check_exec {
 sub _do_perl {
 	my ($_Eval, $_Meta, $_Code) = @_;
 	$_Code = $_Eval->_dezoidify($_Code) if $_Meta->{dezoidify};
-	$_Code = $_Eval->_parse_opts($_Code, $_Meta->{opts}) if $_Meta->{opts};
-	debug 'going to eval perl code: no strict; '.$_Code;
+	$_Code = $_Eval->_parse_opts($_Code, $_Meta->{opts});
+	debug 'going to eval perl code: '.$_Code;
 
-	my $shell = $_Eval->{zoid};
-	$_ = $shell->{topic};
-
+	my $shell = $_Eval->{shell};
+	
 	local $Zoidberg::Utils::Error::Scope = ['zoid', 0];
-	eval 'no strict; '.$_Code; # FIXME make strict an option
-        die if $@; # should we check $! / $? / $^E here ?
-
-        $shell->{topic} = $_;
-	print "\n" if $shell->{settings}{interactive}; # ugly hack
+	$_ = $shell->{topic};
+	eval $_Code;
+	if ($@) { # post parse errors 'n stuff
+		die if ref $@; # just propagate the exception
+		$@ =~ s/ at \(eval \d+\) line (\d+)(\.|,.*\.)$/ at line $1/;
+		error { string => $@, scope => [] };
+	}
+	else { 
+		$shell->{topic} = $_;
+		print "\n" if $shell->{settings}{interactive}; # ugly hack
+	}
 }
 
 sub _interpolate_magic_char {
 	my ($self, $string) = @_;
-	$string =~ s/(?<!\\)\xA3\{(\w+)\}/$self->{zoid}{vars}{$1}/eg;
+	$string =~ s/(?<!\\)\xA3\{(\w+)\}/$self->{shell}{vars}{$1}/eg;
 	$string =~ s/\\(\xA3)/$1/g;
 	return $string;
 }
@@ -163,34 +104,47 @@ our $_Zoid_gram = {
 	tokens => [
 		[ qr/->/,   'ARR' ], # ARRow
 		[ qr/\xA3/, 'MCH' ], # Magic CHar
+		[ qr/[\$\@][A-Z][A-Z_\-\d]*/, '_SELF' ], # env var
 	],
+	quotes => { "'" => "'" }, # interpolate also between '"'
 	nests => {},
 	no_esc_rm => 1,
 };
 
+our @__res = qw/ARGV ENV SIG INC/;
+
 sub _dezoidify {
 	my ($self, $code) = @_;
 	
-	## environment variables
-	#$code =~ s/\$([A-Z_]+)(?![\{\[\w])/\$ENV{$1}/g;
-	# TODO arrays
-	# TODO unless $1 eq ENV || SIG || ..
-
-	## arrow syntax
-	my $p = $self->{zoid}{stringparser};
+	my $p = $self->{shell}{stringparser};
 	$p->set($_Zoid_gram, $code);
 	my ($n_code, $block, $token, $prev_token, $thing);
+	my $i = 1;
 	while ($p->more) { 
 		$prev_token = $token;
 		($block, $token) = $p->get;
-#		print "code is -->$n_code<-- prev token -->$prev_token<--\ngot block -->$block<-- token -->$token<--\n";
+#print "code is -->$n_code<-- prev token -->$prev_token<--\ngot block -->$block<-- token -->$token<--\n";
  
+		LAST:	
 		if (! defined $n_code) { $n_code = $block }
+		elsif ($prev_token =~ /^([\@\$])(\w+)/) {
+			my ($s, $v) = ($1, $2);
+			if ($block =~ /^[\w\-]/ or grep {$v eq $_} @__res) { $n_code .= $s.$v.$block }
+			elsif ($s eq '@' or $block =~ /^\[/) { # array
+				no strict 'refs';
+				unless (defined *{$v}{ARRAY} and @{$v}) {
+					Env->import('@'.$v);
+					debug "imported \@$v from Env";
+				}
+				$n_code .= $s.$v.$block;
+			}
+			else { $n_code .= '$ENV{'.$v.'}'.$block } # scalar or hash deref
+		}
 		elsif ($prev_token eq 'ARR' and $n_code =~ /[\w\}\)\]]$/) { $n_code .= '->'.$block }
 		elsif (! (($thing) = ($block =~ /^(\w+|\{\w+\})/)) ) { $n_code .= '->'.$block }
 		elsif (
-			$self->{zoid}{settings}{naked_zoid} && ($prev_token ne 'MCH')
-			or grep {$_ eq $thing} @{$self->{zoid}->list_clothes}
+			$self->{shell}{settings}{naked_zoid} && ($prev_token ne 'MCH')
+			or grep {$_ eq $thing} @{$self->{shell}->list_clothes}
 		) { $n_code .= '$shell->'.$block }
 		elsif ($thing =~ /^\{/) { $n_code .= '$shell->{vars}'.$block }
 		else {
@@ -198,17 +152,31 @@ sub _dezoidify {
 			$n_code .= $block;
 		}
 	}
+	if ($i-- && defined $token) { # one more iteration please
+		$prev_token = $token;
+		$block = undef;
+		goto LAST;
+	}
 	return $n_code;
 }
 
 sub _parse_opts { # parse switches
 	my ($self, $string, $opts) = @_;
+	my %opts;
+	if (! defined($opts) && -p STDIN) { # FIXME FIXME FIXME -p not allowed here
+		debug 'options undef && pipeline => default opt \'p\'';
+		%opts = (p => 1);
+	}
+	else { %opts = ( map {($_ => 1)} split '', $opts ) }
+	debug 'options: ', \%opts;
+	
+	if ($opts{g}) { $string = "\nwhile (<STDIN>) {\n\tif (eval {".$string."}) { print \$_; }\n}"; }
+	elsif ($opts{p}) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n\tprint \$_\n}"; }
+	elsif ($opts{n}) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n}"; }
 
-	# TODO if in pipeline set 'n' as defult unless 'N'
+	# TODO if in pipeline set 'n' as default unless 'N'
 
-	if ($opts =~ m/g/) { $string = "\nwhile (<STDIN>) {\n\tif (eval {".$string."}) { print \$_; }\n}"; }
-	elsif ($opts =~ m/p/) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n\tprint \$_\n}"; }
-	elsif ($opts =~ m/n/) { $string = "\nwhile (<STDIN>) {\n\t".$string.";\n}"; }
+	$string = 'no strict; '.$string unless $opts{z};
 
 	return $string;
 }
@@ -220,10 +188,10 @@ sub _parse_opts { # parse switches
 sub _dump_fish {
 	my $ding = shift;
 	my ($zoid, $parent);
-	$ding->{zoid} = "$zoid" if $zoid = delete $ding->{zoid};
+	$ding->{shell} = "$zoid" if $zoid = delete $ding->{shell};
 	$ding->{parent} = "$parent" if $parent = delete $ding->{parent};
 #	print Dumper $ding;
-	$ding->{zoid} = $zoid if defined $zoid;
+	$ding->{shell} = $zoid if defined $zoid;
 	$ding->{parent} = $parent if defined $parent;
 }
 

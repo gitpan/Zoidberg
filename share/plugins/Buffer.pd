@@ -1,11 +1,11 @@
 $VAR1 = {
-	'module' => 'Zoidberg::Fish::Buffer',
-	'config' => {
+	module => 'Zoidberg::Fish::Buffer',
+	config => {
 		'tab_string' => "    ",
 		'bell' => sub { print "\007" },
 		'info' => 0,
 		'title' => 'Zoidberg',
-		'max_expand' => 0,
+		'max_expand' => 100,
 		'modi' => {
 			'insert' => 'Zoidberg::Fish::Buffer::Insert',
 			'meta' => 'Zoidberg::Fish::Buffer::Meta::Vim',
@@ -16,4 +16,5 @@ $VAR1 = {
 		},
 		'default_modus' => 'insert',
 	},
+	import => ['get_input'],
 }

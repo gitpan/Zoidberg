@@ -1,21 +1,15 @@
 $VAR1 = {
   'core' => {
+    'File::Spec' => '0.86',
     'Storable' => '2.08',
     'Term::ANSIScreen' => '1.40',
-    'Config' => 0,
-    'Term::ReadKey' => '2.21',
-    'Term::ANSIColor' => '1.07',
-    'IO::File' => '1.10',
-    'Data::Dumper' => '2.121',
-    'overload' => '1.01',
-    'Env' => '1.00',
-    'vars' => '1.01',
-    'strict' => '1.03',
-    'UNIVERSAL' => '1.01',
-    'File::Spec' => '0.86',
     'Exporter::Tidy' => '0.06',
     'POSIX' => '1.06',
+    'Term::ReadKey' => '2.21',
+    'IO::File' => '1.10',
     'File::Glob' => '1.02',
+    'Data::Dumper' => '2.121',
+    'Env' => '1.00',
     'Carp' => '1.01',
     'Cwd' => '2.08'
   }

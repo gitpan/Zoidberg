@@ -54,7 +54,7 @@ removes the entire expansion.
 
 Well, if it _is_ a bug then probably it's a bug in perl, not in zoid.
 Most notoriously if you use globs in perl code, perl 5.8.0 can segfault;
-upgrading to perl 5.8.1 fixes this problem.
+upgrading to perl 5.8.2 fixes this problem.
 
 
 =head2 Examples
@@ -108,10 +108,9 @@ Then create a config file, for the syntax think Data::Dumper output.
 
 Save the config file as '~/.zoid/plugins/HelloWorld/PluginConf.pd'.
 
-After restarting zoid, you should have a builtin command "hello_world" that prints the string "Hello cruel world !", and
-an object called "HelloWorld".
-Of course you guessed already that you can control the string that will be printed from the config file, and also that it defaults to 
-"Hello world !".
+After restarting zoid, you should have a builtin command "hello_world" that prints the string "Hello cruel world !", and an object called "HelloWorld".
+Of course you guessed already that you can control the string that will be printed from the config file, and also that it defaults to "Hello world !".
+On run-time this string is available under '->{settings}{HelloWorld}{string}', it can be changed at any time.
 
 =head1 SEE ALSO
 

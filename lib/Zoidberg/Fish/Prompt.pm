@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Prompt;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 
@@ -69,7 +69,7 @@ sub reset {
 
 package Zoidberg::Fish::Prompt::string;
 
-use Term::ANSIColor ();
+require Term::ANSIScreen;
 
 sub new {
     my $class = shift;
@@ -212,7 +212,9 @@ sub colorify {
     my $self = shift;
     my $string = shift;
     if ($self->color) {
-        $string = Term::ANSIColor::color($self->color).$string.Term::ANSIColor::color('reset');
+        $string = Term::ANSIScreen::color($self->color)
+                . $string
+		. Term::ANSIScreen::color('reset');
     }
     return $string;
 }

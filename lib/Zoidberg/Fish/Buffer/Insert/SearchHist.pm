@@ -1,7 +1,7 @@
 package Zoidberg::Fish::Buffer::Insert::SearchHist;
 use base 'Zoidberg::Fish::Buffer::Insert';
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 

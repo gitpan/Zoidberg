@@ -6,10 +6,19 @@ $VAR1 = {
 		'sql-data' => 'yellow',
 	},
 	clothes => {
-		keys => [qw/settings vars exec_error commands aliases events/],
-		subs => [qw/do/],
+		keys => [qw/settings vars error commands aliases events/],
+		subs => [qw/shell alias unalias setting set source/],
 	},
-	perl_keywords => [qw/if unless for foreach while until print use sub/],
+	perl_keywords => [qw/
+		if unless for foreach while until 
+		print
+		push shift unshift pop splice
+		delete
+		do eval
+		tie untie
+		my our use no sub 
+		import bless
+	/],
 	naked_zoid => 0,
 	cache_time => 300, # time in seconds -- 5min
 	hide_private_method => 1,

@@ -49,14 +49,14 @@ for my $file (grep m!^(\./)?inc/!, @MANIFEST) {
 	}
 }
 
-if ($] < 5.008) {
-	# special perl version dependent case :S
-	my $file = 'inc/Tie/Hash.pm';
-	unless (check_mtime($file, 'b/'.$file)) {
-		print "copying $file\n" if $make->{vars}{VERBOSE};
-		path_copy($file, 'b/'.$file);
-	}
-}
+#if ($] < 5.008) {
+#	# special perl version dependent case :S
+#	my $file = 'inc/Tie/Hash.pm';
+#	unless (check_mtime($file, 'b/'.$file)) {
+#		print "copying $file\n" if $make->{vars}{VERBOSE};
+#		path_copy($file, 'b/'.$file);
+#	}
+#}
 
 ## compile zoid and possibly ##
 goto END_OF_ZOID_COMPILE 
@@ -78,13 +78,12 @@ close OUT || die "Could not write b/bin/zoid\n";
 chmod 0755, 'b/bin/zoid';
 
 # compile usage text
-eval qq{ use Pod::Text; };
-die $@ if $@;
+use Pod::Text;
 
 my $usage_parser = Pod::Text->new();
 
 # Parse complete man page to temp file
-$usage_parser->parse_from_file('./man1/zoid.pod', 'b/zoid.usage~~'); 
+$usage_parser->parse_from_file('./man1/zoid.pod', 'b/zoid.usage~~');
 
 # append required sections to bin/zoid
 my @sections = qw/synopsis options/;
@@ -105,6 +104,7 @@ while (<TEXT>) {
 }
 
 close TEXT;
+print FLUFF 'Report bugs to <pardus@cpan.org>.';
 close FLUFF || die $!;
 
 END_OF_ZOID_COMPILE:
@@ -129,7 +129,6 @@ chmod 0755, 'b/bin/AppRun';
 END_OF_APPRUN_COMPILE:
 
 ## mutate config ##
-# schemes are qw/DEFAULT XDG_BASE_DIR RELATIVE CHOICES/
 my $DATA = $make->{vars}{DATA};
 my %conf = (
 	rcfiles => '[ '.(
@@ -178,6 +177,18 @@ open BIN, '>b/t/echo' || die "could not open ./b/t/echo for writing";
 print BIN '#!', $make->{vars}{PERL}, "\n", 'print join(q/ /, @ARGV), "\n";', "\n";
 close BIN || die "could not open ./b/t/echo for writing";
 chmod 0755, 'b/t/echo';
+
+## create 'cat' command for test ##
+open BIN, '>b/t/cat' || die "could not open ./b/t/cat for writeing";
+print BIN << "END_BIN";
+#!$$make{vars}{PERL}
+open FILE, \$ARGV[0] || die "\$0: could not open \$ARGV[0]";
+local \$/;
+print <FILE>;
+close FILE;
+END_BIN
+close BIN || die "could not open ./b/t/cat for writeing";
+chmod 0755, 'b/t/cat';
 
 ## compile manpages ##
 use Pod::Man;
@@ -243,6 +254,24 @@ die $@ if $@;
 
 htmllify('man1/', 'doc/man1/');
 htmllify('lib/', 'doc/man3/');
+
+for (
+	map( "doc/man1/$_", get_files('doc/man1/') ),
+	map( "doc/man3/$_", get_files('doc/man3/') )
+) { # /me is cursing pod2html
+	open IN, $_ || die $!;
+	local $/;
+	my $html = <IN>;
+	close IN;
+	$html =~ s#<a href="(?:\.\./)+lib/(.+?)">#
+		my $m = $1;
+		$m =~ s!/!::!g;
+		'<a href="../man3/'.$m.'">'#ge;
+	$html =~ s#>the (.+?) manpage<#>$1<#g;
+	open OUT, '>', $_ || die $!;
+	print OUT $html;
+	close OUT || die $!;
+}
 
 # compile index.html
 chdir 'doc' || die $!;

@@ -34,7 +34,7 @@ my $child = bless { parent => $parent }, 'child_class';
 my %tja;
 tie %tja, 'Zoidberg::DispatchTable', $child;
 
-$tja{trans} = sub { return 'trans', @_ };
+$tja{trans} = sub { shift; return 'trans', @_ };
 is_deeply( [$tja{trans}->('hmm')], [qw/trans hmm/], 'table transparency to code refs'); # 1
 
 $tja{ping1} = q{ack};

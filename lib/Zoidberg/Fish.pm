@@ -1,6 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 sub new {
 	my ($class, $zoid, $name) = @_;
@@ -15,9 +15,9 @@ sub new {
 
 sub init {}
 
-####################
-#### some stubs ####
-####################
+# ########## #
+# some stubs #
+# ########## #
 
 sub parent {
     my $self = shift;
@@ -29,13 +29,13 @@ sub config {
     return $self->{config};
 }
 
-#####################
-#### event logic ####
-#####################
+# ########### #
+# event logic #
+# ########### #
 
-sub broadcast_event {
+sub broadcast {
 	my $self = shift;
-	$self->{parent}->broadcast_event(@_);
+	$self->{parent}->broadcast(@_);
 }
 
 sub register_event { # DEPRECATED interface
@@ -46,15 +46,22 @@ sub register_event { # DEPRECATED interface
 
 sub unregister_event { todo() }
 
-######################
-### command logic ####
-######################
+# ############# #
+# command logic #
+# ############# #
 
 # TODO interface access to command dispatch table here
 
-#####################
-#### other stuff ####
-#####################
+# ########### #
+# other stuff #
+# ########### #
+
+sub add_context {
+	my ($self, %context) = @_;
+	my $cname = delete($context{name}) || $$self{zoidname};
+	$self->{parent}{contexts}{$cname} = [\%context, $$self{zoidname}];
+	# ALERT this logic might change
+}
 
 sub help {
 	my $self = shift;
@@ -119,7 +126,7 @@ or setting defaults here.
 
 These methods return a reference to the attributes by the same name.
 
-=item C<broadcast_event($event_name, @_)>
+=item C<broadcast($event_name, @_)>
 
 Broadcast an event to whoever might be listening.
 

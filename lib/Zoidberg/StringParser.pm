@@ -16,9 +16,9 @@ use Exporter::Tidy default => [qw/pop_stack push_stack empty_stack/];
 sub TIEHASH {
 	my $class = shift;
 	my $newhash = pop || {};
-	return tied %{$newhash}  # this is the lexical scoping hack
+	return tied %$newhash  # this is the lexical scoping hack
 		if ref($newhash) eq 'HASH'
-		&& ref( tied %{$newhash} ) eq __PACKAGE__;
+		&& ref( tied %$newhash ) eq __PACKAGE__ ;
 	my @stack = map { (ref($_) eq 'ARRAY') ? @$_ : $_ } ($newhash, reverse @_) ;
 	@stack = map { _prepare_gram($_) } @stack;
 	my $self = bless [\@stack, 0], $class;
@@ -177,6 +177,7 @@ sub fetch {
 		? ( $key =~ $_->[0] )
 		: ( $key eq $_->[0] )
 	} @{$self->[1]};
+	return $key if $ref->[1] eq '_SELF';
 	return $ref->[1];
 }
 
@@ -191,14 +192,11 @@ sub new {
 	bless [$expr, $hash], $class;
 }
 
-sub fetch {
-	my ($self, $key) = @_;
-	return $self->[1]{$key};
-}
+sub fetch { $_[0]->[1]{$_[1]} }
 
 package Zoidberg::StringParser;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 no warnings; # can't stand the nagging
@@ -343,7 +341,7 @@ sub get { # get next block
 	}
 
 	$block = $gram{meta}->($self, $block) if $gram{meta}; # post parse block
-	# FIXME after recurs the post parse can happen two times
+	# FIXME after recurs the post parse can happen two times 
 
 	$token = undef if $token eq '_CUT';
 	return( $token ?  ($block, $token) : $block );

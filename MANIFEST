@@ -1,3 +1,4 @@
+Artistic
 BUGS
 Changes
 Install
@@ -31,7 +32,6 @@ lib/Zoidberg/Utils.pm
 lib/Zoidberg/Utils/Error.pm
 lib/Zoidberg/Utils/FileSystem.pm
 lib/Zoidberg/Utils/Output.pm
-lib/Zoidberg/Parser.pm
 lib/Zoidberg/PluginHash.pm
 lib/Zoidberg/Shell.pm
 lib/Zoidberg/StringParser.pm

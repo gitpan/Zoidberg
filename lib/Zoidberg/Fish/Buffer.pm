@@ -1,14 +1,13 @@
 package Zoidberg::Fish::Buffer;
 
-our $VERSION = '0.41';
+our $VERSION = '0.42';
 
 use strict;
 use Data::Dumper;
 use POSIX qw/floor ceil/;
 use Storable qw/dclone/;
 use Term::ReadKey;
-use Term::ANSIColor;
-use Term::ANSIScreen qw/:screen :cursor/;
+use Term::ANSIScreen qw/:screen :cursor color/;
 #use Zoidberg::StringParser;
 # use Zoidberg::StringParser::Syntax;
 use Zoidberg::Utils qw/:error :output debug read_data_file unique_file/;
@@ -93,7 +92,7 @@ sub get_string {
 	return $fb;
 }
 
-sub ask {
+sub ask { # FIXME should be implemented at another level
 	my ($self, $quest, $default, $prompt) = @_;
 	unless ($prompt) {
 		$prompt = $quest;
@@ -229,7 +228,7 @@ sub refresh {
 	$x_pos -= $y_pos * $self->{size}[0];
 	$x_pos += 1;
 	print locate($self->{_null_line} + $start[$self->{pos}[1]] + $y_pos, $x_pos);
-    $self->broadcast_event('buffer_refresh');
+    $self->broadcast('buffer_refresh');
 }
 
 #######################
@@ -247,7 +246,7 @@ sub _read_key { # TODO clean up
 			$self->{lines} = 0;
 			$self->refresh;
 		};
-		while (not defined ($chr = ReadKey(0.05))) { $self->broadcast_event($self->{state}) }
+		while (not defined ($chr = ReadKey(0.05))) { $self->broadcast($self->{state}) }
 
 		#<VUNZIG> this will cause bugs
 		if ($chr eq "\e") {
@@ -257,14 +256,17 @@ sub _read_key { # TODO clean up
 				while (@poss) {
 					my $my_chr;
 					while ( not defined ($my_chr = ReadKey(0.05)) ) {
-						$self->broadcast_event($self->{state})
+						$self->broadcast($self->{state})
 					}
 					$str .= $my_chr;
 					@poss = grep /^\Q$str\E/, keys %{$self->{char_table}{esc}};
 					last if @poss == 1 and $poss[0] eq $str;
 				}
 				if (@poss == 1) { $chr = $poss[0] }
-				else { $chr = 'esc_'.$str }
+				else {
+					$self->_do_key('esc');
+					$chr = $str;
+				}
 			} # else just char = \e
 		}
 		#</VUNZIG>
@@ -492,20 +494,21 @@ sub golf {
 sub editor {
 	my $self = shift;
 	my $ext = 'pl'; # TODO make this dynamic
-	my $editor = $self->parent->{settings}{utils}{editor};
-	my $tempfile = unique_file("/tmp/zoid-XXXX.".$ext);
-	#print "debug: editor used: $editor, tempfile: $tempfile\n";
+	my $editor = $self->parent->{settings}{utils}{editor} || $ENV{EDITOR} || 'vi';
+	my $tempfile = unique_file("/tmp/zoid-fc-XXXX.".$ext);
+	debug "editor used: $editor, tempfile: $tempfile";
 	open(TEMP,'>'.$tempfile);
 	print TEMP join("\n", @{$self->{fb}});
 	close TEMP;
 	system($editor, $tempfile);
 	open(TEMP,$tempfile);
 	@{$self->{fb}} = map {chomp $_; $_} (<TEMP>);
-	unless (@{$self->{fb}}) { @{$self->{fb}} = (''); }
+	@{$self->{fb}} = ('') unless @{$self->{fb}};
 	close TEMP;
 	unlink($tempfile);
 	$self->{pos} = [length($self->{fb}[-1]), $#{$self->{fb}}];
 	$self->refresh;
+	$self->submit;
 }
 
 sub move_left {
@@ -599,9 +602,7 @@ sub expand { # TODO fix tab_exp_back for expansion in het midden van de string
 	if ($#{$self->{fb}} > $self->{pos}[1]) { push @end, splice (@{$self->{fb}}, $self->{pos}+1); }
 
 	my ($message, $fb, $ref) = $self->{parent}->Intel->expand(
-		join("\n", @{$self->{fb}}),
-		$lucky_bit,
-		$context);
+		join("\n", @{$self->{fb}}), $lucky_bit, $context);
 
 	@{$self->{fb}} = split("\n", $fb);
 	$self->{pos}[0] = length($self->{fb}[$self->{pos}[1]]);
@@ -618,8 +619,9 @@ sub expand { # TODO fix tab_exp_back for expansion in het midden van de string
 
 	if (scalar(@{$ref})) {
 		#print "debug: ".Dumper($ref);
-		if ($self->{config}{max_expand} && scalar(@{$ref}) > $self->{config}{max_expand}) {
-			print "More then $self->{config}{max_expand} matches\n";
+		if ( $$self{config}{max_expand} && @$ref > $$self{config}{max_expand}) {
+			print "Display all ".scalar(@$ref).' possibilities? [yN] ';
+			output $ref if <STDIN> =~ /y/i ;
 		}
 		else { output $ref }
 	}
@@ -691,7 +693,11 @@ sub print_info {
 		my $l = 0;
 		for (@r) { if (length($_)>$l) { $l=length($_) }};
 		@r = map { $_.("-"x($l - length $_)) } @r;
-		for (0..$#r) { print locate($_ + 1, $self->{size}[0] - $l), color('black', 'on_white'), $r[$_], color('reset'); }
+		for (0..$#r) {
+			print	locate($_ + 1, $self->{size}[0] - $l),
+				color('black', 'on_white'), $r[$_],
+				color('reset');
+		}
 	}
 
 	## xterm title
