@@ -15,6 +15,7 @@ $VAR1 = {
 	'Prompt' => {
 		'prompt' => [{'['=>'red'},{'\u'=>'magenta'},{'@'=>'blue'},{'\h'=>'green'}, ((&apm)?('(', {'\L'=>'yellow'}, ')'):()), ' ',{'\W'=>'cyan'}, {']'=>'red'}, ' '],
 		'file' => $conf_dir."ps1.pd",
+        'max_length' => 0,
 	},
 	'Buffer' => {
 		'char_table_file' => $conf_dir."var/char-table.pd",
@@ -51,6 +52,14 @@ $VAR1 = {
 			'reset_safe' => "c_set_safe",
 			'go'    => '_Gnot->go',
 			'dance' => '_Gnot->dance',
+			'msn' => '_Amy->msnsend',
+		}
+	},
+	'Amy' => {
+		'config' => {
+			#change your email into a passport at passport.com 
+			'user' => 'zoidberg@abzurd.com',
+			'signonstate' => 'IDL',
 		}
 	},
 	'Hermes' => {

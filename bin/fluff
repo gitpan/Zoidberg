@@ -18,7 +18,7 @@ use Getopt::Long qw(:config gnu_compat no_getopt_compat no_ignore_case);
 use Pod::Usage;
 
 #print "Debug: ARGV is: --".join('--', @ARGV)."--\n";
-
+ 
 # get info
 my @passwd = getpwuid($>);
 # Returns ($name, $passwd, $uid, $gid, $quota, $comment, $gcos, $dir, $shell).

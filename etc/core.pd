@@ -2,9 +2,9 @@
 $VAR1 = {
 	'print' => {
 		'colors' => {
-			'warning'  => 'yellow',
-			'error'    => 'red',
-			'debug'    => 'green',
+			'warning' => 'yellow',
+			'error' => 'red',
+			'debug' => 'green',
 			'sql-data' => 'yellow',
 		},
 		'mark_up' => ['warning', 'error', 'debug'],
@@ -19,7 +19,9 @@ $VAR1 = {
 		'MOTZ'   	=> ['Zoidberg::MOTZ'],
 		'Test'		=> ['Zoidberg::Test'],
 		'Monitor'	=> ['Zoidberg::Monitor'],
+#		'Safe'		=> ['Safe', '', '$self->{objects}{$zoidname}->reval("no strict");'],
 		'Help'		=> ['Zoidberg::Help'],
+		'Amy'	=> ['Zoidberg::Amy'],
 		'Hermes'	=> ['Zoidberg::Hermes'],
 		'Trog'		=> ['Zoidberg::Trog'],
 		'Sepository'	=> ['Zoidberg::Sepository'],

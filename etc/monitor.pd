@@ -14,4 +14,10 @@ $VAR1 =
 	        action      => q|$self->print("You've got mail!")|,
 	    },
 	},
+    #'idle' => {
+    #    'hyperprompt' => {
+    #        condition   => q|int(rand 5)?0:1|,
+    #        action      => q|$self->parent->buffer->print_prompt,$self->parent->buffer->print_buffer|,
+    #    },
+    #},
 }

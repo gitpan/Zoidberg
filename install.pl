@@ -187,13 +187,13 @@ sub dircopy {
 		dircopy( $from.$dir, $to.$dir ); #recurs
 	}
 }
-
+ 
 sub ask {
 	my ($question, $default) = @_;
 	my $answer = '';
 	unless ($silent) {
 		print "$question [$default] ";
-		$answer = <>;
+		$answer = <STDIN>;
 		chomp($answer);
 	}
 	return $answer ? $answer : $default;

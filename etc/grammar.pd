@@ -15,7 +15,8 @@ $VAR1 = {
 		on_black on_red on_green on_yellow on_blue
 		on_magenta on_cyan on_white
 	/],
-	'perl_functions' => [qw/ # copy-pasted from perlfunc (version 5.8)
+	# perl functions copied from perlfunc (perl version 5.8)
+	'perl_functions' => [qw/
 	abs accept alarm atan2
 	bind binmode bless
 	caller chdir chmod chomp chop chown chr chroot close closedir connect continue cos crypt
@@ -102,14 +103,17 @@ $VAR1 = {
 			['^\s*(?i:select|insert|update|drop|alter|delete|show|use)','SQL'],
 			['->', 'ZOID'],
 			["^\\s*${ps}_", 'ZOID'],
-			['^\s*\$', 'PERL'],
-			['(?i)^\s*sql\:','SQL','$block->[0] =~ s/(?i)^\s*sql\://;'],
+			['^\s*[\$\@\%]', 'PERL'],
 			['^\s*c\/','C'],
 		],
 		'broken_rules' => [
 			['^\s*(\w+)\{(.*)', 'stub', '$block->[0] = $2; $block->[2] = uc($1);'],
 			['^\s*\{(.*)', 'PERL', '$block->[0] = $1;'],
+			["${ps}(?!_)", 'ZOID'],
 			['^\s*(?i:select|insert|update|drop|alter|delete|show|use)','SQL'],
+			['->', 'ZOID'],
+			["^\\s*${ps}_", 'ZOID'],
+			['^\s*[\$\@\%]', 'PERL'],
 			['^\s*c\/','C'],
 		],
 	},
