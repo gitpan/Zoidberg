@@ -1,6 +1,11 @@
 Revision history for Zoidberg - a modular perl shell
 <http://zoidberg.sourceforge.net>
- 
+
+0.53 Thu May 27 2004
+     Oops, another "nuked" release :( Got a typo in the test script.
+
+0.52 Tue May 25 2004
+
      Mon May 24
         - Added another interface between Intel and ReadLine
 

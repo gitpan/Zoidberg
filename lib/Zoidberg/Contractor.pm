@@ -1,6 +1,6 @@
 package Zoidberg::Contractor;
 
-our $VERSION = '0.52';
+our $VERSION = '0.53';
 
 use strict;
 use POSIX ();

@@ -11,7 +11,7 @@ $$requires{perl} = '5.6.1'; # I don't trust older versions will work
 
 my $build = MyBuilder->new(
 	module_name => 'Zoidberg',
-	dist_author => 'Jaap Karssenberg <pardus@cpan.org>',
+	dist_author => ['Jaap Karssenberg <pardus@cpan.org>'],
 	license => 'perl',
 	requires => $requires,
 	recommends => {
