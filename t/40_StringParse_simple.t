@@ -1,4 +1,4 @@
-use Test::More tests => 16;
+use Test::More tests => 18;
 use Zoidberg::StringParse;
 
 my $simple_gram = {
@@ -82,6 +82,11 @@ for (
 		[map( {\$_} qw/dit is dus/), 'PIPE', \'ook', \'"zoiets ja"'],
 		'advanced getline with array gram'
 	],
+	[
+		['simple', 'dit is een escaped \| pipe, en dit een escape \\\\ dus, "dit \\\\ trouwens ook"'],
+		[\'dit is een escaped | pipe, en dit een escape \\ dus, "dit \\ trouwens ook"'],
+		'escape removal and escaping'
+	],
 ) {
 	@blocks = $parser->getline( @{$_->[0]} );
 	#use Data::Dumper;
@@ -99,6 +104,11 @@ ok(
 
 $parser->split('simple', 'some broken { syntax');
 ok( $parser->error eq 'Unmatched nest at end of input: {', 'error function works' );
+#print 'error -->', $parser->error, "<--\n";
+
+$parser->split(['simple', {no_esc_rm=>1}], 'some broken { syntax');
+ok( $parser->error eq 'Unmatched nest at end of input: {', 'error function works with no_esc_rm' );
+#print 'error -->', $parser->error, "<--\n";
 
 # test synopsis - just be sure
 

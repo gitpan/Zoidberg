@@ -16,4 +16,6 @@ $VAR1 = {
 	'cache_time' => 300, # time in seconds -- 5min
 	'no_regex' => 0,
 	'strict_regex' => 0,
+	'hide_private_method' => 1,
+	'hide_hidden_files' => 1,
 };

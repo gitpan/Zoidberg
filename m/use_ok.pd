@@ -5,6 +5,7 @@ $VAR1 = {
     'Zoidberg::Fish::Buffer::Meta',
     'Zoidberg::Fish::Buffer::Insert::MultiLine',
     'Zoidberg::Fish::Buffer::Insert::VimCommand',
+    'Zoidberg::Fish::Buffer::Insert::SearchHist',
     'Zoidberg::Fish::Buffer::Meta::Vim',
     'Zoidberg::Fish::Buffer::Select',
     'Zoidberg::Fish::Buffer',

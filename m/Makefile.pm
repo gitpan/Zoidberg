@@ -31,9 +31,14 @@ our %default_config = (
 	'manifest' => 'MANIFEST',
 	'tools' => {
 		# name => [ command, [extensions] ]
-		'perl' =>  [ $Config{perl5}, ['pl', 'PL', 'pm'] ],
+		'perl' =>  [ $Config{perl5}||$Config{perlpath}, ['pl', 'PL', 'pm'] ],
 		'shell' => [ $Config{sh},    [ 'sh' ]           ],
-	}
+	},
+	'include' => {
+		'NAME'          => 'unknown',
+		'VERSION'       => 'unknown',
+		'AUTHOR'	=> 'unknown',
+	},
 );
 
 our @var_arg = @ARGV; # copy here - use later
@@ -51,11 +56,14 @@ sub new {
 		$config->{conf_file} = $file;
 	}
 
-	$self = bless $config, $class; 
+	$self = bless $config, $class;
 	#<VUNZIG>
 	foreach (keys %default_config) { unless ($self->{$_}) { $self->{$_} = $default_config{$_}; } }
-	foreach (keys %{$default_config{vars}}) { unless ($self->{vars}{$_}) { $self->{vars}{$_} = $default_config{vars}->{$_}; } }
-	foreach (keys %{$default_config{tools}}) { unless ($self->{tools}{$_}) { $self->{tools}{$_} = $default_config{tools}->{$_}; } }
+	for my $d (qw/vars tools include/) {
+		foreach (keys %{$default_config{$d}}) { 
+			$self->{$d}{$_} = $default_config{$d}->{$_} unless $self->{$d}{$_};
+		}
+	}
 
 	my %tmp;
 	for (keys %{$self->{vars}}) { $tmp{uc($_)} = $self->{vars}{$_}; }
@@ -75,13 +83,16 @@ sub new {
 			for (@var_arg) { # parse gnu style args
 				#print "debug var: -$_-\n";
 				#$_ =~ s/^--?//;
-				if ($_ =~ m/^-{0,2}(\w*)=[\"\']?(.*)[\"\']?$/) { 
+				if ($_ =~ m/^(--usage|--help|-u|-h)$/) { $self->print_usage && exit 0 }
+				elsif ($_ =~ m/^--make_vars$/) { $self->print_vars && exit 0 }
+				elsif ($_ =~ m/^--make_targets$/) { $self->print_targets && exit 0 }
+				elsif ($_ =~ m/^-{0,2}(\w*)(?:=[\"\']?(.*)[\"\']?)?$/) {
 					if (exists $self->{$1}) { $self->{$1} = $2; }
-					else { $self->{vars}{uc($1)} = $2; }
-				}
-				elsif ($_ =~ m/^(--usage|--help|-u|-h)$/) {
-					$self->print_usage;
-					exit 0;
+					else { 
+						$self->{tools}{uc($1)}[0] = $2
+							if exists $self->{tools}{uc($1)};
+						$self->{vars}{uc($1)} = $2 || 1;
+					}
 				}
 				else {
 					print "Unknown or wrongly formatted option \"$_\"\nTry \"--usage\" for help text.\n";
@@ -206,13 +217,13 @@ sub write_makefile {
 					else { die "Please define a command for the \".$1\" extension" }
 				}
 				[$file.$_, $m_tool];
-			} sort grep {$_ !~ m/^(\.\.?|CVS)$/} (readdir D) ];
+			} sort grep {($_ ne 'CVS') && ($_ !~ /^\./)} (readdir D) ];
 			closedir D;
 		}
 		elsif (-x $file) { $file = "\@".$file; }
 		else { die "Shouldn't \"$file\" be executable ?"}
 		[$name, $file, $tool];
-	} grep {$_ !~ m/^(\.\.?|CVS)$/} (readdir TD);
+	} grep {($_ ne 'CVS') && ($_ !~ /^\./)} (readdir TD);
 	closedir TD;
 	push @targets, map { [$_, undef, undef] } @{$self->{fake_targets}};
 
@@ -294,11 +305,8 @@ sub serialize { # recursive
 	}
 }
 
-sub print_usage {
+sub print_header {
 	my $self = shift;
-	my $name = $self->{include}{NAME} || 'unknown';
-	my $version = $self->{include}{VERSION} || 'unknown';
-	my $author = $self->{include}{AUTHOR} || 'unknown';
 	print << "END";
 
 ## This package uses Makefile.pm - yet another approach to Makefile.PL
@@ -306,26 +314,68 @@ sub print_usage {
 
 --[ Package information ]
 
- NAME    : $name
- VERSION : $version
- AUTHOR  : $author
+ NAME    : $self->{include}{NAME}
+ VERSION : $self->{include}{VERSION}
+ AUTHOR  : $self->{include}{AUTHOR}
 
+END
+}
+
+sub print_usage {
+	my $self = shift;
+	$self->print_header;
+	print << "END";
 --[ Usage ]
 
   > perl Makefile.PL [options] [VAR1=value] [VAR2=value]
 
 --[ Options ]
 
-  --usage, --help, -u, -h Print this text.
+  --usage, -u
+  --help, -h
+        print this text.
 
---[ Variables ]
+  --make_vars
+        print all known variables
+
+  --make_targets
+        print all known targets
 
 END
+}
 
+
+sub print_vars {
+	my $self = shift;
+	
+	$self->print_header;
+	print "--[ Variables ]\n\n";
 	for (keys %{$self->{vars}}) { 
-		print '  ', $_, ($self->{vars}{$_} ? ' :  '.$self->{vars}{$_} : ''), "\n"; 
+		print '  ', $_, ($self->{vars}{$_} ? ' :  '.$self->{vars}{$_} : ''), "\n";
 	}
-	print "\n\n";
+	print "\n";
+}
+
+sub print_targets {
+	my $self = shift;
+	
+	my $config = {};
+        my $file = $self->{conf_file};
+       	if (-f $file) {
+		$config = $self->pd_read($file);
+                $config->{conf_file} = $file;
+        }
+	else {
+		print "This information gets available after writing a Makefile\nTry \"perl Makefile.PL\"\n";
+		return 1;
+	}
+
+	$self->print_header;
+	print "--[ Known make targets ]\n\n";
+	for (@{$config->{target_names}}) { 
+		print '  '.$_.($self->{help}{$_} ? ' :  '.$self->{help}{$_} : '')."\n";
+	}
+	print "\n";
 }
 
 sub compare_version {
@@ -383,8 +433,7 @@ sub get_version_from {
 		$inpod = /^=(?!cut)/ ? 1 : /^=cut/ ? 0 : $inpod;
 		next if $inpod || /^\s*#/;
 		next unless /([\$*])(([\w\:\']*)\bVERSION)\b.*\=/;
-		my $eval = qq{
-			package Makefile::_version;
+		my $eval = qq{ package Makefile::_version;
 			no strict;
 
 			local $1$2;
@@ -541,13 +590,15 @@ can use this module to get their configuration vars.
 
 One can add make targets by simply adding scripts or directories to the target directory.
 
-For obvious reasons it is not possible to have a target called 'CVS' --
-'cvs' or any combination with it should work fine. Also it is not wise to call a target
-'Makefile' or something alike. Since Makefile.pm relies on @ARGV one should not touch
+Files and directories starting with a '.' are ignored.
+For obvious reasons targets called 'CVS'will also be ignored. Also it is not wise to call a target
+'Makefile' or something alike. 
+
+Since Makefile.pm relies on @ARGV one should not touch
 @ARGV in a target script or at least do C<require 'm/Makefile.pm';> first.
 
-Also since the module itself just glues scripts in the Makefile, it can also be used for
-all kind of packages other then perl extensions.
+Since the module itself just glues scripts in the Makefile, it can also be used for
+all kind of packages other then perl extensions. 
 
 This module is not intended for permanent installation,
 it should be included in the package, by default as F<m/Makefile.pm>.

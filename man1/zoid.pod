@@ -39,7 +39,9 @@ normal multiline script.
 
 Does the same as B<--exec> but this is bound to change.
 
-=item B<-h>, B<-u>, B<--help>, B<--usage>
+=item B<-h>, B<--help>
+
+=item B<-u>, B<--usage>
 
 Print a help message and exits.
 

@@ -22,15 +22,15 @@ chmod 0755, 'b/bin/zoid';
 
 # set #!
 
-die qq/You don't have perl !? Please set var 'PERL5'\n/
-	unless $make->{vars}{PERL5};
+die qq/You don't have perl !? Please set var 'PERL'\n/
+	unless $make->{vars}{PERL};
 
 open IN, 'b/bin/zoid' || die "Could not read b/bin/zoid\n";
 my @regels = (<IN>);
 close IN  || die "Could not read b/bin/zoid\n";
 
-shift @regels;
-unshift @regels, '#!'.$make->{vars}{PERL5}."\n";
+$regels[0] = q/#!/.$make->{vars}{PERL}.qq/\n/;
+$regels[1] = q/my $APPDIR = '/.$make->{vars}{APPDIR}.qq/';\n/ if $make->{vars}{APPDIR};
 
 open OUT, '>b/bin/zoid' || die "Could not write b/bin/zoid\n";
 print OUT @regels;

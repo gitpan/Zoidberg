@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 use strict;
 use Data::Dumper;
@@ -45,6 +45,7 @@ sub init {
 		'multi_line' => 'Zoidberg::Fish::Buffer::Insert::MultiLine',
 		'vim_command' => 'Zoidberg::Fish::Buffer::Insert::VimCommand',
 		'select' => 'Zoidberg::Fish::Buffer::Select',
+        'search_hist' => 'Zoidberg::Fish::Buffer::Insert::SearchHist',
 	};
 	$self->{default_modus} = 'insert';
 
@@ -588,7 +589,10 @@ sub expand { # TODO fix tab_exp_back for expansion in het midden van de string
 	my @end = (substr($self->{fb}[-1], $self->{pos}[0], (length($self->{fb}[-1])-$self->{pos}[0]), ''));
 	if ($#{$self->{fb}} > $self->{pos}[1]) { push @end, splice (@{$self->{fb}}, $self->{pos}+1); }
 
-	my ($message, $fb, $ref) = $self->{parent}->Intel->expand(join('', @{$self->{fb}}), $lucky_bit, $context);
+	my ($message, $fb, $ref) = $self->{parent}->Intel->expand(
+		join("\n", @{$self->{fb}}),
+		$lucky_bit,
+		$context);
 
 	@{$self->{fb}} = split("\n", $fb);
 	$self->{pos}[0] = length($self->{fb}[$self->{pos}[1]]);
@@ -600,21 +604,18 @@ sub expand { # TODO fix tab_exp_back for expansion in het midden van de string
 	}
 	elsif (!@{$ref}) { $self->bell; } # no poss and no match
 
-	if (@{$ref}) {
+	return unless scalar(@{$ref}) || $message;
+	print length($message) ? "\n".$message."\n" : "\n";
+
+	if (scalar(@{$ref})) {
 		#print "debug: ".Dumper($ref);
-		print "\n";
-		if ($message) {
-			$message =~ s/\n?$/\n/;
-			print $message;
+		if ($self->{config}{max_expand} && scalar(@{$ref}) > $self->{config}{max_expand}) {
+			print "More then $self->{config}{max_expand} matches\n";
 		}
-		$self->{parent}->print_list(@{$ref});
-		$self->respawn;
+		else { $self->{parent}->print_list(@{$ref}) }
 	}
-	elsif ($message) {
-		$message =~ s/\n?$/\n/;
-		print "\n".$message;
-		$self->respawn;
-	}
+
+	$self->respawn;
 }
 
 sub open_file {}
@@ -821,7 +822,7 @@ None by default.
 =head1 AUTHOR
 
 Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
-R.L. Zwart, E<lt>carlos@caremail.nlE<gt>
+R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
 Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
 This program is free software; you can redistribute it and/or

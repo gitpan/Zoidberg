@@ -1,25 +1,50 @@
 Revision history for Zoidberg -- a modular perl shell
 <http://zoidberg.sourceforge.net>
 
-     Tu Jun 24 2003
- 	Releasing 0.3a_pre1 to test the make and release process
+0.3a Tu Jul 01 2003
+	Finally a new release with /some/ level of stability.
+	Enjoy !
 
-     .. Jun 19 2003
+     Mo Jun 30 2003
+     	- Fixed some issues with escape chars in Intel
+
+     Su Jun 29 2003
+	- Carl0s added another mini buffer: SearchHist.
+	use ctrl_r to open search history for a command.
+	- Fixed some issues with escape chars in StringParse
+
+     Fr Jun 27 2003
+	- Fixed lot's of small bugs in the make process.
+	- Changed "LOCAL_DIR" var to "APPDIR"
+
+0.3a_pre1 Tu Jun 24 2003
+ 	Releasing 0.3a_pre1 to test the make and release process
+	- Fixed Intel module for the new StringParse system
+
+     Th Jun 19 2003
 	- Added Zoidberg::Error for OO exception handling
 
-     .. Jun 01 2003
-	- Added Zoidberg::DispatchTable
+     We Jun 04 2003
+	- Implemented new StringParse module, fixes lot of bugs.
+	- Changed the parse tree format.
+	- Patched ZoidParse and Eval to work with new parse tree format.
+
+     Su Jun 01 2003
+	- Added Zoidberg::DispatchTable to tie a hash with commands 
+	and/or functions, it understands "->" notation.
 
      Mo May 12 2003
         - Added support for $CDPATH, upgraded "cd" builtin.
 
      We May 07 2003
-        - Fixed major bugs in make process.
+        - Fixed major bugs in make process, it's now CPAN compatible.
+
+     Sa Apr 19 2003
+	- Added Zoiderg::Config
 
      Su Apr 06 2003
      	- Removed the MOTZ plugin, this was just legacy.
-	- Tuned the interface of the FileRoutines module, 
-	seems a bit faster now.
+	- Tuned the interface of the FileRoutines module, seems a bit faster now.
 
      Mo Mar 31 2003
 	- Both events and commands are now defined in a plugins config file,
@@ -35,9 +60,6 @@ Revision history for Zoidberg -- a modular perl shell
 	- Config is not dumped on exit any longer, change of mind.
 	- The FileRoutines cache now dumps using Storable, this speeds up the
 	initialisation.
-
-     Fr Mar 14 2003
-	- Added install profiles to make installing from CVS simpler.
 
 0.2b Su Feb 16 2003
 	- Module namespace cleaned up for CPAN

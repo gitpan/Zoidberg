@@ -40,7 +40,17 @@ INSTALLATION
 
 INSTALLATION OPTIONS
 
-  FIXME
+ Try :
+   > perl Makefile.PL --help
+
+  The LIB_DIR var overloads the INSTALLDIRS var.  
+  The place where libraries and man pages are installed is 
+  _NOT_ influenced by PREFIX - use LIB_DIR and MAN_DIR for that.
+
+ For a private installation, try :
+   > perl Makefile.PL APPDIR=private_dir
+
+ FIXME
   	- prefix, lib_prefix, man_dir doc_dir & other vars 
 	- local_dir
 
@@ -48,3 +58,4 @@ CONFIGURATION
 
   FIXME
   	As soon as config is stable
+

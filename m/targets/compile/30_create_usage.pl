@@ -1,6 +1,6 @@
 
 use Pod::Text;
-my $parser = Pod::Text->new(quotes => 'none');
+my $parser = Pod::Text->new();
 
 # Parse complete man page to temp file
 $parser->parse_from_file('./man1/zoid.pod', 'b/zoid.usage~~'); 
@@ -18,7 +18,10 @@ while (<TEXT>) {
 		else { $write = 0 }
 	}
 	
-	if ($write) { print FLUFF $_ }
+	if ($write) { 
+		s/\*(\w+)\*/$1/g;
+		print FLUFF $_;
+	}
 }
 
 close TEXT;

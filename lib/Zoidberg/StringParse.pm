@@ -3,30 +3,159 @@
 
 package Zoidberg::StringParse::grammar;
 
-# package to avoid problems with lexical aliasing
-# and do some grammar specific stuff on the fly
+# Adapted Tie-Hash-Stack-0.09 by Michael K. Neylon 
+# to do more specific stuff for us, like avoiding 
+# problems with lexical aliasing and do some grammar 
+# specific stuff on the fly. Subclassing was not a
+# option :(
 
 use strict;
 use Carp;
-use Tie::Hash::Stack ();
-require Exporter::Inheritor;
+require Exporter;
 
-our @ISA = qw/Exporter::Inheritor Tie::Hash::Stack/;
-our @EXPORT = qw/pop_hash push_hash get_depth/;
+our @ISA = qw/Exporter/;
+our @EXPORT = qw/pop_stack push_stack empty_stack/;
 
 sub TIEHASH {
-	my $self = shift;
-	my $newhash = shift || {};
+	my $class = shift;
+	my $newhash = pop || {};
 	return tied %{$newhash}  # this is the lexical scoping hack
 		if ref($newhash) eq 'HASH'
 		&& ref( tied %{$newhash} ) eq __PACKAGE__;
-	my $base_gram = shift || {};
-	return bless [$newhash, $base_gram], $self;
+	my @stack = map { (ref($_) eq 'ARRAY') ? @$_ : $_ } ($newhash, reverse @_) ;
+	@stack = map { _prepare_gram($_) } @stack;
+	my $self = bless [\@stack, 0], $class;
+	$self->_index_gram;
+	return $self;
 }
 
-sub push_hash {
-	$_[1] = Zoidberg::StringParse::_prepare_gram($_[1]);
-	goto \&Tie::Hash::Stack::push_hash;
+sub _index_gram {
+	my $self = shift;
+	for (qw/d_esc tokens nests quotes/) { 
+		push @{$self->[0][0]{_elements}}, $_
+			if $self->EXISTS($_) && length $self->FETCH($_)
+	}
+}
+
+sub FETCH {
+    my ($self, $key) = @_;
+    foreach ( @{$self->[0]} ) { return $_->{ $key } if exists $_->{ $key } }
+    return undef;
+}
+
+sub STORE { $_[0]->[0][0]{ $_[1] } = $_[2] }
+
+sub DELETE {
+    my ($self, $key) = @_;
+    my $return = $self->FETCH( $key );
+    foreach ( @{$self->[0]} ) { delete $_->{ $key } if exists $_->{ $key } }
+    return $return;
+}
+
+sub EXISTS {
+    my ($self, $key) = @_;
+    foreach ( @{$self->[0]} ) { return 1 if exists $_->{ $key } }
+    return undef;
+}
+
+sub FIRSTKEY {
+    my $self = shift;
+    my %hash;
+    foreach ( @{$self->[0]} ) {
+	foreach my $key ( keys %$_ ) {
+	    $hash{ $key } = 1;
+	}
+    }
+    my @keys = sort keys %hash;
+    return $keys[ 0 ];
+}
+
+sub NEXTKEY {
+    my $self = shift;
+    my $lastkey = shift;
+    my %hash;
+    foreach ( @{$self->[0]} ) {
+	foreach my $key ( keys %$_ ) { 
+	    $hash{ $key } = 1;
+	}
+    }
+    my @keys = sort keys %hash;
+    my $i = 0;
+    $i++ while ( ( $lastkey ne $keys[ $i ] ) && ( $i < @keys - 1 ) ) ;
+    if ( $i == @keys - 1 ) { return () } 
+    else { return $keys[ $i+1 ] }
+}
+
+sub push_stack {
+    my $href = shift;
+    my $obj = tied %$href;
+    my $addhash = shift || {};
+    croak "First argument must be a tied hash in push_stack"
+      unless $obj and $obj->isa(__PACKAGE__);
+    _prepare_gram($addhash);
+    unshift @{$obj->[0]}, $addhash;
+    $obj->[1]++;
+    $obj->_index_gram;
+}
+
+sub pop_stack {
+    my $href = shift;
+    my $obj = tied %$href;
+    croak "First argument must be a tied hash in pop_stack"
+      unless $obj and $obj->isa(__PACKAGE__);
+    shift @{$obj->[0]} if $obj->[1];
+    $obj->[1]--;
+}
+
+sub empty_stack {
+	my $href = shift;
+	my $obj = tied %$href;
+	croak "First argument must be a tied hash in empty_stack"
+	      unless $obj and $obj->isa(__PACKAGE__);
+	return $obj->[1] ? 0 : 1;
+}
+
+sub _prepare_gram {
+	my $ref = shift;
+
+	my $t = ref $ref;
+	if ($t eq 'HASH') { return $ref if $ref->{_prepared} }
+	elsif ($t eq 'Regexp') { $ref = {tokens => [[$ref, '_CUT']], was_regexp => 1} }
+	# TODO more data types ?
+	else { croak "Grammar has wrong data type: $t\n" }
+
+	$ref->{_elements} = [];
+
+	if (exists($ref->{esc}) && ! exists($ref->{s_esc})) {
+		unless (ref $ref->{esc}) {
+			$ref->{s_esc} = quotemeta $ref->{esc};		# single esc regexp
+			$ref->{d_esc} = '('.($ref->{s_esc}x2).')|';	# double esc regexp
+		}
+		else {
+			$ref->{s_esc} = $ref->{esc};
+			$ref->{d_esc} = '';
+		}
+	}
+	elsif (exists $ref->{s_esc}) { $ref->{d_esc} = '' }
+
+	for (qw/tokens nests quotes/) {
+		next unless exists $ref->{$_};
+		my $t = ref $ref->{$_};
+		croak q/Brances of grammars can't be scalar/ unless $t;
+		if (grep {$t eq $_} qw/HASH ARRAY/) {
+			my $c =  'Zoidberg::StringParse::'. lc($t);
+			$ref->{$_} = $c->new($ref->{$_});
+		}
+		# else do nothing -- assume it to be a well behaved object
+	}
+
+	if ($ref->{meta}) {
+		croak q/'meta' should be a CODE reference/ 
+			unless ref($ref->{meta}) eq 'CODE'; 
+	}
+
+	$ref->{_prepared}++;
+	return $ref;
 }
 
 package Zoidberg::StringParse::array;
@@ -72,7 +201,7 @@ sub fetch {
 
 package Zoidberg::StringParse;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 use strict;
 no warnings; # can't stand the nagging
@@ -91,11 +220,10 @@ sub new {
 	};
 	bless $self, $class;
 	$self->reset;
-	$self->{base_gram} = _prepare_gram($self->{base_gram});
 	return $self;
 }
 
-sub set {
+sub set { print "--------------------\n" if $DEBUG;
 	my $self = shift;
 	$self->reset;
 	my $gram = shift || {};
@@ -104,7 +232,16 @@ sub set {
 		$gram = $self->{collection}{$gram} 
 			|| croak "No such grammar: $gram" 
 	}
-	$self->{grammar} = _prepare_gram($gram);
+	elsif (ref($gram) eq 'ARRAY') {
+		$gram = [ map {
+			ref($_) 
+			? $_ 
+			: ($self->{collection}{$_} || croak "No such grammar: $_")
+		} @$gram ];
+	}
+	my %gram;
+	tie %gram, 'Zoidberg::StringParse::grammar', $self->{base_gram}, $gram;
+	$self->{grammar} = \%gram;
 
 	$self->{string} = shift unless ref $_[0]; # speed hack
 	@{$self->{next_line}} = @_;
@@ -119,37 +256,6 @@ sub reset {
 	$self->{next_line} = [];
 }
 
-sub _prepare_gram {
-	my $ref = shift;
-
-	my $t = ref $ref;
-	if ($t eq 'HASH') { return $ref if $ref->{_prepared} }
-	elsif ($t eq 'Regexp') { $ref = {tokens => [[$ref, '_CUT']], was_regexp => 1} }
-	# TODO more data types ?
-	else { croak "Grammar has wrong data type: $t\n" }
-
-	for (qw/tokens nests quotes/) {
-		next unless exists $ref->{$_};
-		my $t = ref $ref->{$_};
-		croak q/Brances of grammars can't be scalar/ unless $t;
-		if (grep {$t eq $_} qw/HASH ARRAY/) {
-			my $c = __PACKAGE__ .'::'. lc($t);
-			$ref->{$_} = $c->new($ref->{$_});
-		}
-		# else do nothing -- assume it to be a well behaved object
-	}
-	if ($ref->{esc}) {
-		$ref->{esc} = quotemeta $ref->{esc} unless ref $ref->{esc};
-		$ref->{esc} = qr/(?<!$ref->{esc})/;
-	}
-	if ($ref->{meta}) {
-		croak q/'meta' should be a CODE reference/ 
-			unless ref($ref->{meta}) eq 'CODE'; 
-	}
-	$ref->{_prepared}++;
-	return $ref;
-}
-
 sub more { return length($_[0]->{string}) || $_[0]->next_line }
 
 sub get { # get next block
@@ -157,16 +263,18 @@ sub get { # get next block
 	
 	return undef unless $self->{string} || (!$no_pull && $self->more);
 
-	my ($block, %gram, $_gref);
+	my ($block, $_gref);
 	if (ref $self->{broken}) { ($block, $_gref) = @{$self->{broken}} }
 	else { $_gref = $self->{grammar} }
-	tie %gram, 'Zoidberg::StringParse::grammar', $_gref, $self->{base_gram};
+#	my %gram = %{$_gref};
+	tie my %gram, 'Zoidberg::StringParse::grammar', $_gref;
 
 	my ($token, $type, $sign);
 	while (  !$token &&
 		$self->{string} =~ s{
-			\A(.*?) $gram{esc}
+			\A(.*?)
 			(
+				$gram{d_esc}
 				$gram{tokens}[0]
 				$gram{nests}[0]
 				$gram{quotes}[0]
@@ -175,28 +283,39 @@ sub get { # get next block
 		}{}xs
 	) {
 		$block .= $1;
-		print STDERR "debug: chunk: -->$block<--\n" if $DEBUG;
-		last unless length($2) || length($self->{string}); # catch the \z
-		if ($2 eq $3) { # token
-			print STDERR "debug: token: -->$2<--\n" if $DEBUG;
-			unless (get_depth(\%gram) > 1) { $token = $gram{tokens}->fetch($2) }
+		$sign = $2;
+
+		print STDERR "debug: block: -->$block<-- token: -->$sign<--\n" if $DEBUG;
+
+		if ($1 =~ /$gram{s_esc}$/) { # escaped token
+			$block =~ s/$gram{s_esc}$// unless $gram{no_esc_rm};
+			$block .= $sign;
+			next;
+		}
+
+		last unless length($sign) || length($self->{string}); # catch the \z
+
+		my $i = 0;
+		for ($3, $4, $5) { # find type
+			last if $_ eq $2;
+			$i++;
+		}
+		$type = $gram{_elements}[$i];
+		print STDERR "debug: type: $type\n" if $DEBUG;
+
+		if ($type eq 'd_esc') { $block .= $gram{no_esc_rm} ? $sign  : $gram{esc} }
+		elsif ($type eq 'tokens') {
+			if (empty_stack(\%gram)) { $token = $gram{tokens}->fetch($sign) }
 			else { # shouldn't we use _POP here ?
-				$block .= $2;
-				pop_hash(\%gram);
+				$block .= $sign;
+				pop_stack(\%gram);
 			}
 		}
 		else { # open nest or quote
-			$sign = $2;
-			$block .= $2;
-			$type = 
-				($2 eq $4 && $gram{nests}[0])
-				? 'nests'
-				: 'quotes';
-			print STDERR "debug: type: $type token: -->$sign<--\n" if $DEBUG;
-
+			$block .= $sign;
 			my $item = $gram{$type}->fetch($sign);
-			if (ref $item) { push_hash(\%gram, $item) } # stack grammar
-			elsif ($item eq '_REC') { push_hash(\%gram, {}) } # recurs
+			if (ref $item) { push_stack(\%gram, \%$item) } # stack grammar
+			elsif ($item eq '_REC') { push_stack(\%gram, {}) } # recurs
 			else { # generate a grammar on the fly
 				my %m_gram = ($type eq 'nests')
 					? (
@@ -208,19 +327,25 @@ sub get { # get next block
 						quotes => {$sign => '_REC'},
 						nests => {},
 					);
-				push_hash(\%gram, \%m_gram);
+				push_stack(\%gram, \%m_gram);
 			}
+			$gram{_open} = [$sign, $type]; # backup for error message
 		}
 		last unless length $self->{string};
 	}
 
-	if (get_depth(\%gram) > 1) { # broken
+	unless (empty_stack(\%gram)) { # broken
 		die q{This should never happen - died to prevent infinite loop} if $self->{string};
 		# FIXME - it will happen when you escape the \z
+		print "debug: stack not empty\n" if $DEBUG;
 		$self->{broken} = [$block, \%gram];
 		unless ($self->{settings}{allow_broken}) {
 			if ($self->more) { ($block, $token) = $self->get } # recurs
-			else { $type =~ s/s$// ; $self->error(qq{Unmatched $type at end of input: $sign}) }
+			else {
+				print "debug: broken input\n" if $DEBUG;
+				$gram{_open}[1] =~ s/s$// ;
+				$self->error( qq#Unmatched $gram{_open}[1] at end of input: $gram{_open}[0]# );
+			}
 		}
 	}
 
@@ -365,6 +490,23 @@ None by default.
 
 TODO
 
+=over 4
+
+=item esc
+
+FIXME
+
+If this is an Regexp ref, no double-escape removal is done. Probably if you use a Regexp ref
+as ecape you also want to set L</no_esc_rm>.
+
+=item no_esc_rm
+
+Boolean that tells the parser not to remove the escape char when an escaped token
+is encountered. Double escapes won't be replaced either. Usefull when a string needs 
+to go through a chain of parsers.
+
+=back
+
 =head2 Collection
 
 The collection hash is simply a hash of grammars with the grammar names as keys.
@@ -478,6 +620,9 @@ This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
 See L<http://www.perl.com/language/misc/Artistic.html>
+
+
+Contains some code derived from Tie-Hash-Stack-0.09 by Michael K. Neylon.
 
 =head1 SEE ALSO
 

@@ -1,6 +1,6 @@
 package Zoidberg::Fish::History;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 use strict;
 use IO::File();
@@ -152,6 +152,13 @@ sub get_prop {
 
 sub search {
 	my $self = shift;
+    my $str = shift;
+    for (@{$self->{data}{hist}}) {
+        foreach my $l (@{$_->[0]}) {
+            $l=~/$str/ && return $_->[0];
+        }
+    }
+    return;
 }
 
 sub show {
@@ -251,7 +258,7 @@ TODO - should print hist nicely formatted
 =head1 AUTHOR
 
 Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
-R.L. Zwart, E<lt>carlos@caremail.nlE<gt>
+R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
 Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
 This program is free software; you can redistribute it and/or

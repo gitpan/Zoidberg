@@ -1,4 +1,3 @@
-
 =head1 SETTINGS
 
 Settings supported by (some) Zoidberg modules.
@@ -14,5 +13,15 @@ Disable path expansion for shell-like syntax.
 It allows to have wildcard patterns that expand into an empty list.
 The default behaviour is to leave the pattern unchanged  
 when it  is  syntactically  incorrect,  or the list of matching pathnames is empty.  
+
+=item hide_private_method
+
+Hide all object methods and data structures which have a name starting with an '_'
+unless they are asked for explicitly.
+
+=item hide_hidden_files
+
+Hide all filesystem nodes which have a name starting with a '.'
+unless they are asked for explicitly.
 
 =back

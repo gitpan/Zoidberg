@@ -1,23 +1,25 @@
 package Zoidberg::FileRoutines;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 #use File::Spec;
 use Carp;
 use Env qw/@PATH/;
 use Storable qw(lock_store lock_retrieve);
 use Exporter;
+use File::Spec; # TODO make more use of this lib
 use strict;
 
 our @ISA = qw/Exporter/;
 our @EXPORT_OK = qw/
 	abs_path list_path get_dir read_dir unique_file f_index_path 
 	f_wipe_cache f_read_cache f_save_cache is_exec_in_path
+	$DEVNULL
 /;
 our %EXPORT_TAGS = (
 	engine => [qw/f_index_path f_wipe_cache f_read_cache f_save_cache/],
-	basic => [qw/abs_path list_path get_dir unique_file/],
-	exec_scope  => [qw/abs_path get_dir list_path/],
+	basic => [qw/abs_path list_path get_dir unique_file $DEVNULL/],
+	exec_scope  => [qw/abs_path get_dir list_path $DEVNULL/],
 );
 
 our $cache = {};
@@ -25,6 +27,8 @@ our $cache_time = 300; # 5x60 -- 5 minutes
 our $dump_file = '';
 
 our $DEBUG = 0;
+
+our $DEVNULL = File::Spec->devnull();
 
 #############################
 #### Basic file routines ####
@@ -77,12 +81,14 @@ sub read_dir {
 	print "(re-) scanning directory $dir\n" if $DEBUG;
 	if (-e $dir) {
 		my $no_wipe = shift || $cache->{dirs}{$dir}{no_wipe};
-		$cache->{dirs}{$dir} = { 
+		$cache->{dirs}{$dir} = {
+			'path' => $dir,
 			'files' => [],
 			'dirs' => [],
 			'mtime' => (stat($dir))[9],
 			'no_wipe' => $no_wipe,
 		};
+		$cache->{dirs}{$dir}{path} =~ s#/?$#/#;
 		opendir DIR, $dir;
 		my $item;
 		while ($item = readdir DIR) {

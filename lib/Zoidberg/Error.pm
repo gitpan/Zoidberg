@@ -1,7 +1,7 @@
 
 package Zoidberg::Error;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 use strict;
 use Carp;

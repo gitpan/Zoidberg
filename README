@@ -15,10 +15,10 @@
     - runs perl code from shell prompt (duh!)
     - sh like evaluation of system executables
     - extendible and configable syntax
-    - comes with a SQL syntax plugin (DBI)
+#   - comes with a SQL syntax plugin (DBI)
     - perl codable config
     - runtime (re-)loadable modules
-    - tab expansion through your perl data structure and objects
+#   - tab expansion through your perl data structure and objects
     - event based plugin engine
     - support for pipelines
     - support for job control
@@ -28,6 +28,8 @@
  planned:
     - screen like functionality
     - glue for other (non-perl) languages
+
+ ( '#' means _temporarily_ borken )
 
 BUGS AND LIMITATIONS
 

@@ -38,6 +38,21 @@ for (dir_copy('b/doc', $make->{vars}{PREFIX}.'/doc/zoid/')) {
 	print LOG $make->{vars}{PREFIX}.'/doc/zoid/'.$_."\n";
 }
 
+# APPDIR
+if ($make->{vars}{APPDIR}) {
+	for (
+		['AppRun',	'bin/zoid'], 
+		['.DirIcon',	'share/zoid/pixmaps/zoid64.png'], 
+		['AppInfo.xml',	'share/zoid/AppInfo.xml'],
+		['Help',	'doc/zoid/']
+	) {
+		symlink	$make->{vars}{APPDIR}.'/'.$_->[1],
+			$make->{vars}{APPDIR}.'/'.$_->[0]
+			|| die $!;
+		print LOG $make->{vars}{APPDIR}.'/'.$_->[0]."\n";
+	}
+}
+
 # Wrap up the install log
 if ($make->{vars}{INSTALL_LOG}) {
 	my $to = $make->{vars}{PREFIX}.q(/share/zoid/install.log);

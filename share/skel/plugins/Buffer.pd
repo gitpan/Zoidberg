@@ -7,6 +7,7 @@ $VAR1 = {
 		'bell' => 1,
 		'info' => 0,
 		'title' => 'Zoidberg',
+		'max_expand' => 0,
 	},
 	
 }

@@ -9,10 +9,12 @@ package inheritor;
 use strict;
 use Exporter::Inheritor;
 
+our $SLET;
+
 our @ISA = qw/Exporter::Inheritor grandparent/;
 our @EXPORT = qw/dus tja $SLET/;
 
-sub _bootstrap { our $SLET = q/dirk/ }
+sub _bootstrap { $SLET = q/dirk/ }
 sub tja { return q/inheritor-tja/ }
 
 package test2;

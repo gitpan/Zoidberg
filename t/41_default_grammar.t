@@ -56,7 +56,7 @@ my @test_data2 = (
 	],
 	[
 		q#alias du=du\ -k#,
-		['alias', 'du=du\ -k'],
+		['alias', 'du=du -k'],
 		'escape whitespace'
 	],
 );
@@ -83,6 +83,6 @@ for my $data (@test_data2) {
 print "# rest\n";
 
 my @blocks = $parser->split(qr/XXX/, qq{ ff die XXX base_gram "XXX" XXX shit \\XXX testen} );
-my @i_want = (' ff die ', ' base_gram "XXX" ', ' shit \\XXX testen');
+my @i_want = (' ff die ', ' base_gram "XXX" ', ' shit XXX testen');
 is_deeply(\@blocks, \@i_want, 'base_gram works');
 

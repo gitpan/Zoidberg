@@ -20,7 +20,6 @@ my %config = (
 		'compile' => 'Prepare all files for installation',
 		'install' => 'Install Zoidberg on your system',
 		'all' => 'Compile, test, install',
-		'help' => 'print this text',
 		'checkmanifest' => 'Check for missing files',
 		'checkdeps' => 'Check for missing dependencies',
 		'installdeps' => 'Fetch missings dependencies from CPAN',
@@ -39,30 +38,18 @@ my %config = (
 #		'LIB' => '', # see install_libs
 		'TEST_VERBOSE' => 0,
 		'VERBOSE' => 0,
-		'PERL5' => $Config{perl5},
+		'PERL' => $Config{perl5}||$Config{perlpath},
 #		'CONFIG' => '/etc',
 		'INSTALLDIRS' => 'site',
 		'NO_HTML' => 0,
 		'MAN2HTML' => 0,
+		'APPDIR' => '',
 	},
 	'include' => {
 		'NAME'		=> 'Zoidberg',
 		'VERSION'	=> get_version_from('lib/Zoidberg.pm'),
 		'AUTHOR'	=> 'Jaap G Karssenberg <j.g.karssenberg@student.utwente.nl> and RL Zwart <r.l.zwart@caremail.nl>',
 	},
-	'help_postamble' =>
-"--[ Zoidberg ]
-
-  Use \"make all\" to install Zoidberg
-
-  The LIB_DIR var overloads the INSTALLDIRS var.  
-  The place where libraries and man pages are installed is _not_ 
-  influenced by PREFIX - use LIB_DIR and MAN_DIR for that.
-
-  try \"perl Makefile.PL LOCAL_DIR=my_dir\" for a private installation
-
-  See also <http://Zoidberg.sourceforge.net>",
-
 );
 
 my $make = Makefile->new(\%config);
@@ -83,15 +70,13 @@ my $make = Makefile->new(\%config);
 #}
 #else { $make->{manifest} = 'MANIFEST' }
 
-if ($make->{vars}{LOCAL_DIR}) { # overrule other settings
-	$make->{vars}{PREFIX} = $make->{vars}{LOCAL_DIR};
-	$make->{vars}{CONFIG} = $make->{vars}{LOCAL_DIR}.'/etc/';
-	$make->{vars}{LIB_DIR} = $make->{vars}{LOCAL_DIR}.'/lib/';
-	$make->{vars}{MAN_DIR} = $make->{vars}{LOCAL_DIR}.'/man/';
-	$make->{vars}{PERS_DIR} = $make->{vars}{LOCAL_DIR}.'/conf';
-	for (qw/LOCAL_DIR PREFIX CONFIG LIB_DIR MAN_DIR/) {
-		unless (-d $make->{vars}{$_}) { mkdir $make->{vars}{$_}; }
-	}
+if ($make->{vars}{APPDIR}) { # overrule other settings
+	my $ad = $make->{vars}{APPDIR};
+	$make->{vars}{PREFIX} = $ad;
+#	$make->{vars}{CONFIG} = $ad.'/etc/';
+	$make->{vars}{LIB_DIR} = $ad.'/lib/';
+	$make->{vars}{MAN_DIR} = $ad.'/man/';
+	$make->{vars}{CONF_DIR} = $ad.'/conf/';
 }
 
 # get dependecies from Depends.pd

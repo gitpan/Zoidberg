@@ -11,6 +11,7 @@ lib/Zoidberg/Fish/Buffer/Insert.pm
 lib/Zoidberg/Fish/Buffer/Meta.pm
 lib/Zoidberg/Fish/Buffer/Insert/MultiLine.pm
 lib/Zoidberg/Fish/Buffer/Insert/VimCommand.pm
+lib/Zoidberg/Fish/Buffer/Insert/SearchHist.pm
 lib/Zoidberg/Fish/Buffer/Meta/Vim.pm
 lib/Zoidberg/Fish/Buffer/Select.pm
 lib/Zoidberg/Fish/Buffer.pm
@@ -46,6 +47,7 @@ share/skel/plugins/Prompt.pd
 share/skel/plugins/Commands.pd
 share/skel/plugins/History.pd
 share/skel/plugins/Buffer.pd
+share/AppInfo.xml
 doc/pod/plugins/Commands.pod
 doc/pod/user/Configuration.pod
 doc/pod/user/Syntax.pod
@@ -65,12 +67,12 @@ m/targets/compile/30_create_usage.pl
 m/targets/compile/31_create_man.pl
 m/targets/compile/32_create_html.pl
 m/targets/compile/40_mutate_config.pl
-m/targets/install/00_install_libs.pl
+m/targets/install/00_make_dirs.pl
+m/targets/install/01_install_libs.pl
 m/targets/install/10_install_man.pl
 m/targets/install/20_install_rest.pl
 m/targets/test.pl
 m/targets/clean.sh
-m/targets/help.pl
 m/targets/cvs.sh
 m/targets/checkdeps.pl
 m/targets/installdeps.pl

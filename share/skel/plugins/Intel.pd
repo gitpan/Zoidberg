@@ -1,17 +1,6 @@
 $VAR1 = {
 	'module' => 'Zoidberg::Fish::Intel',
 	'config' => {
-		'hide_private_methods' => 1,	# hide object attributes and subroutines with a '_'
-		'hide_hidden_files' => 1,	# hide files starting with a '.'
-		'special' => {
-			'help' => 's_help',
-			'mplayer' => 's_mime("video")',
-			'mpg123' => 's_mime("music")',
-		},
-		'mime' => {
-			'video' => [qw/avi mpg mpeg rm mov bin/],
-			'music' => [qw/mp3/],
-		},
+		man_cmd => 'man',
 	},
-	
 }

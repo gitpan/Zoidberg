@@ -48,7 +48,7 @@ I<Be aware: work in progres.>
 
 =head2 Man pages
 
-I<The man pages are not installed as html by default, to install them use C<make MAN2HTML=1>.>
+I<The man pages are not installed as html by default, to install them use C<make --man2html>.>
 
 =begin html
 

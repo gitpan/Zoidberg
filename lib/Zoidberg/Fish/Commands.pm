@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 use strict;
 use Cwd;
@@ -347,7 +347,7 @@ None by default.
 =head1 AUTHOR
 
 Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
-R.L. Zwart, E<lt>carlos@caremail.nlE<gt>
+R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
 Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
 This program is free software; you can redistribute it and/or

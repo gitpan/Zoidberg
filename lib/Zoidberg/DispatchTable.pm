@@ -1,10 +1,14 @@
 package Zoidberg::DispatchTable;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 use strict;
 use Carp;
-use Tie::Hash; use base 'Tie::ExtraHash';
+use Tie::Hash;
+our @ISA = qw/Tie::ExtraHash/;
+
+# perl 5.6 version of Tie::Hash doesn't include ExtraHash
+eval join '', (<DATA>) unless *Tie::ExtraHash::TIEHASH{CODE};
 
 sub wipe {
 	my $self = shift;
@@ -86,6 +90,19 @@ sub _convert {
 }
 
 1;
+
+__DATA__
+package Tie::ExtraHash;
+
+sub TIEHASH  { my $p = shift; bless [{}, @_], $p }
+sub STORE    { $_[0][0]{$_[1]} = $_[2] }
+sub FETCH    { $_[0][0]{$_[1]} }
+sub FIRSTKEY { my $a = scalar keys %{$_[0][0]}; each %{$_[0][0]} }
+sub NEXTKEY  { each %{$_[0][0]} }
+sub EXISTS   { exists $_[0][0]->{$_[1]} }
+sub DELETE   { delete $_[0][0]->{$_[1]} }
+sub CLEAR    { %{$_[0][0]} = () }
+
 
 __END__
 

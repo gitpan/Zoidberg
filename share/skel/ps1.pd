@@ -28,7 +28,7 @@ $VAR1 =
    {f=>"/proc/acpi/thermal/0/status", m=>sub{map{if(/^temp./){return sprintf"%.1f%sF",(split(/\s+/))[1],chr(176)}}@_}},
    {f=>"/proc/acpi/battery/0/status", m=>sub{my%ha;map{if(/(\d+)\s*(mWh?)\s*$/){$ha{$2}=$1}}@_;sprintf"%.1fu",$ha{mWh}/$ha{mW}}},
    {f=>"/proc/acpi/ac_adapter/0/status", m=>sub{(grep/off/,@_)?chr(185):chr(186)}},
-   {f=>"/proc/apm", m=>sub{ my$l=shift;chomp$l;my@L=split/\s+/,$l;my($d,$p,$m,$u)=@L[3,6,7,8];$d=~s/^0x0(\d)?/$1?'+':'-'/e;my$ret="$p $m$u$d";$self->{color}=$clr->($p,100);($p!=-1)?$ret:''}},
+   {f=>"/proc/apm", m=>sub{ my$l=shift;chomp$l;my@L=split/\s+/,$l;my($d,$p,$m,$u)=@L[3,6,7,8];$d=~s/^0x0(\d)?/$1?'+':'-'/e;my$ret="$p$d";$self->{color}=$clr->($p,100);($p!=-1)?$ret:''}},
 #   {f=>"/proc/net/wireless",m=>sub{sprintf"%s%d/%d",chr(165),((unpack"A5x"x5,join"",@_[2..@_])[2,3])}},
   )
 },

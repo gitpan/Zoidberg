@@ -1,6 +1,6 @@
 package Zoidberg::ZoidParse;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 use strict;
 use POSIX ();
@@ -95,15 +95,15 @@ sub do {
 
 sub parse {
 	my $self = shift;
-        my @tree = map { ref($_) ? $self->_resolv_context($$_) : $_} 
-		$self->{StringParser}->split('script_gram', @_);
-	error $self->{StringParser}->error if $self->{StringParser}->error;
+	my @tree = $self->{StringParser}->split('script_gram', @_);
+	if (my $e = $self->{StringParser}->error) { error $e }
+        my @tree = map { ref($_) ? $self->_resolv_context($$_) : $_} @tree;
 	print 'tree: ', Dumper \@tree if $DEBUG;
         return @tree;
 }
 
-sub _resolv_context  { 
-	# args: block, broken_bit
+sub _resolv_context  { # mag schoner, doch werkt 
+	# args: block, broken_bit (also known as "Intel bit")
 	my ($self, $block, $bit) = @_;
 	my $ref;
 	for ( @{$self->{_block_contexts}}, '_block' ) {
@@ -111,10 +111,13 @@ sub _resolv_context  {
 		$ref = $self->{contexts}{lc($_).'_resolv'}->($block, $bit);
 		last if $ref;
 	}
-	unless ($ref) {
-		my @words = $self->{StringParser}->split('word_gram', $block);
-		@words = $self->_check_aliases(@words);
-		@words = grep {$_} @words; # filter out empty fields
+	if ($ref) {
+		$ref->[0] = { context => $ref->[0] } unless ref $ref->[0];
+		# NO array support here
+	}
+	else {
+		my @words = $self->_split_words($block, $bit);
+		return [{context => '_WORDS'}, @words] if $bit && $#words < 1;
 		for ('_words', @{$self->{_words_contexts}}) {
 			next unless exists $self->{contexts}{lc($_).'_resolv'};
 			$ref = $self->{contexts}{lc($_).'_resolv'}->(\@words, $bit);
@@ -129,10 +132,11 @@ sub _resolv_context  {
 			else { error $words[0].': command not found' }
 		}
 		return undef unless $ref;
+		$ref->[0] = { context => $ref->[0] } unless ref $ref->[0];
+		# NO array support here
+		$ref->[0]{is_word_c}++;
 	}
-	$ref->[0] = { context => $ref->[0] } unless ref $ref->[0];
-	# NO array support here
-	$ref->[0]->{string} = $block; 
+	$ref->[0]{string} = $block; 
 
 	return $ref;
 }
@@ -146,23 +150,31 @@ our $_perl_regexp = join '|', qw/
 
 sub _block_context {
 	my ($self, $block, $bit) = @_;
-	my $meta = { wrap => \&_block_context_wrap };
+	my $meta = {};
 	if (
-		$block =~ /^\s*(\w*){(.*)}(\w*)\s*$/s 
-		|| ( $bit && $block =~ /^\s*(\w*){(.*)/s )
+		$block =~ s/^\s*(\w*){(.*)}(\w*)\s*$/$2/s 
+		|| ( $bit && $block =~ s/^\s*(\w*){(.*)$/$2/s )
 	) {
-		$meta->{context} = $1 || 'PERL';
+		$meta->{context} = uc($1) || 'PERL';
 		$meta->{opts} = $3;
-		return [$meta, $block];
+		if (lc($1) eq 'zoid') {
+			$meta->{context} = 'PERL';
+			$meta->{dezoidify} = 1;
+		}
+		elsif (grep {$meta->{context} eq uc($_)} qw/sh cmd/, @{$self->{_words_contexts}}) {
+			my @words = $self->_split_words($block, $bit);
+			return [{context => '_WORDS'}, @words] if $bit && $#words < 1;
+			$meta->{is_word_c}++;
+			return [$meta, @words];
+		}
+		else { return [$meta, $block] }
 	}
 	elsif ( $block =~ /^\s*(->|[\$\@\%\&\*\xA3]\S|($_perl_regexp)\b)/s ) {
 		$meta->{context} = 'PERL';
+		$meta->{dezoidify} = 1;
 		return [$meta, $block];
 	}
 	else { return undef }
-}
-
-sub _block_context_wrap {
 }
 
 sub _words_context {
@@ -183,13 +195,24 @@ sub _words_context {
 	else { return undef }
 }
 
-sub _check_aliases { # in which package does this belong ?
+sub _split_words {
+	my ($self, $string, $broken) = @_;
+	my @words = grep {$_} $self->{StringParser}->split('word_gram', $string);
+	unless ($broken) { @words = $self->__do_aliases(@words) }
+	else { push @words, '' if (! @words) || ($string =~ /(\s+)$/ and $words[-1] !~ /$1$/) }
+	return @words; # filter out empty fields
+}
+
+sub __do_aliases {
 	my ($self, $key, @rest) = @_;
 	if (exists $self->{aliases}{$key}) {
-		$key = $self->{aliases}{$key};
-		@rest = $self->_check_aliases(@rest) 
-			if $key =~ /\s$/; # recurs - see posix spec
-		unshift @rest, $self->{StringParser}->split('word_gram', $key);
+		my $alias = $self->{aliases}{$key};
+		@rest = $self->__do_aliases(@rest)
+			if $alias =~ /\s$/; # recurs - see posix spec
+		unshift @rest, 
+			($alias =~ /\s/)
+			? ( grep {$_} $self->{StringParser}->split('word_gram', $alias) )
+			: ( $alias );
 		return @rest;
 	}
 	else { return ($key, @rest) }

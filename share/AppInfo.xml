@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<AppInfo>
+  <Summary>The Zoidberg shell</Summary>
+  <About>
+    <Purpose>Text-based command shell</Purpose>
+    <Author>Jaap Karssenberg</Author>
+    <License>Artistic License</License>
+    <Homepage>http://zoidberg.sourceforge.net</Homepage>
+  </About>
+</AppInfo>

@@ -1,5 +1,3 @@
-=for html <!--PREV-INDEX-NEXT-->
-
 =head1 Main configuration
 
 All configuration is divided between three hashes

@@ -1,5 +1,3 @@
-=for html <!--PREV-INDEX-NEXT-->
-
 =head1 Zoidscript
 
 Since Zoidberg does not do the language interpreting itself -- it uses

@@ -6,21 +6,17 @@ Disclaimer: some of this might be in dutch - in fact most of this is dutch
 __TRAJECTORY__
 
 Done    * Zoidberg::Config ipv %fluff_conf	Sat Apr 19
-		> Need abs_path to make LOCAL_DIR work
 		> Where to put dependecies for make process ?
 			Storable, Pod::Text, Pod::Html  ...
 Done	* return values tunen			Thu Apr 24
-		> exec_error heeft teveel uses => kan worden overschreven
-		  moet een meer coherente afhandeling komen
 Done	* rules fixen				Tue Jun 17
 Done    * context config fixen			Mon Jun 23
-        * Intel fixen
-                * ~pa<TAB> !!!
-                * meer splitsen over plugins
+Done    * Intel fixen				Teu Jun 24
+Done            * ~pa<TAB> !!!			Thu Jun 26
 Done    * make release doen (nog eens naar MANIFEST systeem kijken)
-        * Changes goed bijwerken (andere metafiles checken)
+Done    * Changes goed bijwerken (andere metafiles checken)
      -- v0.3a_preX release CPAN only
-Done ?  * debug cpan install			Wed May 7
+Done    * debug cpan install			Wed May 7
      -- v0.3a release
 Done    * stringparse fixen			Wed Jun 4
         * meer opties in fluff implementeren
@@ -74,11 +70,6 @@ Done		* ook error output		Jun 19
 
 __DEVEL__
 
-use die instead of print error + set exec error unless you want a sophisticated error message
-	* use die '' for programmer errors
-	* use die "\n" for user errors
-use retun value to indicate failure for commands
-
 use default cpan modules, do not use exotic modules
 	A default module will be used by extension programs
 	so using it won't be a complete waste of resources.
@@ -86,21 +77,16 @@ use default cpan modules, do not use exotic modules
 
 is ->{vars} still needed ??
 
-use Carp for nicer error messages ? -- or carp like functionality ?
-
-moet MANIFEST niet gewoon alle files bevatten ?
-	dan moeten de profiles juist aangeven wat er niet mee moet ofzo ?
-
 what should a parse tree look like ?
 
 $ ls -al
 ['shell', qw/ls -al/]
+
 $ print 'dus'
 ['perl', q{print 'dus'}]
+
 $ ls -al | print '>>', $_, "\n"
-( ['shell', qw/ls -al/], '|', ['perl', q{print 'dus'}] )
-  -or- 
-( ['shell', qw/ls -al/], 'PIPE', ['perl', q{print 'dus'}] )
+( ['shell', qw/ls -al/], ['perl', q{print '>>', $_, "\n"}] )
 
 parser structure
 
@@ -110,45 +96,23 @@ parser structure
             |
 interface --|
 input       |
-      logical list       -- ( [ ['shell', qw/ls -al/], 'PIPE', ['perl', q{print 'dus'}] ] 'AND' [ ['perl', q{print 'dus'}] ] )
-            |          -or- ( ['shell', qw/ls -al/], 'PIPE', ['perl', q{print 'dus'}] 'AND' ['perl', q{print 'dus'}] )
+      logical list       -- ( [ ['shell', qw/ls -al/], ['perl', q{print 'dus'}] ] 'AND' [ ['perl', q{print 'dus'}] ] )
+            |          -or- ( ['shell', qw/ls -al/], ['perl', q{print 'dus'}] 'AND' ['perl', q{print 'dus'}] )
         Job - (fork)
 	    |
-         pipeline        -- ( ['shell', qw/ls -al/], 'PIPE', ['perl', q{print 'dus'}] )
+         pipeline        -- ( ['shell', qw/ls -al/], ['perl', q{print 'dus'}] )
             |
      (redirections ?)
 	    |
         statement        -- ['shell', qw/ls -al/]
 
-Waar worden contexts aan subs gekoppeld ? In rules parsing of in eval ??
-	ans: zo laat mogenlijk - het vorige statement kan ze veranderd hebben
-	==> [ 'shell', qw/ls -al/ ]
-	       ^^^^^not a sub but a context
-Waar blijven context switches ? ( als in perl{ // }g )
-	ans: [ 'CONTEXT', @ARGS ] but also allow [ ['CONTEXT', @meta], @ARGS ]
-	     first element is meta field
 
-split logical tokens
-	parse 1 element <--i
-             |             |
-             V             |
-	exec 1 element ----i
-
-parse() voor ruwe input
-do() voor internal/socket input
-
-over socket bijv ['do', 'COMMAND', qw/cd ../]
-maar dit mag ook ['parse', 'cd .. && ls']
-              of ['->myplug->dosomethin', @args]
-what about pipelines ? (en logical lists)
- ['do', ['CONTEXT', @args], '|', ['CONTEXT', @args] ]
- voelt goed, maar is niet compat met
- ['do', ['CONTEXT', @meta], @args]
- dan toch: ['do', {context => CONTEXT, args => [@args], .. } ] ? UGLY
- or pipe() and list() ?
+All of these should work:
+[ 'PERL', 'print q/dus/']
+[ ['PERL', @some_data], 'print q/dus/']
+[ { context => 'PERL' }, 'print q/dus/']
 
 __WANTED_MODS__
-
 
 commands intel verfijnen -- meteen usage fixe in 1 hash
 	ook getopt toeveogen
@@ -158,40 +122,26 @@ commands intel verfijnen -- meteen usage fixe in 1 hash
 plain output format for non-interactive modus
 	zie parent->output plannen
 
-FILE context afsplitsen van SYSTEM context voor tab_exp
-	-- handig voor save file .. ZoidParse doet dit nu zelf ... is vunzig
-
-
 __WANTED_FEATURES__
 
 <!!>
 redirections alleen naar files -- voor andere contxts work around
 	parent->print wordt parent->output
-	return value van command "sh-style" naar parent->{exec_error}
-	als input van pipe pound_ voor while STDIN do ...
-		tevens in shell block $\w => ENV pound\w => eigen namespace
-	als output naar pipe doet parent->print bufferen en dinge doorgeven.
-	
-.zoid/plugin => .zoid/lib 
-		ook een .zoid/bin 
-		(misschien een ENV CMDPATH oid)
-		.pl'tjes uit deze dir worden automatisch gesourced ipv gerunt
-		
-</!!>
 
-config soms reffen naar $ENV (not sure)
+als input van pipe pound_ voor while STDIN do ...
+	tevens in shell block $\w => ENV pound\w => eigen namespace
+
+als output naar pipe doet parent->print bufferen en dinge doorgeven.
+
+</!!>
 
 <TAB><TAB> => I feel lucky
 bell-style => sub { print "\a" }
 
 alias command
 
-config-/user- profiles
-
 how about handlers voor dingen als files, dirs, urls etc.
 	as plugin - rox plugin as proof of concept
-
-meer intel in grammar om perl te onderscheiden van files etc.
 
 subs in "->" namespace (?)
 
@@ -200,30 +150,16 @@ history:
 	~/.zoid/var/log 
 	-->timestamp [tag.subtag] data\n<--
 
-context
-	aparte context config hash
-	strict context bit
-		strict perl bit
-	recursive context met q.*//
-	
 config:
-	profile - legt alles vast
+	Zoidbegr::Config - legt alles vast
 		gram-file (RO)
 		rc file
 		logout file
-		huidige core
+		huidige settings 
 	plugin_conf
 		per plugin file in dir
 
 	bitje to suppress inlog scripts
-
-	Zoidberg::Config
-		( uitzoeken welke dir)
-		legt hard coded shit vast
-
-		=> fluff geen config taak meer
-
-	config en env ""tie'en"" -- bijv. voor EDITOR MANPATH etc..
 
 	ENV:
 		PATH
@@ -286,16 +222,6 @@ Buffer
 
 	check posix stnd. voor default vi-like behauviour
 
-Intel:
-	fix force context for commands and system, think old specials
-
-	cpan context 02modulelist.txt.gz -- caching
-	ook context man caching maken
-
-	tab man pages ENV{MANPATH}
-
-	ooit een keer bash completion compat (???)
-
 api:
 	eenduidige fish api
 
@@ -312,8 +238,6 @@ rest:
 		zie color bug
 	wordt Zoidberg::Ouptut
 
-	t/check_default_config_files_for_syntax_errors.t
-
 	seperate release voor Makefile.pm -- met een skel dir
 	
 
@@ -324,7 +248,6 @@ release procedure:
 	check $DEVEL in zoidberg.pm
 	update Changes !!
 	update README (version number !!)
-	generate new web docs
 
 	check stubs in Zoidberg.pm
 	update pod - both in modules and help files -- dont forget man1/zoid.pod
@@ -333,7 +256,6 @@ release procedure:
 	run "make release"
 	test the release tree extensively ( check for debug code ! )
 		(test with all modules removes from usr/lib/perl ... -- make uninstall)
-	run "make release"
 
 	add "_cvs" to $VERSION in non-release tree
 	cvs commit (non-release tree !)
@@ -347,10 +269,11 @@ release procedure:
 
 __VISION__
 
-modular
-repeat after me MODULAR
-events zijn goed
-plugins zijn goed
+modular,
+ repeat after me: MODULAR
+
+events are good
+plugins are good
 load modules _only_ when needed
 
 __DOCS__
@@ -424,19 +347,6 @@ build-ins van bash checken voor kritieke dingen
 	dit is nu een Shell::POSIX prob
 
 check http://www.catb.org/~esr/writings/taoup/html/ch10s04.html for config ideas
-
-
-<r> one thing I found though ... not related to pmake though, is that if you override
-default system settings when doing a perl Makefile.PL with the PREFIX and LIB options, the make
-process will still ...
-<r> ... try and install the man pages in the default system directory (resulting in 'you do
-not have permission to write to /usr/perl5/..."
-<c> hmm, didnt do it for me (with a 5.6.1)
-<t> Hm. Sounds like a bug to me.
-<c> mine landed in $HOME/perl/share/m an/man3 .. ;)
-<r> this is under 5.005.03 on a solaris box ... one of the first times that I have had to
-bow to a separate infrastructure team for server maintenance and admin - is actually quite a good
-feeling ... :-)
 
 Subject: How do I construct a ... matches all files except "." and ".." ?
 Date: Thu Mar 18 17:16:55 EST 1993
@@ -587,8 +497,8 @@ Date: Wed, 28 Oct 92 03:30:36 +0100
 
 I suggest for zoid 
 	(/etc/profile once Shell::POSIX works)
-	/etc/zoid(.pl) - system wide stuff- always unless some option
-	.zoid/init(.pl) - always unless some option
+	/etc/zoidrc(.pl) - system wide stuff- always unless some option
+	.zoidrc(.pl) - always unless some option
 	.zoid/exit(.pl) - idem
 	($ENV{ENV} - see POSIX - (wait for Shell::POSIX ?))
 

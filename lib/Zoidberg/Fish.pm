@@ -1,6 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 #use Zoidberg::Fish::Crab;
 

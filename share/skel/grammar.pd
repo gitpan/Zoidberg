@@ -35,6 +35,7 @@ $VAR1 = {
 			[ ';' , 'EOS'  ],
 			[ '&' , 'BGS'  ],
 	        ],
+		no_esc_rm => 1,
 	},
 	word_gram => qr/\s+/,
 };

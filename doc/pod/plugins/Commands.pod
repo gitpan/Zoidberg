@@ -1,5 +1,3 @@
-=for html <!--PREV-INDEX-NEXT-->
-
 =head1 COMMANDS
 
 This module contains some usefull routines, supplying functionality

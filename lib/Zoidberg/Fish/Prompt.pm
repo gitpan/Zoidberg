@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Prompt;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 use strict;
 
@@ -303,7 +303,7 @@ your prompt.
   
 =head1 AUTHOR
 
-R.L. Zwart, E<lt>carlos@caremail.nlE<gt>
+R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
 Copyright (c) 2002 Raoul L. Zwart. All rights reserved.
 This program is free software; you can redistribute it and/or

@@ -49,6 +49,7 @@ $VAR1 = {
 		'ctrl_b' => '->parse("perl Makefile.PL ; make ; make test ; make install ")', # this one doesn't seem to work !?
         'ctrl_alt_down' => '->Gnot->down',
         'ctrl_alt_up' => '->Gnot->up',
+        'ctrl_r' => 'switch_modus("search_hist")',
 	},
 	'multi_line' => {
 		'ctrl_t' => 'expand',

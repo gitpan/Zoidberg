@@ -1,5 +1,3 @@
-=for html <!--PREV-INDEX-NEXT-->
-
 =head1 Basic syntax
 
 Since the syntax of the Zoidberg shell is completely configable

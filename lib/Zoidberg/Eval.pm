@@ -1,6 +1,6 @@
 package Zoidberg::Eval;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -52,7 +52,7 @@ sub _eval_block {
 
 }
 
-=for begin comment
+=begin comment
 
 The  nice  and simple rule given above: `expand a wildcard pattern into
 the list of matching pathnames' was the original  Unix  definition. It
@@ -77,10 +77,10 @@ sub _do_sh {
 	unless ($self->{zoid}{settings}{noglob}) {
 		my $glob_opts = GLOB_MARK|GLOB_TILDE|GLOB_BRACE|GLOB_QUOTE;
 		$glob_opts |= GLOB_NOCHECK unless $self->{zoid}{settings}{allow_null_glob_expansion};
-		@r = map { bsd_glob($_, $glob_opts) } @{$block} ;
+		@r = map { /^['"](.*)['"]$/s ? $1 : bsd_glob($_, $glob_opts) } @{$block} ;
 	}
-	else { @r = @{$block} }
-
+	else { @r = map { /^['"](.*)['"]$/s ? $1 : $_ } @{$block} }
+	
 	print "debug: going to exec : ", Dumper \@r if $DEBUG;
 
 	_check_exec($r[0]) unless $meta->{_is_checked};
@@ -111,8 +111,9 @@ sub _is_cmd { exists $_[0]->{zoid}{commands}{$_[1]} }
 
 sub _do_perl {
 	my ($_Eval, $_Block, $_Meta) = @_;
-	my $_Code = $_Eval->_dezoidify($_Block->[0]);
-	$_Code = $_Eval->_parse_opts($_Code, $_Meta->{opts});
+	my $_Code = $_Block->[0];
+	$_Code = $_Eval->_dezoidify($_Code) if $_Meta->{dezoidify};
+	$_Code = $_Eval->_parse_opts($_Code, $_Meta->{opts}) if $_Meta->{opts};
 	print "debug: going to eval perl code: -->no strict; $_Code<--\n"  if $DEBUG;
 
 	my $self = $_Eval->{zoid};
@@ -128,11 +129,13 @@ sub _do_perl {
 our $_Zoid_gram = {
 # The original regexp:
 # ((?<![\\w\\}\\)\\]])->|\\xA3)([\\{]?\\w+[\\}]?)
-	esc => qr/[\\\w\}\)\]]/,
+	esc => qr/[\w\}\)\]]/,
 	tokens => [
 		[ qr/->/,   'ARR' ], # ARRow
 		[ qr/\xA3/, 'MCH' ], # Magic CHar
 	],
+	nests => {},
+	no_esc_rm => 1,
 };
 
 sub _dezoidify {
@@ -140,16 +143,18 @@ sub _dezoidify {
 	my $p = $self->{zoid}{StringParser};
 	$p->set($_Zoid_gram, $code);
 	my ($n_code, $block, $token, $prev_token, $thing);
-	while ($p->more) { #print 'n code: ', $n_code, "\n";
+	while ($p->more) { 
 		$prev_token = $token;
 		($block, $token) = $p->get;
+		#print "code is -->$n_code<-- prev token -->$prev_token<--\ngot block -->$block<-- token -->$token<--\n";
  
 		unless (defined $n_code) { $n_code = $block; next }
-		$n_code .= '->'.$block and next unless $thing = ($block =~ /^(\{?\w+\}?)/);
+		$n_code .= '->'.$block and next unless ($thing) = ($block =~ /^(\{?\w+\}?)/);
+		#print "thing -->$thing<--\n";
 
-		if ($self->{zoid}{settings}{naked_zoid} && ($prev_token ne 'MCH') ) { $n_code = '$self->'.$block }
-		elsif (grep {$_ eq $thing} @{$self->{zoid}->list_clothes}) { $n_code = '$self->'.$block }
-		elsif ($thing =~ m|^\{|) { $n_code = '$self->{vars}'.$block } # is this still usefull ?
+		if ($self->{zoid}{settings}{naked_zoid} && ($prev_token ne 'MCH') ) { $n_code .= '$self->'.$block }
+		elsif (grep {$_ eq $thing} @{$self->{zoid}->list_clothes}) { $n_code .= '$self->'.$block }
+		elsif ($thing =~ m|^\{|) { $n_code .= '$self->{vars}'.$block } # is {vars} still usefull ?
 		else { 
 			$block =~ s/^(\w+)/\$self->object('$1')/;
 			$n_code .= $block;
@@ -201,144 +206,6 @@ sub AUTOLOAD {
 		else { return join('',@ret); }
 	}
 }
-
-=begin old
-
-sub _Eval_block {
-	my $_Eval = shift;
-	my ($_String,$_Context,$_Opts) = @_;
-
-	my $self = $_Eval->{zoid}; # $self ain't always what it appears to be
-	$self->print("Zoidberg::Eval->_Eval_block('".join("', '", @_[0..2])."')",'debug');
-	my $_Code = q|$self->print("Could not found a parser for \"$_Context\"", 'error');|;
-	my @_Bits = (0,0,1);
-	my @_Args = ();
-	if (ref($_String) eq 'ARRAY') {  # FIXME temporary hack -- this is evil
-		@_Args = @{$_String};
-		$_String = shift @_Args;
-	}
-	# Bits: not_interpolate_pound, not_parse_opts, do_command_syntax
-	if (ref($self->{grammar}{context}{$_Context}) && $self->{grammar}{context}{$_Context}[0]) {
-		my $sub = $self->{grammar}{context}{$_Context}[0];
-		if (ref($self->{grammar}{context}{$_Context}[2])) { @_Bits = @{$self->{grammar}{context}{$_Context}[2]}; }
-		$sub =~ s/^->//;
-		if ($sub =~ s/(\(.*\))\s*$//) { @_Args = eval($1); }
-		if ($_Bits[2]) {
-			if ($_Bits[1]) { $_Code = qq|\$self->$sub([\@_Args], \$_Opts);| }
-			else { $_Code = qq|\$self->$sub(\@_Args);| }
-		}
-		else { $_Code = qq|\$self->$sub(\@_Args, \$_String|.($_Bits[1] ? q|, \$_Opts);| : ');') }
-	}
-	elsif (($_Context eq 'PERL')||($_Context eq 'ZOID')) {
-		chomp $_String;
-		$_Code = $_Eval->_perlify($_String);
-		if ($_Context eq 'PERL') { $_Code = 'no strict; '.$_Code; } # TODO make configable
-		@_Bits = (1,0,0);
-	}
-	elsif (($_Context eq 'SYSTEM')||($_Context eq 'COMMAND')) {
-		#$_Code = q|$_Eval->_system(@_Args)|;
-		$_Code = $_String;
-		@_Bits = (0,1,1);
-	}
-
-#	if ($_Bits[2]) { # command syntax
-#		unless ($_Bits[0]) { push @_Args, map {$_Eval->_interpolate($_)} $_Eval->_parse_command($_String); }
-#		else { push @_Args, $_Eval->_parse_command($_String); }
-#	}
-#	elsif 
-	if (!$_Bits[0]) { $_Code = $_Eval->_interpolate($_Code); }
-
-	unless ($_Bits[1]) { $_Code = $_Eval->_parse_opts($_Code, $_Opts); }
-	$self->print("Going to eval '$_Code'", "debug");
-	$self->print("Array _Args is ".join(', ', map {s/([\\'])/\\$1/g; qq{'$_'}} @_Args), "debug") if @_Args;
-
-	my $_Self_orig = $_Self if defined $_Self;
-	$_Self = $_Eval; # Hack alert
-	# restoring original value should make nested evals with different objects possible
-
-	$_ = $self->{_};
-	$self->{exec_error} = [grep {$_} eval($_Code)];
-	$self->{_} = $_;
-	# FIXME lot more error types from perl code should be in use
-	# 	to get return types good, eval perl and eval sub need to differ ...
-	$_Self = $_Self_orig if defined $_Self_orig;
-
-	if ($@) { # FIXME error message should include line num in some cases
-		my $er = $@;
-		chomp $er;
-		push @{$self->{exec_error}}, $er;
-	}
-
-	if ($_Context eq 'PERL') { print "\n"; } # ranzige hack
-	$self->print( $self->{exec_error}, 'error') if @{$self->{exec_error}};
-	# FIXME ERROR - this should be on a higher level # FIXME why is @{[0]} true ??/
-
-	return $self->{exec_error};
-}
-
-sub _parse_command { # parse sh like syntax to array args
-	my $self = shift;
-	my $string = shift;
-	$string =~ s/\A\s*//gm ; # TODO deze regex in stringparse
-	my @args = map {$_->[0]} @{$self->{zoid}->{StringParser}->parse($string,'space_gram')};
-	while ((@args) && $args[-1] eq '') { pop @args; } # ranzige hack
-	$self->{zoid}->print("Command args: '".join("', '", @args)."'", 'debug');
-	return @args;
-}
-
-sub _perlify { # fully qualify -> and pound syntax
-	my $self = shift;
-	my $string = shift;
-	my $tree = $self->{zoid}{StringParser}->parse($string,'eval_zoid_gram');
-	#print "debug ".Dumper($tree);
-	foreach my $i (0 .. $#{$tree}) {
-		my $ref = $tree->[$i];
-		#<ERUG-VUNZIG>
-		if ($ref->[0]) { if ($ref->[0] =~ /[\w\}\)\]]$/) {next } }
-		elsif ($tree->[$i-1][1] =~ /[\w\}\)\]]$/) { next }
-		#</ERUG-VUNZIG>
-		if ($ref->[1] eq "\xA3_") { $ref->[1] = '$self->{_}'}
-		elsif ($ref->[1] =~ s/^(->|\xA3)//) {
-			if ($self->{zoid}{settings}{naked_zoid} && ($1 ne "\xA3")) { $ref->[1] = '$self->'.$ref->[1]; }
-			elsif (grep {$_ eq $ref->[1]} @{$self->{zoid}->list_clothes}) { $ref->[1]='$self->'.$ref->[1]; }
-			elsif ($ref->[1] =~ m|^\{(\w+)\}$|) { $ref->[1] = '$self->{vars}'.$ref->[1]; }
-			else { $ref->[1] = '$self->object(\''.$ref->[1].'\')' }
-		}
-	}
-	$string = join('', map {$_->[0].$_->[1]} @{$tree});
-	return $string;
-}
-
-sub _interpolate { # substitutes pound vars with their values
-	# TODO fine tuning and grinding
-	my $self = shift;
-	my $string = shift;
-	#if ($string =~ /^(\$|\xA3)_$/) { $string = \$self->{zoid}{_}; }
-	#else {
-
-		my $tree = $self->{zoid}{StringParser}->parse($string,'eval_zoid_gram');
-		print "debug ".Dumper($tree);
-		foreach my $i (0 .. $#{$tree}) {
-		#	if ($tree->[$i-1][0] =~ /[\w\}\)\]]$/) { next }
-			$ref = $tree->[$i];
-			if ($ref->[1] eq "\xA3_") { $ref->[1] = $self->{zoid}{_}}
-			elsif ($ref->[1] =~ s/^(->|\xA3)//) { # Vunzige implementatie -- moet via stringparse strakker
-				if ($self->{zoid}{settings}{naked_zoid} && ($1 ne "\xA3")) { $ref->[1] = eval('$self->{zoid}->'.$ref->[1]); }
-				elsif (grep {$_ eq $ref->[1]} @{$self->{zoid}->list_clothes}) { $ref->[1] = eval('$self->{zoid}->'.$ref->[1]); }
-				elsif ($ref->[1] =~ m|^\{(\w+)\}$|) { $ref->[1] = eval('$self->{zoid}{vars}->'.$ref->[1]); }
-				else { $ref->[1] = eval('$self->{zoid}->objects(\''.$ref->[1].'\')') }
-			}
-		}
-		$string = join('', map {$_->[0].$_->[1]} @{$tree});
-
-	#}
-	return $string;
-}
-
-
-=end old
-
-=cut
 
 1;
 

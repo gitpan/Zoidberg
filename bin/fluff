@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+my $APPDIR = '';
 
 ##################################################################
 # Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.    #
@@ -15,7 +16,7 @@
 use strict;
 use vars qw/%ZoidConf/;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 ####################
 #### Parse ARGV ####
@@ -28,9 +29,9 @@ my %opts = (
 	'exec'		=> ['e', 1],
 	'command'	=> ['c', 1],
 	'version'	=> ['V'],
-	'list-conf'	=> ['l'], # FIXME also support -V:varname (see man perlrun)
+	'list-conf'	=> ['l'],
 	'interactive'	=> ['i'],
-	'debug'		=> ['d'], # FIXME, use this switch
+	'debug'		=> ['d'], # FIXME, use this switch to switch $DEBUG
 	# TODO -M use module etc.
 	# -q
 	#     Quiet (usually without argument). Suppress normal result or 
@@ -69,12 +70,8 @@ while ((@ARGV) && ($ARGV[0] =~ /^-/)) {
 }
 
 # parse includes
-#my $dir = abs_path($0);
-#$dir =~ /^(.*\/)/
-#unshift @INC, $1.'/lib' if -d $1.'/lib';
-#unshift @INC, $1.'/../lib' if  -d $1.'/../lib';
-
-if ($args{inc}) { unshift @INC, split(/\,/, $args{inc}); }
+unshift @INC, $APPDIR.'/lib' if $APPDIR;
+unshift @INC, split(/\,/, $args{inc}) if $args{inc}; 
 
 # load some packages - force runtime eval to get includes right
 for (qw/Zoidberg Zoidberg::Config/) {
@@ -147,7 +144,7 @@ $cube->init(interactive => $interact);
 if ($exec_string) { $cube->do($exec_string) }
 
 if (-e $dir.'/.first_time' && $interact) {
-	$cube->print("## Type help to get on your feet", 'message');
+#	$cube->print("## Type help to get on your feet", 'message'); # FIXME help is currently broken
 	$cube->print("## Try typing \"->Buffer->probe\" if keybindings fail", 'message');
 	unlink $dir.'/.first_time';
 }

@@ -4,7 +4,7 @@ import Makefile qw/path_copy rmdir_force/;
 
 my $make = Makefile->new;
 
-exit 0 if $make->{vars}{NOHTML};
+exit 0 if $make->{vars}{NO_HTML};
 my $man2html = $make->{vars}{MAN2HTML} || 0;
 
 print "Generating html docs.\n";
@@ -17,18 +17,22 @@ use Pod::Find qw(pod_find);
 # generate html
 &doe_dir('doc/pod/');
 
+our @DATA = (<DATA>);
+
 if ($man2html) {
 	foreach my $section (1..9) {
 	        unless (-d "../man".$section) { next; }
 		&doe_dir("../man".$section, "man".$section);
+		make_generic_index('doc/html/man'.$section.'/');
 	}
 	&doe_dir('lib/', 'man3pm/', 1);
+	make_generic_index('doc/html/man3pm/');
 }
 
 # generate html index
 chdir 'doc/html';
 
-my @dirs = grep { -d $_ && -e $_.'/index.html' } list_dir('.');
+my @dirs = grep { -d $_ && -e $_.'/index.html' } map {'./'.$_} list_dir('.');
 
 #print "debug: dirs".join(' ', @dirs)."\n";
 
@@ -55,12 +59,12 @@ foreach my $dir (@dirs) {
 	foreach my $i (0..$#files) {
 		my $file = $files[$i].'.html';
 		my $body = get_file($file);
-		$body =~ s{<a href="#__index__"><small>Top</small></a>}{<small>[<a href="#__index__">Top</a>]</small>}sg;
-		$body =~ s{<!--PREV-INDEX-NEXT-->(\s*<p>\s*<small>)?}{
+		$body =~ s{<a href="#__index__"><small>(.*?)</small></a>}{<small>[<a href="#__index__">$1</a>]</small>}sg;
+		$body =~ s{<!-- INDEX BEGIN -->}{
 			$menu = '[<a href=\'./index.html\'>Index</a>]';
 			$menu = '['.($i ? "<a href='$files[$i-1].html'>Prev</a>" :'Prev').'] | '.$menu ;
 			$menu .= ' | ['.( ($i<$#files) ? "<a href='$files[$i+1].html'>Next</a>" : 'Next').']';
-			'<p><small>'.$menu.( $1 ? ' | ' : '</small></p>');
+			"<p><small>$menu</small></p>\n<hr />\n<!-- INDEX BEGIN -->";
 		}seg;
 		write_file($file, $body);
 		
@@ -78,7 +82,9 @@ sub doe_dir {
 	my $dir = shift;
 	my $sectie = shift || '';
 	my $lib_bit = shift || 0;
-	
+
+	print "scanning dir $dir\n" if $make->{vars}{VERBOSE};
+
 	# scan for pods
 	my %pods = pod_find({ -verbose => 0, -inc => 0 }, $dir);
 	#print "debug: pods: \n", join("\n", keys %pods), "\n";
@@ -86,18 +92,20 @@ sub doe_dir {
 	make_dir('doc/html/'.$sectie);
 
 	foreach my $pod (keys %pods) {
-
+		print "found $pod" if $make->{vars}{VERBOSE};
+		
 		# create dir
 		$pod =~ s{^.*?$dir}{}; # strip base path
 		unless ($lib_bit) {
 			if ($pod =~ m{^(.*/)}) { make_dir('doc/html/'.$sectie.'/'.$1) }
 		}
-	
+
 		# create html
 		my $out_file = $pod;
 		$out_file =~ s/(\.\w+)?$/.html/;
 		if ($lib_bit) { $out_file =~ s|/|::|g }
-			
+		print " => doc/html/$sectie/$out_file\n" if $make->{vars}{VERBOSE};
+
 		my @opt = (
 			"--backlink=Top",
 			#"--header",
@@ -112,11 +120,37 @@ sub doe_dir {
 		unless ($pod =~ /index\.pod$/) { push @opt, "--index"}
 		else { push @opt, "--noindex" }
 
-		open SAVERR, '>&STDERR';
-		open STDERR, '>/dev/null'; # pod2html trows all kind of warnings
-		pod2html(@opt);
+		open SAVERR, '>&STDERR';	
+		open STDERR, '>/dev/null'; # pod2html trows all kind of ugly warnings
+		eval { pod2html(@opt) };
 		open STDERR, '>&SAVERR';
+		die $@ if $@;
 	}
+}
+
+sub make_generic_index {
+	my $dir = shift;
+	my @files = list_dir($dir);
+	my $html;
+	my $name = $dir;
+	$name =~ s/\/$//;
+	$name =~ s/.*\///;
+	for (@DATA) {
+		my $regel = $_;
+		$regel =~ s/<!--TITLE-->/Index of $name/;
+		if ($regel =~ /<!--INDEX-->/) {
+			$html .=
+				"<ul>\n" .
+				join('', map {
+					my $f_name = $_;
+					$f_name =~ s/\.(\w+)$//;
+					qq#\t<li><a href="$_">$f_name</a></li>\n#;
+				} sort @files) .
+				"</ul>\n" ;
+		}
+		else { $html .= $regel }
+	}
+	write_file($dir.'/index.html', $html);
 }
 
 sub make_dir {
@@ -131,12 +165,11 @@ sub make_dir {
 
 sub list_dir {
 	my $dir = shift;
-	$dir =~ s/\/?$/\//;
 	opendir D, $dir;
 	my @cont = readdir D;
 	closedir D;
 	@cont = grep {$_ !~ /^\.+$/} @cont;
-	return map {$dir.$_} @cont;
+	return @cont;
 }
 
 sub get_file {
@@ -149,9 +182,9 @@ sub get_file {
 
 sub write_file {
 	my ($file, $body) = @_;
-	open OUT, '>'.$file;
+	open OUT, '>'.$file || die "Could not open file $file for writing\n";
 	print OUT $body;
-	close OUT;
+	close OUT || die "Could not write $file\n";
 }
 
 sub get_index {
@@ -162,3 +195,17 @@ sub get_index {
 	$body =~ s{(href=['"]?)}{$1$file}g;
 	return $body;
 }
+
+
+# below template for generic index
+__DATA__
+<html>
+<head>
+<title><!--TITLE--></title>
+<link rel="stylesheet" href="/docs.css" type="text/css" />
+</head>
+<body>
+<h1><!--TITLE--></h1>
+<!--INDEX-->
+</body>
+</html>

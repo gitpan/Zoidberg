@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 our $LONG_VERSION =
 "Zoidberg $VERSION
 
@@ -110,7 +110,7 @@ sub main_loop { # FIXME use @input_methods instead of buffer
 		my $cmd = eval { $self->Buffer->get_string };
 		last unless $self->{continue}; # buffer can call exit
 		if ($@) {
-			$self->print("Buffer died. ($@)", 'error');
+			$self->print("\nBuffer died. \n$@", 'error');
 			next;
 		}
 

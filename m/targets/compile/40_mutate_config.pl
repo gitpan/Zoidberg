@@ -3,14 +3,15 @@ require 'm/Makefile.pm';
 
 my $make = Makefile->new;
 
-$make->{vars}{CONFIG} =~ s/\/$//; #/
+# $make->{vars}{CONFIG} =~ s/\/$//; #/
 $make->{vars}{PREFIX} =~ s/\/$//; #/
 
-my %conf = (
-	'test'		=> q{'123'},
-);
+my %conf = ( prefix => "'".$make->{vars}{PREFIX}."'" );
 
-if ($make->{vars}{PERS_DIR}) { $conf{config_dir} = "'".$make->{vars}{PERS_DIR}."'"; }
+if ($make->{vars}{CONF_DIR}) { 
+	$conf{config_dir} = "'".$make->{vars}{CONF_DIR}."'";
+	$conf{plugins_dir} = "'".$make->{vars}{CONF_DIR}."plugins/'"
+}
 
 unshift @INC, './b/lib/';
 eval q{use Zoidberg::Config};

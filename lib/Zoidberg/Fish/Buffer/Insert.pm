@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer::Insert;
 
-our $VERSION = '0.3a_pre1';
+our $VERSION = '0.3a';
 
 use strict;
 use base 'Zoidberg::Fish::Buffer';
