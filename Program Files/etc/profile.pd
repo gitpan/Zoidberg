@@ -1,0 +1,32 @@
+$VAR1 = {
+	'Test' => {
+		'file' => "../var/test.pd",
+	},
+	'Prompt' => {
+			'prompt' => [{"["=>'red'},{"\\u"=>'magenta'},{'@'=>'blue'},{"\\h"=>'green'}, ' ',"\\W", {"]"=>'red'}, ' '],
+            'file' => "../etc/ps1.pd",
+
+			},
+	'Buffer' => {
+			'char_table_file' => "../etc/char-table.pd",
+			'tab_string' => "    ", # do not use special character in this string
+			},
+	'aliases' => {
+			'ls' => "ls --color=auto",
+			'dir' => '->print("Dit is geen DOS box !")',
+			},
+	'user' => {
+		    'eval_all' => 0,
+		    'call_zoidberg' => 1,
+		    # 'no_regex_expansion' => 0, # not in use (at the moment ?)
+		    'hist_pd_file' => "../var/hist.pd",
+		    'max_hist' => 30,
+		   },
+   	'MOTZ' => {
+        	'dir' => '../share/MOTZ',
+    	    },
+    'Monitor' => {
+            applet_file => '../etc/monitor.pd',
+            },
+	'files' => [qw{user/hist_pd_file Buffer/char_table_file Test/file Prompt/file MOTZ/dir Monitor/applet_file}],
+}

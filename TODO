@@ -1,0 +1,32 @@
+use - ~/.zoidberg .....
+
+Buffer->switch_char_table($tableObject)
+Monitor->watch (eventloop)
+
+diverse vissen meer loskoppelen - meer wrappers
+
+tab expansie in multi line modus
+filters
+perl afvangen
+
+probe plugable maken
+commands pluggable maken
+
+set var command
+
+load buffer
+
+export - nog niet getest
+source
+echo
+
+^->object in tab expansie en parser
+
+<<<<<<< TODO
+=======
+f_path_bin
+
+Exec: doet het execcen op een fancy, overloadable manier
+Trog: split de pipeline, douw resultaat in Exec
+Crab: overload zoidberg, stub alle methods die niet fork-safe zijn
+>>>>>>> 1.9

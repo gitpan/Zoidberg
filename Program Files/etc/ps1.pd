@@ -1,0 +1,9 @@
+use Sys::Hostname;
+$VAR1 = 
+{
+    '\w'   =>  sub { $ENV{PWD} },
+    '\h'   =>  sub { hostname },
+    '\u'   =>  sub { getlogin },
+    '\W'   =>  sub { (split/\//,$ENV{PWD})[-1] },
+    '\U'   =>  sub { [getpwnam(getlogin)]->[2]?'$':'#' }, # this should be \$, but i can't seem to get escape it right
+}

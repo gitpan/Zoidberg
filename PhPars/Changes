@@ -1,0 +1,6 @@
+Revision history for Perl extension Zoidberg::PhPars.
+
+0.01  Wed Sep 25 18:20:49 2002
+	- original version; created by h2xs 1.21 with options
+		-AX -n Zoidberg::PhPars
+

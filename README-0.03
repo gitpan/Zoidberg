@@ -1,0 +1,84 @@
+Zoidberg version 0.03
+=====================
+
+http://zoidberg.sourceforge.net
+
+
+Zoidberg basicly provides a shell written in perl
+(i know, yet another ...). It is intended to be a
+replacement for bash in the future.
+
+Features include:
+        runs perl from shell prompt (duh!)
+        config in perl code
+        perl codable prompt
+        perl codable key bindings
+        runtime loadable modules
+        regex tab expansion (this is not a bug !)
+	tab expansion for methods of loaded modules ... use this shell as your debug environment :)
+	multi line editing
+	help system
+
+planned:
+        pipes                           (very soon)
+        jobs
+        screen
+        inter user communication
+        wrappers for several CPAN modules like mailbox
+
+DOCUMENTATION
+
+Documentation will be provided once the basic functionality
+is stable. For now check the default config.
+
+INSTALLATION
+
+To install Zoidberg run:
+
+   install.pl
+
+The installer also tries to install the perl modules,
+this must be done as root.
+If the installer failes check whether you have all
+required perl modules.
+
+To install the perl modules type:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+
+
+DEPENDENCIES
+
+First of all you need perl <www.perl.com>, this is very likely
+to be allready on your system.
+
+Further more the following perl modules are required,
+they are on CPAN <http://cpan.org>. (The installer will
+try to install these if the make process failes)
+
+  Term::ReadKey
+  Term::ANSIScreen
+  Term::ANSIColor
+
+Unless you have perl 5.8.0 (or newer (?))
+
+  Devel::Symdump
+
+Other modules used where found in the perl 5.6.1 core distribution, if you
+have an other version and you are missing modules please check CPAN.
+
+AUTHORS
+
+Jaap Karssenberg || Pardus [Larus] <j.g.karssenberg@student.utwente.nl>
+R.L. Zwart, <carlos@caremail.nl>
+
+COPYRIGHT AND LICENCE
+
+Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
+This program is free software; you can redistribute it and/or
+modify it under the same terms as Perl.
+

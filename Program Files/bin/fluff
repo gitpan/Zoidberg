@@ -1,0 +1,23 @@
+#!/usr/bin/perl
+
+use strict;
+use Zoidberg;
+
+my $run_file = __FILE__;
+
+my @dirs = split(/\//, $run_file);
+pop @dirs;
+my $run_dir = join("/", @dirs);
+if (-l $0) {
+	my $dus = qx{ls -la $0};
+    chomp($dus);
+	$dus =~ s/.*->\s(.+)\/fluff$/$1/;
+	$run_dir = $dus;
+}
+chdir $run_dir;
+
+my $cube = Zoidberg->new($run_dir);
+$cube->init("../etc/profile.pd");
+my $lock = 1;
+while ($lock) { $lock = $cube->main_loop; }
+

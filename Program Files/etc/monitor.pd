@@ -1,0 +1,19 @@
+$self->use_postponed("Time::HiRes");
+$VAR1 = 
+{
+    'loadavg' => {
+        interval    => 60,
+        condition   => sub {[split//,qx{cat /proc/loadavg}]->[0]>1},
+        event       => sub {print "##### CPU RUNNING HOT !!!#####\n"},
+    },
+#    'motz' => {
+#        interval    => sub {int(rand(200))},
+#        condition   => sub {1},
+#        event       => sub {$_[0]->parent->parent->motz->fortune},
+#    },
+    'mail' => {
+        interval    => 60,
+        condition   => sub {-s '/var/spool/mail/'.getlogin()},
+        event       => sub {$self->print("You've got mail!")},
+    },
+}

@@ -1,0 +1,19 @@
+Revision history for Perl extension Zoidberg.
+
+0.01  Wed Sep 25 18:19:48 2002
+	- original version; created by h2xs 1.21 with options
+		-AX -n Zoidberg
+
+0.02 Fr sep 27
+	- included basic functions by rewriting a personal project
+	- created a sourceforge project
+	- prepared first release
+
+0.03 Mo sep 30
+	- multi line editting done
+	- changed from ".ph" to ".pd"
+		more powerfull dumper - can even decompile closures
+	- added much intel to tab expansion
+	- added help functionality
+	- added a few commands
+	- many bug fixes ...
