@@ -25,5 +25,9 @@
       chdir $cwd or die "Cannot chdir() back to $cwd: $!";
       exec $^X, $makefile, @ARGV;  # Redo now that we have Module::Build
     }
+    use lib '_build/lib';
+    use lib 'b/';
+    use MyBuilder;
     Module::Build::Compat->run_build_pl(args => \@ARGV);
+    require MyBuilder;
     Module::Build::Compat->write_makefile(build_class => 'MyBuilder');

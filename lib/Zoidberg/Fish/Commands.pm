@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.50';
+our $VERSION = '0.51';
 
 use strict;
 use Cwd;

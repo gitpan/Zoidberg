@@ -196,7 +196,7 @@ sub fetch { $_[0]->[1]{$_[1]} }
 
 package Zoidberg::StringParser;
 
-our $VERSION = '0.50';
+our $VERSION = '0.51';
 
 use strict;
 no warnings; # can't stand the nagging

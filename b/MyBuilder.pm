@@ -71,16 +71,16 @@ sub process_MyPost_files {
 
 # my actions
 
-sub ACTION_htmldoc { $_[0]->run_perl_script( File::Spec->catfile('b', 'man2html.PL') ) }
+sub ACTION_htmldocs { $_[0]->run_perl_script( File::Spec->catfile('b', 'man2html.PL') ) }
 
 sub ACTION_appdir {
 	my $self = shift;
 	$self->{properties}{install_base} = $self->base_dir() . '/Zoidberg';
-	$self->script_files({'bin/zoid' => '', 'bin/AppRun' => ''});
+	$self->script_files(['bin/zoid', 'bin/AppRun']);
 
 	$self->notes(AppDir => 1);
 	$self->depends_on('build');
-	$self->depends_on('htmldoc');
+	$self->depends_on('htmldocs');
 	$self->depends_on('test');
 	$self->depends_on('install');
 	$self->notes(AppDir => 0);
@@ -149,7 +149,7 @@ for building Zoidberg.
 
 Compiles an AppDir named F<Zoidberg>.
 
-=item htmldoc
+=item htmldocs
 
 Generate documentation in html format.
 

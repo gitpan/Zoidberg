@@ -25,8 +25,8 @@ my $build = MyBuilder->new(
 		'Pod::Text' => 0,
 		'Test::More' => 0,
 	},
-	create_makefile_pl => 'passthrough',
-	dynamic_config => {}, # boolean but bug (!?) in M:B
+#	create_makefile_pl => 'passthrough', # bug in M:B hacked Makefile.PL
+	dynamic_config => {}, # boolean but bug in M:B
 	PL_files => {}, # make it ignore my stuff
 #	autosplit => ['lib/Zoidberg/Fish/Commands.pm'],
 );

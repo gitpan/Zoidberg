@@ -1,6 +1,9 @@
 
 use strict;
 use Test::More tests => 3;
+use Cwd;
+
+$ENV{PWD} = cwd();
 
 $Zoidberg::CURRENT = 
 	$Zoidberg::CURRENT = { settings => { data_dirs => ['.', './t'] }};

@@ -1,6 +1,6 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.50';
+our $VERSION = '0.51';
 
 use strict;
 use vars qw/$AUTOLOAD/;

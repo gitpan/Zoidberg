@@ -1,8 +1,7 @@
 --- #YAML:1.0
 name: Zoidberg
-version: 0.50
-author:
-  - Jaap Karssenberg <pardus@cpan.org>
+version: 0.51
+author: Jaap Karssenberg <pardus@cpan.org>
 abstract: a modular perl shell
 license: perl
 requires:
@@ -25,10 +24,11 @@ build_requires:
   Module::Build: 0.24
   Pod::Text: 0
   Test::More: 0
+dynamic_config: {}
 provides:
   Zoidberg:
     file: lib/Zoidberg.pm
-    version: 0.50
+    version: 0.51
   Zoidberg::Contractor:
     file: lib/Zoidberg/Contractor.pm
   Zoidberg::DispatchTable:

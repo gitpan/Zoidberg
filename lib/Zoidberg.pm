@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.50';
+our $VERSION = '0.51';
 our $LONG_VERSION =
 "Zoidberg $VERSION
 
