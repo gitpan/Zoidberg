@@ -1,6 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 #use Zoidberg::Fish::Crab;
 
@@ -236,7 +236,7 @@ To be overloaded, do things like saving files or closing sockets here.
 
 =head1 AUTHOR
 
-R.L. Zwart, E<lt>carlos@caremail.nlE<gt>
+R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
 Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
 

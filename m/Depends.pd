@@ -1,5 +1,6 @@
 $VAR1 = {
   'core' => {
+    'YAML' => '0.35',
     'Storable' => '2.04',
     'Term::ANSIScreen' => '1.40',
     'Config' => 0,
@@ -7,13 +8,17 @@ $VAR1 = {
     'Term::ANSIColor' => '1.05',
     'IO::File' => '1.09',
     'Data::Dumper' => '2.12',
+    'overload' => '1.00',
     'Env' => '1.00',
+    'vars' => '1.01',
     'Tie::Hash' => '1.00',
-    'Tie::Hash::Stack' => '0.09',
+    'strict' => '1.02',
+    'IO::Socket' => '1.27',
     'File::Spec' => '0.83',
     'POSIX' => '1.05',
     'File::Glob' => '1.01',
     'Exporter' => '5.566',
+    'utf8' => '1.00',
     'Carp' => '1.01',
     'Cwd' => '2.06'
   }

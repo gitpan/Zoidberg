@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 our $LONG_VERSION =
 "Zoidberg $VERSION
 
@@ -28,6 +28,7 @@ use Zoidberg::PdParse;
 use Zoidberg::FileRoutines qw/:engine get_dir/;
 use Zoidberg::DispatchTable;
 use Zoidberg::Error;
+use Zoidberg::IPC;
 
 use base 'Zoidberg::ZoidParse';
 
@@ -52,7 +53,6 @@ sub new {
 	$self->{settings} = { 'silent' => { 'debug' => 1, }, }; # This is a good default :)
 
 	$self->{round_up} = 1;
-	$self->{exec_error} = 0;
 	$self->{_} = ''; # formely known as "exec_topic"
 
 	bless($self, $class);
@@ -78,7 +78,8 @@ sub init {
 	foreach my $plug (@{$self->{settings}{init_plugins}}) { 
 		$self->init_object($plug) || $self->print("Could not initialize plugin '$plug'", 'error'); 
 	}
-	
+#	$self->{ipc} = Zoidberg::IPC->new($self);
+#    $self->{ipc}->init;
 	# init self
 	my $file_cache = $ZoidConf{config_dir}.'/'.$ZoidConf{file_cache} ; # hack -- FIXME unless /^\//
 	if ($file_cache && -s $file_cache) { f_read_cache($file_cache) } # FIXME -- what if this only gives the dir name ..
@@ -267,7 +268,7 @@ sub print_error {
 	my $self = shift;
 	my $error = shift;
 	if (ref($error) eq 'Zoidberg::Error') {
-		return if $error->{is_printed}++;
+		return if $error->{silent}++;
 		$error = $error->stringify(format => 'gnu') unless $error->debug;
 	}
 	if (ref $error) {
@@ -314,12 +315,20 @@ sub dev_null {} # does absolutely nothing
 # Event logic #
 # ########### #
 
-sub broadcast_event {
+sub broadcast_event { # eval because we don't want to mess up our caller's stack
 	my $self = shift;
 	my $event = shift;
-	for (@{$self->{events}{$event}}) {
-		if (ref($_) eq 'CODE') { $_->($self, $event, @_) }
-		else { $self->{objects}{$_}->event($event, @_) }
+	foreach my $reg (@{$self->{events}{$event}}) { #there was a weird $_ booboo here
+		if (ref($reg) eq 'CODE') { eval { $reg->($self, $event, @_) }; if ($@) { error("$reg died on event $event") } }
+		else { 
+            unless (ref($self->{objects}{$reg})) {
+                error("$reg is not an object!\n");
+            }
+            else {
+                eval { $self->{objects}{$reg}->event($event, @_) };
+                if ($@) { error("$reg died on event $event") }
+            }
+        }
 	}
 }
 
@@ -346,6 +355,11 @@ sub object {
 		$self->{objects}{$name} = $pack->new($self);
 		return $self->{objects}{$name};
 	}
+
+#    if ($name =~ /\(0x[a-f\d]+\)$/i) { # refstring, return hem:) handig voor aan de andere kant van een socket
+#        my $ref = deref($name);
+#        if ($ref) { return $ref }
+#    }
 
 	unless ($silence_bit) {
 		my @caller = caller;
@@ -505,8 +519,7 @@ sub round_up {
 		$self->{round_up} = 0;
 		$self->print("# ### CU - Please report all bugs ### #  ", 'message');
 	}
-	#print "Debug: exit status: ".$self->{exec_error}."\n";
-	return $self->{exec_error};
+	return $self->{exec_error} unless $self->{interactive}; # FIXME check this
 }
 
 sub DESTROY {

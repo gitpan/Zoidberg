@@ -1,7 +1,7 @@
 
 package Zoidberg::Error;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 use strict;
 use Carp;
@@ -101,7 +101,7 @@ sub PROPAGATE { # see perldoc -f die
 			'line' => $line,
 		};
 	}
-	elsif ($self->can('PROPAGATE')) { $self = $self->PROPAGATE }
+	elsif (ref($self) && $self->can('PROPAGATE')) { $self = $self->PROPAGATE }
 	else { $self .= "\t...propagated at $file line $line\n" }
 	return $self;
 }

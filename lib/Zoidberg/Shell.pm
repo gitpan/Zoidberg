@@ -7,7 +7,7 @@ use Env ();
 use Exporter::Inheritor;
 use Zoidberg::Error;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 our @ISA = qw/Exporter::Inheritor/;
 our @EXPORT = qw/AUTOLOAD $SHELL/;

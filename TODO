@@ -32,7 +32,7 @@ Done		* ook error output		Jun 19
                 * In principe alleen commando's (both shell and subroutine ->syntax)
                 * Doch wel een eval_perl commando
                 * Een "get_till_eof_from_socket" commando als input method
-     -- v0.4a release
+     -- v0.4.0 release
         * Zoidberg::Events
                 * transperante events lib
                 * denk aan curses based plugins
@@ -121,6 +121,8 @@ commands intel verfijnen -- meteen usage fixe in 1 hash
 	
 plain output format for non-interactive modus
 	zie parent->output plannen
+
+What about redirections for block contexts ?
 
 __WANTED_FEATURES__
 
@@ -259,7 +261,7 @@ release procedure:
 
 	add "_cvs" to $VERSION in non-release tree
 	cvs commit (non-release tree !)
-	cvs tag -- always goes wrong :((
+	cvs tag - "cvs tag vx_x_x" # bijv. 0.4.0 ==> v0_4_0
 
 	upload to sf and cpan
 	update the website (upload docs) !
@@ -499,15 +501,18 @@ I suggest for zoid
 	(/etc/profile once Shell::POSIX works)
 	/etc/zoidrc(.pl) - system wide stuff- always unless some option
 	.zoidrc(.pl) - always unless some option
-	.zoid/exit(.pl) - idem
+		No need for a logout script, the rc script could define a event for that
 	($ENV{ENV} - see POSIX - (wait for Shell::POSIX ?))
+
+also use 
+	.zoid_log <== .zoid/var/hist.log
+	/var/cache/zoid/file_cache <== .zoid/var/file_cache
+	delete .zoid/lib as default -- make this a compile option
+	data files zoeken in ~/.zoid || /usr/(local)?/share/zoid
 
 __CHECK CPAN__
 
-Carp -- make errors indicate the rigth place
 Class::AutoUse -- load on use to speed things up
 Autoloader -- cut large command libs in pieces
-POE -- advanced events stuff, maybe we need this but it might be to heavy
 Exporter::Tidy -- said to be faster then Exporter vanilla
-IPC::Run -- doesn't this do everything we want ? - or does it do to much ?
 File::... -- for our fileutils lib

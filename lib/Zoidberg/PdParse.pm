@@ -1,6 +1,6 @@
 package Zoidberg::PdParse;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 use strict;
 
@@ -180,7 +180,7 @@ Forget read files.
 
 =head1 AUTHOR
 
-R.L. Zwart, E<lt>carlos@caremail.nlE<gt>
+R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 Jaap Karssenberg || Pardus [Larus] E<lt>j.g.karssenberg@student.utwente.nlE<gt>
 
 Copyright (c) 2002 Raoul L. Zwart. All rights reserved.

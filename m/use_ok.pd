@@ -12,6 +12,7 @@ $VAR1 = {
     'Zoidberg::Fish::History',
     'Zoidberg::Fish::Intel',
     'Zoidberg::Fish::Prompt',
+    'Zoidberg::IPC',
     'Zoidberg::Config',
     'Zoidberg::DispatchTable',
     'Zoidberg::Error',

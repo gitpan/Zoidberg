@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 use strict;
 use Cwd;
@@ -19,30 +19,6 @@ sub init {
 	$_[0]->{_dir_hist_i} = 0;
 }
 
-=begin comment
-
-# This subroutine is out of use
-
-sub intel { # not a command
-	my $self = shift;
-	my ($set, $block, $intel) = @_;
-
-	if ($block =~ /^\s*(\w+)?$/) {
-		if (defined ($set = $intel->set_arg($set, $1))) {
-			push @{$set->{poss}}, sort grep /$set->{arg}/, @{$self->list};
-			$set->{postf} = ' ';
-			$intel->add_poss($set);
-		}
-	}
-	else { $intel->parse($set, 'FILE'); }
-
-	return $set;
-}
-
-=end comment
-
-=cut
-
 sub exec { # not completely stable I'm afraid
 	my $self = shift;
 	$self->{parent}->{round_up} = 0;
@@ -55,8 +31,8 @@ sub exec { # not completely stable I'm afraid
 sub eval {
 	my $self = shift;
 	$self->parent->do( join( ' ', @_) );
-	error $self->parent->{exec_error}
-		if $self->parent->{exec_error};
+	error $self->{parent}{exec_error}
+		if $self->{parent}{exec_error};
 }
 
 sub source { 
@@ -72,7 +48,7 @@ sub source {
 sub setenv {
 	my $self = shift;
 	my $string = join(" ", @_);
-	if ($string =~ m/^\s*(\w*)\s*=\s*\"?(.*?)\"?\s*$/) { $ENV{$1} = $2; }
+	if ($string =~ m/^\s*(\w*)\s*=\s*['"]?(.*?)['"]?\s*$/) { $ENV{$1} = $2; }
 	else { error 'argument syntax error' }
 }
 
@@ -115,7 +91,19 @@ sub set {
 	else { $self->{settings}{$opt} = $val || 1 }
 }
 
-sub alias { todo }
+sub alias {
+	my $self = shift;
+	unless (@_) {
+		for (keys %{$self->{parent}{aliases}}) { 
+			$self->{parent}->print( q/alias /.$_.q/='/.$self->{parent}{aliases}{$_}.q/'/);
+		}
+		return;
+	}
+	for (@_) {
+		error 'alias: wrong argument format' unless /^(\w+)=['"]?(.*?)['"]?$/;
+		$self->{parent}{aliases}{$1} = $2;
+	}
+}
 
 sub read { todo }
 
@@ -133,7 +121,7 @@ sub umask { todo }
 
 sub unalias { todo }
 
-sub false { error { silent => 1 } }
+sub false { error {silent => 1} }
 
 sub true { 1 }
 
@@ -293,10 +281,7 @@ sub _time {
         my $kontwange = join(" ",@_);
         $self->print(Benchmark::timestr(Benchmark::timeit(1,sub{$self->parent->parse($kontwange)}),'nop'));
     }
-    else {
-        $self->print('usage: $command something','error');
-        $self->parent->{exec_error}=1;
-    }
+    else { error 'usage: $command something' }
 }
 
 =end comment

@@ -201,7 +201,7 @@ sub fetch {
 
 package Zoidberg::StringParse;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 use strict;
 no warnings; # can't stand the nagging

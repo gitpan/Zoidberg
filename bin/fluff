@@ -16,7 +16,7 @@ my $APPDIR = '';
 use strict;
 use vars qw/%ZoidConf/;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 ####################
 #### Parse ARGV ####
@@ -141,7 +141,14 @@ my $cube = Zoidberg->new;
 unless ($interact) { $cube->silent } # FIXME -- this should be done internally - this api is wrong
 
 $cube->init(interactive => $interact);
-if ($exec_string) { $cube->do($exec_string) }
+if ($exec_string) { 
+#    if ($args{command}) {
+#        $cube->{ipc}->do($exec_string);
+#    }
+#    else {
+        $cube->do($exec_string)
+#    }
+}
 
 if (-e $dir.'/.first_time' && $interact) {
 #	$cube->print("## Type help to get on your feet", 'message'); # FIXME help is currently broken

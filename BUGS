@@ -30,8 +30,11 @@ Buffer
 Intel:  
         expansie in multi line gaat fout (?)
 	expansie over de regel breedte gaat soms fout
-        escapes gaan fout in some situations
-        expansie van zoid in perl gaat fout
+	
+	[pardus@Captain moviez] mplayer The.Matrix.Reloaded.TS.REAL.PROPER-APM/CD*/<TAB>
+	Buffer died. 
+	Can't use an undefined value as an ARRAY reference at /home/pardus/local_zoid//lib/Zoidberg/Fish/Intel.pm line 58.
+	
 
 Docs:
 	lot of docs not up2date or incomplete :((

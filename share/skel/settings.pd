@@ -11,7 +11,10 @@ $VAR1 = {
 	'init_plugins' => [
 #		qw/IPC/
 	], # plugins to be loaded on initialisation
-	'clothes' => { 'keys' => [qw/settings/], 'subs' => [qw//], },
+	'clothes' => {
+		'keys' => [qw/settings vars exec_error return_value/],
+		'subs' => [qw/fg bg kill jobs reload exit/],
+	},
 	'naked_zoid' => 0,
 	'cache_time' => 300, # time in seconds -- 5min
 	'no_regex' => 0,

@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 use strict;
 use Data::Dumper;
@@ -9,10 +9,11 @@ use Storable qw/dclone/;
 use Term::ReadKey;
 use Term::ANSIColor;
 use Term::ANSIScreen qw/:screen :cursor/;
-use Zoidberg::StringParse;
+#use Zoidberg::StringParse;
 # use Zoidberg::StringParse::Syntax;
 use Zoidberg::PdParse;
 #use Zoidberg::FileRoutines qw/abs_path unique_file %cache/;
+#use Zoidberg::FormatedString;
 
 use base 'Zoidberg::Fish';
 
@@ -22,7 +23,7 @@ sub init {
 	my $self = shift;
     #print "debug: buffer config: ".Dumper($self->{config})."\n";
 	$self->{tab_string} = $self->{config}{tab_string} || "    ";
-	$self->{parser} = Zoidberg::StringParse->new($self->parent->{grammar}, 'buffer_gram');
+#	$self->{parser} = Zoidberg::StringParse->new($self->parent->{grammar}, 'buffer_gram');
 #	$self->{syntax_parser} = Zoidberg::StringParse::Syntax->new($self->parent->{grammar}{syntax}, 'PERL', $self->parent->{grammar}{ansi_colors});
 
 	my $default;
@@ -45,12 +46,16 @@ sub init {
 		'multi_line' => 'Zoidberg::Fish::Buffer::Insert::MultiLine',
 		'vim_command' => 'Zoidberg::Fish::Buffer::Insert::VimCommand',
 		'select' => 'Zoidberg::Fish::Buffer::Select',
-        'search_hist' => 'Zoidberg::Fish::Buffer::Insert::SearchHist',
+		'search_hist' => 'Zoidberg::Fish::Buffer::Insert::SearchHist',
 	};
 	$self->{default_modus} = 'insert';
 
 	for (values %{$self->{modi}}) {eval "use $_;"}
 	$self->switch_modus;
+
+#	$self->{ps1} =	$ENV{PS1}
+#			? Zoidberg::FormatedString->new(\$ENV{PS1})
+#			: ($> == 0) ? '#' : '$' ;
 
 	$self->{state} = 'idle';
 }
@@ -228,6 +233,7 @@ sub refresh {
 	$x_pos -= $y_pos * $self->{size}[0];
 	$x_pos += 1;
 	print locate($self->{_null_line} + $start[$self->{pos}[1]] + $y_pos, $x_pos);
+    $self->broadcast_event('buffer_refresh');
 }
 
 #######################
@@ -456,6 +462,8 @@ sub _arr_eq {
 	return 1;
 }
 
+=begin comment
+
 sub golf {
 	my $self = shift;
 	my $fb = join ("\n", @{$self->{fb}});
@@ -478,6 +486,10 @@ sub golf {
 	print "\n";
 	$self->respawn;
 }
+
+=end comment
+
+=cut
 
 sub editor {
 	my $self = shift;
@@ -631,7 +643,9 @@ sub highlight { # this belongs in a string util module or something
 	my $fb = join("\n", @{$self->{fb}});
 
 	# do syntax highlighting
-=pod
+
+=begin comment
+
 	my $tree = $self->{parser}->parse($fb, 'pipe_gram', 1, 1);
 	my $error = $self->{parser}->{error};
 	my $string = '';
@@ -643,6 +657,8 @@ sub highlight { # this belongs in a string util module or something
 		$string .= $ref->[1];
 		$self->{_last_context} = $ref->[2];
 	}
+=end comment
+
 =cut
 	my $string = $fb; my $error;
 

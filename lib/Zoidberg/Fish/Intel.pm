@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 use strict;
 use vars qw/$DEVNULL/;
@@ -28,21 +28,17 @@ sub expand {
 	# find context of block
 	my $block = $self->{parent}->_resolv_context($l_block, 'BROKEN');
 	unless ($block) { return ('', $string.$l_block, []) }
-	unless ( ($block->[0]{context} eq '_WORDS') || $block->[0]{is_word_c} ) {
-		my $m_string = pop @{$block};
-		push @{$block}, grep {$_} 
-			$self->{parent}{StringParser}->split('word_gram', $m_string);
-	}
-
-	# get pref right
-	$block->[0]{pref} = $l_block;
-	unless ( !length($block->[-1]) || $block->[0]{pref} =~ s/\Q$block->[-1]\E$//) {
-		# probably escape chars make the match fail
-		my @words = $self->{parent}{StringParser}->split(
-			['word_gram', {no_esc_rm => 1}],
-			$l_block );
-		return ('', $string.$l_block, []) unless $block->[0]{pref} =~ s/\Q$words[-1]\E$//;
-	}
+	if ($#$block > 1) {
+		# get pref right
+		$block->[0]{pref} = $l_block;
+		unless ( !length($block->[-1]) || $block->[0]{pref} =~ s/\Q$block->[-1]\E$//) {
+			# probably escape chars make the match fail
+			my @words = $self->{parent}{StringParser}->split(
+				['word_gram', {no_esc_rm => 1}],
+				$l_block );
+			return ('', $string.$l_block, []) unless $block->[0]{pref} =~ s/\Q$words[-1]\E$//;
+		}
+	} else { $block->[0]{pref} = '' }
 	$block->[0]{i_feel_lucky} = $i_feel_lucky;
 	$block->[0]{poss} = [];
 
@@ -94,11 +90,12 @@ sub _get_last_block {
 	return ($string, $block);
 }
 
-sub join {
-	my ($self, @blocks) = @_;
-	@blocks = map { (ref($_->[0]) eq 'ARRAY') ? @{$_} : $_ } @blocks;
-	@blocks = ( [{}] ) unless scalar @blocks;
-	return $#blocks ? [@blocks] : $blocks[0];
+sub _wrap {
+	my ($self, $block, $string, $winner) = @_;
+	$string = _quote_file($string) if $block->[0]{_file_quote} ;
+	$string = $block->[0]{pref} . $string;
+	$string .= $block->[0]{postf} || ' ' if $winner && $string =~ m#\w$#; # FIXME not transparent !!
+	return $string;
 }
 
 sub _unwrap_nested_poss {
@@ -111,6 +108,19 @@ sub _unwrap_nested_poss {
 	else { $poss = [ map { @{$_->[0]{poss}} } @blocks ] }
 
 	return ($blocks[0], $poss);
+}
+
+sub join {
+	my ($self, @blocks) = @_;
+	@blocks = map { (ref($_->[0]) eq 'ARRAY') ? @{$_} : $_ } @blocks;
+	@blocks = ( [{}] ) unless scalar @blocks;
+	return $#blocks ? [@blocks] : $blocks[0];
+}
+
+sub remove_doubles {
+	my %dus;
+	for (@_) { $dus{$_}++ }
+	return sort keys %dus;
 }
 
 sub do {
@@ -128,7 +138,7 @@ sub do {
 	}
 	else { error $try.': no such expansion available' }
 
-	if (scalar(@re)) { ($block, @try) = (@re, @try) }
+	if (defined $re[0]) { ($block, @try) = (@re, @try) }
 	else { return scalar(@try) ? $self->do($block, @try) : $block } # recurs
 
 	my $succes = 0;
@@ -139,19 +149,60 @@ sub do {
 	else { return scalar(@try) ? $self->do($block, @try) : $block } # recurs
 }
 
-sub _wrap {
-	my ($self, $block, $string, $winner) = @_;
-	# TODO config 'n stuff !!!!!!!!!!!!111 !!!!!!!!!!!!1! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
-	$string = _quote_file($string) if $block->[0]{_file_quote} ;
-	$string = $block->[0]{pref}.$string;
-	if ($winner) {
-		$string .= $block->[0]{postf};
-		$string .= ' ' if $string =~ m#\w$#;
+sub i_perl { return ($_[1], qw/_zoid _perl_data/) }
+
+sub i__zoid {
+	my ($self, $block) = @_;
+
+	return undef unless $block->[0]{dezoidify};
+	return undef unless
+		$block->[-1] =~ s/( (?:->|\xA3) (?:\S+->)* (?:[\[\{].*?[\]\}])* )(\S*)$//x;
+	my ($pref, $arg) = ($1, qr/^\Q$2\E/);
+	$block->[0]{pref} = $block->[-1] . $pref;
+	
+	my $code = "\$self->{parent}".$pref;
+	$code =~ s/\xA3/->/;
+	$code =~ s/->$//;
+	my $ding = eval($code);
+	my $type = ref $ding;
+#	print "\ndebug: pref -->$pref<-- arg -->$arg<-- code -->$code<-- ref -->$type<--\n";
+	return undef if $@ || ! $type;
+
+	my @poss;
+	if ($type eq 'HASH') { push @poss, sort grep m/$arg/, map {'{'.$_.'}'} keys %{$ding} }
+	elsif ($type eq 'ARRAY') { push @poss, grep m/$arg/, map {'['.$_.']'} (0 .. $#$ding) }
+	elsif ($type eq 'CODE' ) { $block->[0]{message} = "\'$pref\' is a CODE reference"   } # do nothing (?)
+	else { # $ding is object
+		if ( ($type eq ref $self->{parent}) && (!$ding->{settings}{naked_zoid} || $pref =~ /\xA3/) ) {
+			# only dispay clothes
+			push @poss, grep m/$arg/, @{$self->parent->list_vars};
+			push @poss, grep m/$arg/, @{$self->parent->list_clothes};
+			push @poss, grep m/$arg/, @{$self->parent->list_objects};
+			$block->[0]{postf} = '->';
+		}
+		else {
+			if (UNIVERSAL::isa($ding, 'HASH')) { push @poss, sort grep m/$arg/, map {'{'.$_.'}'} keys %{$ding} }
+			elsif (UNIVERSAL::isa($ding, 'ARRAY')) { push @poss, grep m/$arg/, map {'['.$_.']'} (0 .. $#$ding) }
+
+			unless ($arg =~ /[\[\{]/) {
+				no strict 'refs';
+				my @m_poss = map { grep  m/$arg/, symbols('CODE', $_) } ($type, @{$type.'::ISA'});
+				push @poss, remove_doubles(@m_poss);
+			}
+			$block->[0]{postf} = '(';
+		}
 	}
-	return $string;
+	if ($self->{parent}{settings}{hide_private_method} && $arg !~ /_/) {
+		@poss = grep {$_ !~ /^\{?_/} @poss;
+	}
+	$block->[0]{poss} = \@poss;
+
+	return $block;
 }
 
-sub i__words { # TODO file & dirs in './'
+sub i__perl_data { return undef } # TODO
+
+sub i__words {
 	my ($self, $block) = @_;
 
 	my $arg = $block->[-1];

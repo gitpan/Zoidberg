@@ -48,7 +48,7 @@ my %config = (
 	'include' => {
 		'NAME'		=> 'Zoidberg',
 		'VERSION'	=> get_version_from('lib/Zoidberg.pm'),
-		'AUTHOR'	=> 'Jaap G Karssenberg <j.g.karssenberg@student.utwente.nl> and RL Zwart <r.l.zwart@caremail.nl>',
+		'AUTHOR'	=> 'Jaap G Karssenberg <j.g.karssenberg@student.utwente.nl> and RL Zwart <rlzwart@cpan.org>',
 	},
 );
 

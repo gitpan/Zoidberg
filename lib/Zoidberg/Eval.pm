@@ -1,6 +1,6 @@
 package Zoidberg::Eval;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -11,6 +11,7 @@ use Zoidberg::Error;
 use Zoidberg::FileRoutines qw/:exec_scope is_exec_in_path/;
 use Zoidberg::Shell qw/:exec_scope/;
 
+our %_REFS;
 our @PATH;
 our $DEBUG = 0;
 export(\@PATH => 'PATH');
@@ -22,6 +23,8 @@ sub _new {
 	my $self = {};
 	$self->{zoid} = shift; # this will be $self for eval blocks
 	bless $self, $class;
+	$_REFS{$self} = $self;
+	return $self;
 }
 
 sub _eval_block {
@@ -43,13 +46,7 @@ sub _eval_block {
 	};
 	
 	$ENV{ZOIDREF} = $orig_ref if defined $orig_ref;
-
-	if ($@) {
-		$self->{exec_error} = $@;
-		$self->{zoid}->print_error($@);
-	}
-	else { undef $self->{exec_error} }
-
+	die if $@;
 }
 
 =begin comment
@@ -118,12 +115,19 @@ sub _do_perl {
 
 	my $self = $_Eval->{zoid};
 	$_ = $self->{_};
-	
-	eval('no strict; '.$_Code); # TODo, what about the return value ?  # FIXME make strict an option
+
+	$self->{return_value} = [eval 'no strict; '.$_Code]; # FIXME make strict an option
         die if $@; # should we check $! / $? / $^E here ?
-	
+
         $self->{_} = $_;
-	 print "\n"; # ugly hack
+	print "\n"; # ugly hack
+}
+
+sub _interpolate_magic_char {
+	my ($self, $string) = @_;
+	$string =~ s/(?<!\\)\xA3\{(\w+)\}/$self->{zoid}{vars}{$1}/eg;
+	$string =~ s/\\(\xA3)/$1/g;
+	return $string;
 }
 
 our $_Zoid_gram = {
@@ -201,7 +205,7 @@ sub AUTOLOAD {
 		open CMD, '-|', $cmd, @_;
 		my @ret = (<CMD>);
 		close CMD;
-		$self->{exec_error} = $?;
+		error {silent => 1}, $? if $?;
 		if (wantarray) { return map {chomp; $_} @ret; }
 		else { return join('',@ret); }
 	}

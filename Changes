@@ -1,6 +1,23 @@
 Revision history for Zoidberg -- a modular perl shell
 <http://zoidberg.sourceforge.net>
 
+0.3b Mo Jul 07 2003
+	Basicly a bugfix release, but also two features restored.
+
+     Su Jul 06 2003
+	- Restored tab expansion for zoid-syntax
+	- Restored basic support for redirections
+
+     Sa Jul 05 2003
+	- A critical bug was fixed in the execution of logic lists.
+
+     Fr Jul 04 2003
+	- Fixed a bug so now the parser silently ignores empty blocks, this 
+	shows for example after a '&' or ';' command delimiter.
+	- Carl0s fixed a bug in the job control code which caused a lot of
+	zombie processes.
+	- Initial IPC code added.
+
 0.3a Tu Jul 01 2003
 	Finally a new release with /some/ level of stability.
 	Enjoy !

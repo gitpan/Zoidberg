@@ -1,6 +1,6 @@
 package Zoidberg::ZoidParse;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 use strict;
 use POSIX ();
@@ -87,56 +87,67 @@ sub round_up {
     } grep {!$_->nohup} grep {ref =~ /Wide/} @{$self->{jobs}};
 }
 
+# ############### #
+# Parser routines #
+# ############### #
+
 sub do {
 	my $self = shift; 
-	eval { $self->do_list( [ $self->parse(@_) ] ) };
-	$self->print_error($@) if $@;
+	$self->update_status;
+	my @list = eval { $self->parse(@_) };
+	if ($@) {
+		# FIXME broadcast event
+		$self->print_error($@);
+	}
+	else { $self->do_list(\@list, 'PARSED') }
 }
 
 sub parse {
 	my $self = shift;
 	my @tree = $self->{StringParser}->split('script_gram', @_);
 	if (my $e = $self->{StringParser}->error) { error $e }
-        my @tree = map { ref($_) ? $self->_resolv_context($$_) : $_} @tree;
-	print 'tree: ', Dumper \@tree if $DEBUG;
+	print 'tree1: ', Dumper \@tree if $DEBUG;
+        my @tree = grep {defined $_} map { ref($_) ? $self->_resolv_context($$_) : $_} @tree;
+	print 'tree2: ', Dumper \@tree if $DEBUG;
         return @tree;
 }
 
 sub _resolv_context  { # mag schoner, doch werkt 
-	# args: block, broken_bit (also known as "Intel bit")
-	my ($self, $block, $bit) = @_;
-	my $ref;
+	# args: string, broken_bit (also known as "Intel bit")
+	my ($self, $string, $bit) = @_;
+
+	# check block contexts
+	my ($ref, %files);
 	for ( @{$self->{_block_contexts}}, '_block' ) {
 		next unless exists $self->{contexts}{lc($_).'_resolv'};
-		$ref = $self->{contexts}{lc($_).'_resolv'}->($block, $bit);
+		$ref = $self->{contexts}{lc($_).'_resolv'}->($string, $bit);
 		last if $ref;
 	}
-	if ($ref) {
-		$ref->[0] = { context => $ref->[0] } unless ref $ref->[0];
-		# NO array support here
-	}
-	else {
-		my @words = $self->_split_words($block, $bit);
+
+	# check word contexts
+	unless ($ref) {
+		my @words = $self->_split_words($string, $bit);
 		return [{context => '_WORDS'}, @words] if $bit && $#words < 1;
+		if (($#words > 1) && $words[-2] =~ /^(\d?)(>>|>|<)$/) { # parse redirections
+			# FIXME what about escapes ? (see posix spec)
+			my $num = $1 || ($2 eq '<') ? 0 : 1;
+			$files{$num} = [pop(@words), $2];
+			pop @words;
+		}
 		for ('_words', @{$self->{_words_contexts}}) {
+			# FIXME hier net als bij intel gewoon _list sub gebruiken
 			next unless exists $self->{contexts}{lc($_).'_resolv'};
 			$ref = $self->{contexts}{lc($_).'_resolv'}->(\@words, $bit);
 			last if $ref;
 		}
-		unless ($ref || $bit) {# we're gonna die
-			if ($words[0] =~ m|/|) {
-				error $words[0].': No such file or directory' unless -e $words[0];
-				error $words[0].': is a directory' if -d $words[0];
-				error $words[0].': Permission denied'; 
-			}
-			else { error $words[0].': command not found' }
+		unless ($ref) {
+			return undef if $bit || $string !~ /\S/;
+			$ref = [ {context => 'sh'}, @words ]; # hardcoded default
 		}
-		return undef unless $ref;
-		$ref->[0] = { context => $ref->[0] } unless ref $ref->[0];
-		# NO array support here
-		$ref->[0]{is_word_c}++;
 	}
-	$ref->[0]{string} = $block; 
+	$ref = _expand_meta($ref);
+	$ref->[0]{string} = $string;
+	$ref->[0]{files}  = \%files;
 
 	return $ref;
 }
@@ -164,7 +175,6 @@ sub _block_context {
 		elsif (grep {$meta->{context} eq uc($_)} qw/sh cmd/, @{$self->{_words_contexts}}) {
 			my @words = $self->_split_words($block, $bit);
 			return [{context => '_WORDS'}, @words] if $bit && $#words < 1;
-			$meta->{is_word_c}++;
 			return [$meta, @words];
 		}
 		else { return [$meta, $block] }
@@ -219,12 +229,12 @@ sub __do_aliases {
 }
 
 sub do_list {
-	my ($self, $ref) = @_;
+	my ($self, $ref, $bit) = @_; # bit tells meta allready expanded
 	my $prev_sign = '';
 	while (scalar @{$ref}) {
 		my ($pipe, $sign) = $self->_next_statement($ref);
 
-		if ( $self->{exec_error} ? ($prev_sign eq 'AND') : ($prev_sign eq 'OR') ) {
+		if ( defined($self->{exec_error}) ? ($prev_sign eq 'AND') : ($prev_sign eq 'OR') ) {
 			$prev_sign = $sign if $sign =~ /^(EOS|BGS)$/;
 			next;
 		}
@@ -236,6 +246,7 @@ sub do_list {
 					? $pipe->[0][0]{string} 
 					: q{FIXME job description}, # VUNZIG
 			};
+			$pipe = [ map {_expand_meta($_) } @$pipe ] unless $bit;
 			$self->do_job($meta, $pipe);
 		}
 	}
@@ -250,15 +261,29 @@ sub _next_statement {
 	return \@r, $sign;
 }
 
+sub _expand_meta {
+	my $block = shift;
+	my $t = ref $block->[0];
+	return $block if $t eq 'HASH';
+	unless ($t) { $block->[0] = { context => $block->[0] } }
+	elsif ($t eq 'ARRAY') {
+		my ($cont, @opts) = @{$block->[0]};
+		$block->[0] = {context => $cont, opts => \@opts};
+	}
+	else { die qq/Hands above the blankets !/ }
+	return $block;
+}
+
 sub do_job {
 	my $self = shift;
-	#use Data::Dumper;
-	#print 'do_job got: ', Dumper \@_;
 	my $job = Zoidberg::ZoidParse::scuddle->new($self, @_);
 	push @{$self->{jobs}}, $job;
-	$job->prerun;
-	$job->run;
-	$job->postrun;
+	eval { $job->run };
+	if ($@) {
+                $self->{exec_error} = $@;
+                $self->print_error($@);
+        }
+        else { undef $self->{exec_error} }
 	return $job->{id};
 }
 
@@ -271,71 +296,68 @@ sub list_commands { keys %{$_[0]->{commands}} }
 sub jobs {
 	my $self = shift;
 	map { 
-		$self->print("[$_->{id}] $_->{string} ".($_->{foreground} ? " &" : ""))
+        my $s = $_->{string};
+        chomp($s); if (!$_->{foreground}and!$_->{stopped}) { $s .= ' &' }
+		$self->print("[$_->{id}] $s");
 	}  grep {ref!~/native/i} @{$self->{jobs}};
 }
 
 sub fg {
     my $self = shift;
     my $id = shift;
-    unless ($id) { 
-        my @jobs = grep {(!$_->{foreground})||($_->{stopped})} grep {ref =~ /Wide/} @{$self->{jobs}};
-        if ($#jobs==-1) {
-            $self->print("No background job!",'error');
-            $self->{exec_error}=1;
-            return;
+    my $J;
+    foreach my $job (@{$self->{jobs}}) {
+        if (ref($job)!~/wide/i) { next }
+        if ($id ) {
+            if ($job->{id} == $id) { $J = $job; last }
+            else { next }
         }
-        elsif ($#jobs==0) {
-            $id = $jobs[0]->{id};
-        }
-        else {
-            $self->print("Which job?",'error');
-            $self->{exec_error}=1;
-            return;
+        if ((!$job->{fg})or$job->{stopped}) {
+            $J = $job; last;
         }
     }
-    my ($job) = $self->_jobbyid($id);
-    unless ($job) { $self->print("No such job: $id");$self->{exec_error}=1;return }
-    $job->put_foreground;
-}
-
-sub kill {
-    my $self = shift;
-    my @a = $self->_substjobno(grep{!/^\s*$/}@_);
-    if ($#a==-1) { $self->print("Go kill yourself!",'error');$self->{exec_error}=1;return }
-    elsif ($#a==0) { unless(kill(9,$a[0])){$self->print("Kill $a[0] failed: $!",'error');$self->{exec_error}=1}}
+    if ($J) {
+        $J->put_foreground;
+    }
     else {
-        my $sig;
-        if ($sig=$self->_sigspec($a[0])) { shift@a }
-        else { $sig = 9 } # SIGKILL .... again: ns polution
-        map {
-            unless(kill(9,$_)){$self->{exec_error}=1}
-        } @a;
+        $self->print("No such job",'error');
     }
-    # arg precedence als in bash..
 }
 
 sub bg {
     my $self = shift;
     my $id = shift;
-    unless ($id) {
-        my ($job) = $self->_fg_job;
-        if ($job) {
-            $id = $job->{id};
+    my $J;
+    foreach my $job (@{$self->{jobs}}) {
+        if (ref($job)!~/wide/i) { next }
+        if ($id ) {
+            if ($job->{id} == $id) { $J = $job; last }
+            else { next }
         }
-        else {
-            $self->print("No foreground job!",'error');
-            $self->{exec_error} = 1;
-            return;
+        if ((!$job->{fg})or$job->{stopped}) {
+            $J = $job; last;
         }
     }
-    my ($job) = $self->_jobbyid($id);
-    unless ($job) { 
-        $self->print("No such job: $id",'error');
-        $self->{exec_error} = 1;
-        return;
+    if ($J) {
+        $J->put_background;
     }
-    $job->put_background;
+    else {
+        $self->print("No such job",'error');
+    }
+}
+
+sub kill {
+    my $self = shift;
+    my @a = $self->_substjobno(grep {!/^\s*$/} @_);
+    if ($#a==-1) { error "Go kill yourself!" }
+    elsif ($#a==0) { error "Kill $a[0] failed: $!" unless kill 9, $a[0] }
+    else {
+        my $sig;
+        if ($sig = $self->_sigspec($a[0])) { shift @a }
+        else { $sig = 9 } # SIGKILL .... again: ns polution
+        for (@a) { error "Kill $_ failed: $!" unless kill 9, $_ }
+    }
+    # arg precedence als in bash..
 }
 
 sub disown { # dissociate job ... remove from @jobs, nohup
@@ -343,29 +365,14 @@ sub disown { # dissociate job ... remove from @jobs, nohup
     my $id = shift;
     unless ($id) { 
         my @jobs = grep {(!$_->{foreground})||($_->{stopped})} grep {ref =~ /Wide/} @{$self->{jobs}};
-        if ($#jobs==-1) {
-            $self->print("No background job!",'error');
-            $self->{exec_error}=1;
-            return;
-        }
-        elsif ($#jobs==0) {
-            $id = $jobs[0]->{id};
-        }
-        else {
-            $self->print("Which job?",'error');
-            $self->{exec_error}=1;
-            return;
-        }
+        if ($#jobs==-1) { error "No background job!" }
+        elsif ($#jobs==0) { $id = $jobs[0]->{id} }
+        else { error "Which job?" }
     }
     my ($job) = $self->_jobbyid($id);
-    unless ($job) {
-        $self->print("No such job: $id",'error');
-        $self->{exec_error} = 1;
-        return;
-    }
-    $self->print("Not yet implemented, please fill in the blanks at ".__FILE__." line ".__LINE__.".",'error');
+    unless ($job) { error "No such job: $id" }
+    todo 'see bash manpage for implementaion details';
     
-    # see bash manpage for implementaion details
     # does this suggest we could also have a 'own' to hijack processes ?
     # all your pty are belong:0
 }
@@ -412,13 +419,16 @@ sub _bg_job {
 
 sub _nextjobid {
     my $self = shift;
-    my $h = [sort { $a <=> $b } map { $_->{id} } grep { ref =~ /Wide/ } @{$self->{jobs}}]->[-1] || 0;
+    my $h = [sort { $a <=> $b } map { $_->{id} } grep { ref =~ /Wide/i } @{$self->{jobs}}]->[-1] || 0;
     return $h+1;
 }
 
 sub reap_jobs {
     my $self = shift;
-    @{$self->{jobs}} = grep { !$_->completed } @{$self->{jobs}};
+    eval { @{$self->{jobs}} = grep { !$_->completed } @{$self->{jobs}} };
+    if ($@) {
+        bug("very funky job control bug");
+    }
 }
 
 sub update_status {
@@ -446,8 +456,10 @@ sub _substjobno {
             
 package Zoidberg::ZoidParse::scuddle;
 
-use Data::Dumper;
+use strict;
+use IO::File;
 use POSIX qw/:sys_wait_h :signal_h/;
+use Zoidberg::Error;
 
 sub new {
 	my $class = shift;
@@ -460,20 +472,6 @@ sub new {
 	my $meta = shift;
 	%{$self} = ( %{$self}, %{$meta} );
 	$self->{tree} = shift;
-	map { # support for multitype meta field
-		my $t = ref $_->[0];
-		unless ($t eq 'HASH') {
-			unless ($t) { $_->[0] = { context => $_->[0] } }
-			elsif ($t eq 'ARRAY') {
-				my @a = @{$_->[0]};
-				$_->[0] = {
-					context => shift @a,
-					opts => @a,
-				}
-			}
-			else { die qq/Hands above the blankets !/ }
-		}
-	} @{$self->{tree}};
 
 	bless $self, $class;
 	$self->classify;
@@ -488,83 +486,76 @@ sub classify {
     		( scalar(@{$self->{tree}}) == 1 ) &&
 		( $self->{tree}[0][0]{context} ne 'SH' or !$self->zoid->{round_up} ) &&
 		$self->{foreground}
-	) { bless $self => 'Zoidberg::ZoidParse::scuddle::native' }
-	else { 
-	    	bless $self => 'Zoidberg::ZoidParse::scuddle::wide';
-		$self->{id} = $self->zoid->_nextjobid;
+	) {
+		$self->{block} = shift @{$self->{tree}};
+		bless $self => 'Zoidberg::ZoidParse::scuddle::native'
 	}
+	else {
+	    	bless $self => 'Zoidberg::ZoidParse::scuddle::wide';
+	}
+	$self->{id} = $self->zoid->_nextjobid;
     
 	$self->zoid->print("Scuddle class ".ref($self)." in use.", "debug");
 	return $self;
 }
 
-=begin comment
-
-FIXME redirections are broken
-
-ouwe method om redirections te vinde :
-
-sub preparse {
-    my $job = shift;
-    ref($job) !~ 'scuddle' && $job->zoid->print("Gegegegeget a job [$job]", 'error');
-    for my $i (0..$#{$job->{tree}}) {
-        if ($job->{tree}[$i][1] =~ /</) {
-            my $file = splice(@{$job->{tree}},$i+1,1);
-            ($job->{tree}[$i][1],$file->[1])=($file->[1],$job->{tree}[$i][1]);
-            $job->{files}{0} = $file;
-        }
-        if ($job->{tree}[$i][1] =~ />/) {
-            my $file = splice(@{$job->{tree}},$i+1,1);
-            ($job->{tree}[$i][1],$file->[1])=($file->[1],$job->{tree}[$i][1]);
-            $job->{files}{1} = $file;
-        }
-    }
-}
-
-=end comment
-
-=cut
-
 sub nohup { 0 }
 
-package Zoidberg::ZoidParse::scuddle::native;
-use base 'Zoidberg::ZoidParse::scuddle';
-
-sub prerun { # only stdout redirection supported for now ...
-    my $self = shift;
-    $self->{saveint} = $SIG{INT};
-    $self->{save_interactive} = $self->zoid->{interactive};
-    my $ii = 0;
-    $SIG{INT} = sub{ # what does this _do_ !?
-    	$ii++;
-	if ($ii < 5) { $self->zoid->print("[$self->{id}] instruction terminated by SIGINT", 'message') }
-	else { die "Got SIGINT 5 times, killing native scuddle\n" }
-    };
-    for (keys %{$self->{files}}) {
-        if (ref($self->{files}{$_})) {
-            my $file = $self->{files}{$_}[0];
-            my $fh = IO::File->new("$self->{files}{$_}[1] $file");
-            push @{$self->{files}{$_}}, select($fh);
-            $self->zoid->{interactive} = 0;
-        }
-    }
+sub do_redirect {
+	my $block = pop;
+	my @save_fd;
+	for my $fd (keys %{$block->[0]{files}}) {
+		my @opt = @{$block->[0]{files}{$fd}};
+#		print STDERR "debug: going to redirect fd $fd to $opt[1]$opt[0]\n";
+		my $fh = IO::File->new(@opt) || error "Failed to open $opt[1]$opt[0]";
+		push @save_fd, [POSIX::dup($fd), $fd];
+		POSIX::dup2($fh->fileno, $fd);
+		POSIX::close($fh->fileno);
+	}
+	return \@save_fd;
 }
+
+sub undo_redirect {
+	my $save_fd = pop;
+	for (@$save_fd) {
+		POSIX::dup2(@$_);
+		POSIX::close($_->[0]);
+	}
+}
+
+package Zoidberg::ZoidParse::scuddle::native;
+
+use strict;
+use base 'Zoidberg::ZoidParse::scuddle';
 
 sub run {
     my $self = shift;
-    return $self->zoid->{_eval}->_eval_block($self->{tree}[0]);
-}
 
-sub postrun {
-    my $self = shift;
-    for (keys %{$self->{files}}) {
-        if (ref($self->{files}{$_}) && $_ == 1 ) {
-            select( pop( @{$self->{files}{$_}} ) );
-        }
-    }
-    $self->zoid->{interactive} = $self->{save_interactive};
-    $SIG{INT} = delete $self->{saveint};
-    $self->{completed} = 1;
+	# prepare some stuff
+	$self->{save_interactive} = $self->zoid->{interactive};
+	$self->{saveint} = $SIG{INT};
+	my $ii = 0;
+	$SIG{INT} = sub {
+		if (++$ii < 3) {
+			$self->zoid->print("[$self->{id}] instruction terminated by SIGINT", 'message')
+		}
+		else { die "Got SIGINT 3 times, killing native scuddle\n" }
+	};
+
+	# do redirections
+	my $save_fd = $self->do_redirect($self->{block});
+
+	# here we go !
+	eval { $self->zoid->{_eval}->_eval_block($self->{block}) }; # VUNZig om hier een eval te moeten gebruiken
+	die if $@; 
+
+	# restore file descriptors
+	$self->undo_redirect($save_fd);
+
+	# restore other stuff
+	$self->zoid->{interactive} = $self->{save_interactive};
+	$SIG{INT} = delete $self->{saveint};
+	$self->{completed} = 1;
 }
 
 sub completed { $_[0]->{completed} }
@@ -574,128 +565,106 @@ sub stopped { 0 }
 sub update_status { }
 
 package Zoidberg::ZoidParse::scuddle::wide;
+
+use strict;
 use base 'Zoidberg::ZoidParse::scuddle';
-
-use Data::Dumper;
 use POSIX qw/:sys_wait_h :signal_h/;
+use Zoidberg::Error;
 
-sub prerun {
-    my $self = shift;
-    my $foreground = $self->{foreground};
-    $self->{fd} = { 
-	map {
-		$_, 
-		ref($self->{files}{$_})
-			? IO::File->new("$self->{files}{$_}[1]$self->{files}{$_}[0]")
-			: $self->{files}{$_}
-				? $self->{files}{$_}
-				: $_
-	}  keys %{$self->{files}} };
-    my ($pid, @pipe, $infile, $outfile);
-    $infile = $self->stdin;
-    $self->{procs} = [];
-    my $tree = $self->{tree};
-    for my $i (0..$#{$tree}) {
-        $self->{procs}[$i] = { 
-		tak => $tree->[$i],
-		completed => 0,
-		stopped => 0
-	};
-        my $p = $self->{procs}[$i];
-        if (defined $tree->[$i+1]) {
-            @pipe=POSIX::pipe;
-            $outfile = $pipe[1];
-        }
-        else {
-            $outfile = $self->stdout;
-        }
-	
-        $pid = fork; # !attention! FORK happens here
-        if ($pid) { # parent process
-           $p->{pid} = $pid;
-           if ($self->zoid->{interactive}) {
-               $self->pgid($pid) unless $self->pgid;
-               POSIX::setpgid($pid, $self->pgid);
-           }
-        }
-        else { # child process
-            $self->{zoid}{round_up} = 0;
-            $self->launch($p, $infile, $outfile, $self->stderr, $foreground);
-        }
+sub run {
+	my $self = shift;
+	my $foreground = $self->{foreground};
 
-        if ($infile != $self->stdin) {
-            POSIX::close($infile);
-        }
-        if ($outfile != $self->stdout) {
-            POSIX::close($outfile);
-        }
-        $infile = $pipe[0];
-    }
-    if ($foreground) {
-        $self->put_foreground(0);
-    }
-    else {
-        $self->put_background(0);
-    }
+	$self->{procs} = [ map {block => $_, completed => 0, stopped => 0}, @{$self->{tree}} ];
+	$self->{procs}[-1]{last}++;
+	my ($pid, @pipe, $stdin, $stdout);
+	$stdin = fileno STDIN;
+	for my $proc (@{$self->{procs}}) {
+		unless ($proc->{last}) {
+			@pipe = POSIX::pipe;
+			$stdout = $pipe[1];
+		}
+		else { $stdout = fileno STDOUT }
+
+		$pid = fork; # fork process
+		if ($pid) { # parent process
+			$proc->{pid} = $pid;
+			if ($self->zoid->{interactive}) {
+				$self->{pgid} ||= $pid ;
+				POSIX::setpgid($pid, $self->{pgid});
+			}
+		}
+		else { # child process
+			$self->{zoid}{round_up} = 0;
+			$self->run_child($proc, $stdin, $stdout, $foreground);
+			exit 0; # exit child process
+		}
+
+		POSIX::close($stdin)  unless $stdin  == fileno STDIN ;
+		POSIX::close($stdout) unless $stdout == fileno STDOUT;
+		$stdin = $pipe[0] unless $proc->{last} ;
+	}
+
+	if ($foreground) { $self->put_foreground(0) }
+	else { $self->put_background(0) }
+
+	# postrun
+	POSIX::tcsetpgrp($self->zoid->{terminal},$self->zoid->{pgid});
+	error {silent => 1}, $self->{exit_status} if $self->{exit_status};
 }
 
-sub pgid {
-    my $self = shift;
-    if (@_) {
-        $self->{pgid} = shift;
-    }
-    $self->{pgid};
+sub run_child {
+	my $self = shift;
+	my ($proc, $stdin, $stdout, $foreground) = @_;
+
+	if ($self->zoid->{interactive}) {
+		$self->{pgid} ||= $$;
+		POSIX::setpgid(0,$self->{pgid});
+		POSIX::tcsetpgrp($self->zoid->{terminal}, $self->{pgid}) if $foreground;
+		map { $SIG{$_} = 'DEFAULT' } qw{INT QUIT TSTP TTIN TTOU CHLD};
+	}
+
+	# make sure stdin and stdout are right
+	for ([$stdin, fileno STDIN], [$stdout, fileno STDOUT]) {
+		next if $_->[0] == $_->[1];
+		POSIX::dup2(@$_);
+		POSIX::close($_->[0]);
+	}
+
+	# do redirections
+	$self->do_redirect($proc->{block});
+
+	$self->zoid->{interactive} = 0 unless -t STDOUT;
+    	$self->zoid->silent;
+
+	# here we go ... finally
+	$self->zoid->{_eval}->_eval_block($proc->{block});
 }
 
 sub nohup {
     my $self = shift;
-    if (@_) {
-        $self->{nohup} = shift;
-    }
-    $self->{nohup};
+    $self->{nohup} = shift if @_;
+    return $self->{nohup};
 }
 
-sub run {
+sub _wait_job {
     my $self = shift;
-}
-
-sub launch {
-    my $self = shift;
-    my ($p, $stdin, $stdout, $stderr, $foreground) = @_;
-    my ($pid);
-    if ($self->zoid->{interactive}) {
-        $pid = $$;
-        unless ($self->{pgid}) { $self->pgid($pid) }
-        POSIX::setpgid(0,$self->{pgid});
-        if ($foreground) {
-            POSIX::tcsetpgrp($self->zoid->{terminal},$self->{pgid});
-        }
-        map { $SIG{$_} = 'DEFAULT' } qw{INT QUIT TSTP TTIN TTOU CHLD};
+    my @a = @_;
+    my $pid = undef;
+    while (!$pid) {
+        $pid = waitpid($a[0],$a[1]);
+        $self->zoid->broadcast_event('poll_socket');
     }
-    if ($stdin != fileno(STDIN)) {
-        POSIX::dup2($stdin,fileno(STDIN));
-        POSIX::close $stdin;
-    }
-    if ($stdout != fileno(STDOUT)) {
-        POSIX::dup2($stdout,fileno(STDOUT));
-        POSIX::close $stdout;
-    }
-    if ($stderr != fileno(STDERR)) {
-        POSIX::dup2($stderr,fileno(STDERR));
-        POSIX::close $stderr;
-    }
-    unless (-t STDOUT) { $self->zoid->{interactive} = 0 }
-    $self->zoid->silent;
-    $self->zoid->{_eval}->_eval_block($p->{tak});
-    exit 0;
+    return $pid;
 }
 
 sub wait_job {
     my $self = shift;
     my ($status,$pid);
     do {
-        $pid = waitpid(-$self->{pgid},WUNTRACED);
+        $pid = $self->_wait_job(-$self->{pgid},WUNTRACED|WNOHANG);
         $status = $?;
+        $self->{exit_status} = $status;
         $self->zoid->broadcast_event('idle');
     } while ($self->mark_process_status($pid,$status)&&!$self->stopped&&!$self->completed);
 }
@@ -738,10 +707,6 @@ sub mark_process_status {
             $_->{completed} = 1;
             if (WIFSIGNALED($status)) {
                 $self->zoid->print("[$job->{id}] terminated by SIG".$self->zoid->{_sighash}{WTERMSIG($status)},'message');
-                $self->zoid->{exec_error} = 1;
-            }
-            elsif ($status) {
-                $self->zoid->{exec_error} = 1;
             }
             return 1;
         }
@@ -774,10 +739,7 @@ sub put_background {
     }
 }
 
-sub postrun {
-    my $self = shift;
-    POSIX::tcsetpgrp($self->zoid->{terminal},$self->zoid->{pgid});
-}
+=cut
 
 sub stdin {
     my $self = shift;
@@ -802,6 +764,7 @@ sub stderr {
     ref($_) =~ /IO/ && return $_->fileno;
     $_;
 }
+=cut
 
 1
 __END__

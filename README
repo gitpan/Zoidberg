@@ -1,4 +1,4 @@
- Zoidberg - a modular perl shell, version 0.3a
+ Zoidberg - a modular perl shell, version 0.3b
 ===============================================
 
 ** Laziness, Impatience, Hubris ! **
@@ -29,7 +29,7 @@
     - screen like functionality
     - glue for other (non-perl) languages
 
- ( '#' means _temporarily_ borken )
+ ( '#' means "temporarily borken" )
 
 BUGS AND LIMITATIONS
 

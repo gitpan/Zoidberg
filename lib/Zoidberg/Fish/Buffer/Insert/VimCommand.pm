@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Buffer::Insert::VimCommand;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 use Zoidberg::Fish::Buffer::Insert;
 use Zoidberg::Fish::Buffer::Meta;

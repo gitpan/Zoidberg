@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Prompt;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 use strict;
 

@@ -67,7 +67,7 @@ use strict;
 use Exporter;
 use Zoidberg::PdParse;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 our @ISA = qw/Exporter/;
 our @EXPORT = qw/%ZoidConf/;

@@ -1,6 +1,6 @@
 package Zoidberg::FileRoutines;
 
-our $VERSION = '0.3a';
+our $VERSION = '0.3b';
 
 #use File::Spec;
 use Carp;
