@@ -26,7 +26,7 @@ my $build = ModuleBuildZoid->new(
 	},
 #	create_makefile_pl => 'passthrough', # bug in M:B hacked Makefile.PL
 	dynamic_config => 1,
-	PL_files => {}, # make it ignore my stuff
+	PL_files => {}, # make it ignore my own stuff in ./b/
 	autosplit => [
 		'lib/Zoidberg/Fish/Commands.pm',
 		'lib/Zoidberg/Fish/Intel.pm',

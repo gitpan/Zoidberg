@@ -55,7 +55,7 @@ sub process_MyPre_files {
 	$self->run_perl_script($testPL);
 
 	$self->copy_if_modified( from => $_, to => File::Spec->catfile($blib, 'doc', $_) )
-		for qw/BUGS Changes README/;
+		for qw/Changes README/;
 
 	# (using the manifest here is pure laziness)
 	open MAN, 'MANIFEST' || die 'Could not read MANIFEST';

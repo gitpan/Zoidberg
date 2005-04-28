@@ -384,6 +384,40 @@ This makes the precedence of this example as follows.
 Files starting with a '-' are ignored in globs unless the glob starts with a '-', this is to
 prevent globs from accidentally adding switches to a command.
 
+=head1 ENVIRONMENT
+
+The variables $PWD, $HOME and $USER are set to default values if not
+yet set by the parent process.
+
+The variable $ZOID will point to the location of the zoid executable,
+it is similar to $SHELL for POSIX compliant shells. zoid uses a differ-
+ent variable because some programs seem to expect $SHELL to point to a
+POSIX compliant shell.
+
+To switch off ansi colours on the terminal set $CLICOLOR to 0 (null).
+
+The variable $RS (record seperator) is used to split lines when 
+capturing ouput from a command in list context.
+It defaults to the newline character.
+
+The variable $IFS (input field seperators) is used to split words after
+several expansions. It defaults to C<< <space><tab><return> >>.
+
+This list probably isn't complete.
+
+=head1 FILES
+
+Zoidberg uses rc files, data files and plugin files, use the --config
+switch to check the search paths used.
+
+Which rcfiles are loaded is controlled be the 'rcfiles' and 'norc' set-
+tings, try "zoid -o norc" to skip all rcfiles or "zoid -o
+rcfiles=file1:file2:file3" to use files other then the default.
+
+The runtime search path for plugins etc. can be controlled with the
+'data_dirs' setting, try "zoid -o data_dirs=dir1:dir2:dir3".
+
+
 =head1 SEE ALSO
 
 L<zoidbuiltins>(1), L<zoiddevel>(1), L<zoidfaq>(1), L<perl>(1), 

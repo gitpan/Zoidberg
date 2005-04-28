@@ -14,6 +14,6 @@
 		wait fg bg kill jobs
 		set export setenv unsetenv alias unalias
 		dirs popd pushd
-		symbols which help
+		symbols reload which help
 	/],
 }

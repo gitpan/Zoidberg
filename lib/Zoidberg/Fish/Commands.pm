@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.94';
+our $VERSION = '0.95';
 
 use strict;
 use AutoLoader 'AUTOLOAD';
@@ -296,11 +296,12 @@ Make I<name> an alias to I<command>. Aliases work like macros
 in the shell, this means they are substituted before the commnd
 code is interpreted and can contain complex statements.
 
-In zoid you also can use positional parameters (C<$_[0]>, C<$_[1]>
-etc.) and C<@_>, which will be replaced with the arguments to the alias.
-
 Without I<command> shows the alias defined for I<name> if any;
 without arguments lists all aliases that are currently defined.
+
+Aliases are simple substitutions at the start of a command string.
+If you want something more intelligent like interpolating arguments
+into a string define a builtin command; see L<hash>.
 
 =cut
 
@@ -369,6 +370,14 @@ sub unalias {
 	}
 }
 
+=item hash I<location>
+
+=item hash -r
+
+TODO
+
+Command to manipulate the commands hash and command lookup logic.
+
 =item read [-r] I<var1> I<var2 ..>
 
 Read a line from STDIN, split the line in words 
@@ -403,6 +412,7 @@ sub read {
 	}
 	return unless @$args;
 
+	# TODO honour $IFS here instead of word_gram
 	my @words = $$self{shell}{stringparser}->split('word_gram', $string);
 	debug "read words: ", \@words;
 	if (@words > @$args) {
@@ -546,6 +556,32 @@ sub symbols {
 		push @sym, '*'.$_ if *{$class.'::'.$_}{IO};
 	}
 	output [sort @sym];
+}
+
+=item reload I<module> [I<module>, ..]
+
+=item reload I<file> [I<file>, ..]
+
+Force (re-)loading of a module file. Typically used for debugging modules,
+where you reload the module after each modification to test it interactively.
+
+TODO: recursive switch that scans for 'use' statements
+
+=cut
+
+sub reload {
+	shift; # self
+	for (@_) {
+		my $file = shift;
+		if ($file =~ m!/!) { $file = path($file) }
+		else {
+			$file .= '.pm';
+			$file =~ s{::}{/}g;
+		}
+		$file = $INC{$file} || $file;
+		eval "do '$file'";
+		error if $@;
+	}
 }
 
 =item help [I<topic>|command I<command>]

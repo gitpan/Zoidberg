@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name: Zoidberg
-version: 0.94
+version: 0.95
 author:
   - Jaap Karssenberg <pardus@cpan.org>
 abstract: A modular perl shell

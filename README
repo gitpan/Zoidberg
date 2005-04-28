@@ -1,4 +1,4 @@
- Zoidberg - a modular perl shell, version 0.94
+ Zoidberg - a modular perl shell, version 0.95
 ===============================================
 
   http://zoidberg.sourceforge.net
@@ -63,8 +63,7 @@ CONFIGURATION
 
 BUGS AND LIMITATIONS
 
-  Visit the web page to submit bug reports or mail the author.
-  Known bugs are listed in the BUGS file.
+  To submit bug reports visit http://rt.cpan.org or mail the author.
 
   Currently we test with perl 5.8.2 and perl 5.6.2. 
   Please _do_ bug report for other  perl versions.

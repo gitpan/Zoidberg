@@ -1,6 +1,6 @@
 package Zoidberg::Contractor;
 
-our $VERSION = '0.94';
+our $VERSION = '0.95';
 
 use strict;
 use POSIX ();
@@ -197,7 +197,7 @@ sub reinc_job { # reincarnate
 	$$job{tree} = [];
 	return unless @b;
 	debug @b. ' blocks left';
-	$self->shell_list({ bg => $$job{bg}, id => $$job{id}, capture => $$job{capture} }, @b);
+	$self->shell_list({ map {($_ => $$job{$_})} qw#bg id capture wantarray# }, @b);
 }
 
 sub _logic {
@@ -444,7 +444,7 @@ sub _run {
 
 	$self->{tmodes}	= POSIX::Termios->new;
 
-	$self->{procs}[-1][0]{last}++ unless $$self{capture};
+	$self->{procs}[-1][0]{last}++ unless $$self{capture}; # don't close the pipeline if capturing
 
 	my ($pid, @pipe, $stdin, $stdout);
 	my $zoidpid = $$;
@@ -507,15 +507,15 @@ sub _run {
 
 sub _capture { # called in parent when capturing
 	my ($self, $stdin) = @_;
-	local $/ = $ENV{RS}
-		if exists $ENV{RS} and defined $ENV{RS}; # Record Separator
+	local $/ = (exists $ENV{RS} and defined $ENV{RS})
+       		? $ENV{RS} : "\n" ; # Record Separator
 	debug "capturing output from fd $stdin, \$/ = '$/'";
 	open IN, "<&=$stdin"; # open file descriptor
 	my @re = (<IN>);
 	close IN;
 	POSIX::close($stdin)  unless $stdin  == fileno STDIN ;
 	$self->wait_job; # job should be dead by now
-	return @re;
+	return $$self{wantarray} ? (map {chomp $_; $_} @re) : (join '', @re);
 }
 
 sub _run_child { # called in child process

@@ -147,8 +147,7 @@ Use B<-e> _or_ B<-c>, do not mix them.
 
 =head1 BUGS
 
-Known bugs are listed in the F<BUGS> file, which is included in the source
-package. Visit the web page to submit bug reports or mail the author.
+To submit bug reports visit http://rt.cpan.org or mail the author.
 
 =head1 SEE ALSO
 

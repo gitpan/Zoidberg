@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.94';
+our $VERSION = '0.95';
 our $LONG_VERSION = "Zoidberg $VERSION
 
 Copyright (c) 2002 - 2004 Jaap G Karssenberg. All rights reserved.
@@ -42,7 +42,7 @@ module.
 
 =head1 DESCRIPTION
 
-I<This page contains devel documentation, if you're looking for user documentation start with the zoid(1) man page.>
+I<This page contains devel documentation, if you're looking for user documentation start with the zoid(1) and zoiduser(1) man pages.>
 
 This module contains the core dispatch and event logic of the Zoidberg shell.
 Also it is used as a 'main object' so other objects can find each other here;
@@ -202,7 +202,6 @@ sub new { # FIXME maybe rename this to init ?
 	## commands
 	$$self{commands} = Zoidberg::DispatchTable->new(
 		$self, {
-			reload	 => '->reload',
 			exit	 => '->exit',
 			plug	 => '->plug',
 			unplug	 => '->unplug',
@@ -455,7 +454,7 @@ sub parse_block { # call as late as possible before execution
 		) { # all kinds of blocks with { ... }
 			unless (length $1) { @$meta{qw/context opts/} = ('PERL', $3 || '') }
 			elsif (grep {$_ eq $1} qw/s m tr y/) {
-				$$meta{zoidcmd} = $1.'{'.$$meta{zoidcmd}.'}'.$3; # always one exception
+				$$meta{zoidcmd} = $1.'{'.$$meta{zoidcmd}.'}'.$3; # always the exceptions
 				@$meta{qw/context opts/} = ('PERL', ($1 eq 'm') ? 'g' : 'p')
 			}
 			else {
@@ -467,6 +466,7 @@ sub parse_block { # call as late as possible before execution
 			$$meta{context} = uc $1;
 			shift @words;
 		}
+		elsif (@words == 1 and $words[0] =~ /^%/) { unshift @words, 'fg' } # and another exception
 		elsif ($words[0] =~ /^\s*(->|[\$\@\%\&\*\xA3]\S|\w+::|\w+[\(\{]|($perl_regexp)\b)/s) {
 			$$meta{context} = 'PERL';
 		}
@@ -567,15 +567,18 @@ sub parse_env {
 
 	# parse redirections
 	return [$meta, @words] unless $$meta{parse_fd};
-	my @parts = map { $$self{stringparser}->split('redirect_gram', $_) } @words;
-	return [$meta, @words] if ! grep {! ref $_} @parts;
+	my @s_words = map [ $$self{stringparser}->split('redirect_gram', $_) ], @words;
+	return [$meta, @words] if ! grep {! ref $_} map @$_, @s_words;
 	$$meta{fd} ||= [];
+	my @re;
+
+	PARSE_REDIR_S_WORD:
+	my @parts = @{shift @s_words};
 	my $last = $#parts; # length of @parts changes later on
 	for (0 .. $#parts) {
-		# FIXME next for _SELF parts
 		next unless defined $parts[$_] and ! ref $parts[$_];
 		my $op = delete $parts[$_];
-		if ($op =~ /[^A-Z_]/) { # _SELF escape
+		if ($op =~ /[^A-Z_]/) { # _SELF escape for "<fh>"
 			$parts[$_] = \$op;
 			next;
 		}
@@ -585,7 +588,7 @@ sub parse_env {
 		}
 
 		my ($n, $word);
-		if ($_ > 0 and ref $parts[$_-1]) {
+		if ($_ > 0 and ref $parts[$_-1]) { # find file descriptor number
 			if (${$parts[$_-1]} =~ /^\d+$/) { $n = ${delete $parts[$_-1]} }
 			else {
 				${$parts[$_-1]} =~ s/(\\\\)|(\\\d+)$|(\d+)$/$1 || $2/eg;
@@ -593,9 +596,13 @@ sub parse_env {
 			}
 		}
 
-		if ($_ < $#parts and ref $parts[$_+1]) {
+		if ($_ < $#parts and ref $parts[$_+1]) { # find argument
 			$word = ${ delete $parts[$_+1] };
-			$$meta{compl} = $word if $_+1 == $last; # complete last word
+			$$meta{compl} = $word if $_+1 == $last and ! @s_words; # complete last word
+		}
+		elsif (@s_words and ref $s_words[0][0]) {
+			$word = ${ delete $s_words[0][0] };
+			$$meta{compl} = $word if @s_words == 1 and ! @{$s_words[0]};
 		}
 		else {
 			error 'redirection needs argument'
@@ -611,9 +618,10 @@ sub parse_env {
 			else { error 'redirection needs argument' } # @w < 1
 		}
 	}
-	@words = map $$_, grep {defined $_} @parts;
+	push @re, map $$_, @parts;
+	goto PARSE_REDIR_S_WORD if @s_words;
 
-	return [$meta, @words];
+	return [$meta, @re];
 }
 
 sub parse_aliases { # recursive sub (aliases are 3 way recursive, 2 ways are in this sub)
@@ -707,6 +715,36 @@ sub parse_words { # expand words etc.
 
 =cut
 
+# so far no luck of getting this to work - maybe combine intgrate
+#  this with stringparser some how :S
+
+our $_IFS = [undef, qr/\s+/, qr/\s+/];
+sub _split_on_IFS { # bloody heavy routine for such a simple parsing rule
+	my $self = shift;
+	unless ($ENV{IFS} eq $$_IFS[0]) {
+		debug "generating new IFS regexes";
+		if (! defined $ENV{IFS}) { $_IFS = [undef, qr/\s+/, qr/\s+/] }
+		elsif ($ENV{IFS} eq '')  { $_IFS = ['']                      }
+		else {
+			my $ifs_white = join '', ($ENV{IFS} =~ m/(\s)/g);
+			my $ifs_char  = join '', ($ENV{IFS} =~ m/(\S)/g);
+			$_IFS = [ $ENV{IFS}, qr/[$ifs_white]+/,
+				qr/[$ifs_white]*[$ifs_char][$ifs_white]*|[$ifs_white]+/ ];
+		}
+		debug "IFS = ['$ENV{IFS}', $$_IFS[1], $$_IFS[2]]";
+	}
+		debug "IFS = ['$ENV{IFS}', $$_IFS[1], $$_IFS[2]]";
+	return @_ if defined $$_IFS[0] and $$_IFS[0] eq '';
+	return map {
+		$_ =~ s/(\\\\)|^$$_IFS[1]|(?<!\\)$$_IFS[1]$/$1?$1:''/ge;
+		$$self{stringparser}->split($$_IFS[2], $_)
+	} @_;
+}
+
+=cut
+
+=cut
+
 sub expand_braces {
 	my ($self, $meta, @words) = @_;
 	my @re;
@@ -739,8 +777,9 @@ sub expand_param {
 	my ($e);
 	
 	my $class = $$self{_settings}{perl}{namespace};
-	for (@words) { # substitute vars
+	@words = map { # substitute vars
 		next if /^([\/\w]+=)?'.*'$/s; # skip quoted words
+		my $old = $_;
 		s{(?<!\\)\$\?}{ ref($$self{error}) ? $$self{error}{exit_status} : $$self{error} ? 1 : 0 }ge;
 		s{ (?<!\\) \$ (?: \{ (.*?) \} | ([\w-]+) ) (?: \[(-?\d+)\] )? }{
 			my ($w, $i) = ($1 || $2, $3);
@@ -757,6 +796,9 @@ sub expand_param {
 			$w =~ s/\\/\\\\/g; # literal backslashes
 			$w;
 		}exg;
+		if ($_ eq $old or $_ =~ /^".*"$/) { $_ }
+		else { $$self{stringparser}->split('word_gram', $_) }
+		# TODO honour IFS here -- POSIX tells us so
 	}
 
 	@words = map { # substitute arrays
@@ -789,7 +831,7 @@ sub expand_comm {
 		}
 		elsif (/^\@\((.*?)\)$/s) {
 			debug "\@() subz: $1";
-			push @re, map {chomp; $_} $self->shell($m, $1);
+			push @re, $self->shell($m, $1); # list context
 		}
 		else {
 			my $quote = $1 if s/^(")(.*)\1$/$2/s;
@@ -803,7 +845,7 @@ sub expand_comm {
 			for (0 .. $#parts) {
 				if ($parts[$_] eq 'COMM') {
 					debug '$() subz: '.$parts[$_+1];
-					$parts[$_] = $self->shell($m, ${delete $parts[$_+1]});
+					$parts[$_] = $self->shell($m, ${delete $parts[$_+1]}); # scalar context
 					if ($_ < $#parts-1 and ${$parts[$_+2]} =~ s/^\[(\d*)\]//) {
 						$parts[$_] = $parts[$_][$1];
 						chomp $parts[$_];
@@ -813,9 +855,9 @@ sub expand_comm {
 				elsif (ref $parts[$_]) { $parts[$_] = ${$parts[$_]} }
 			}
 			my $word = join '', @parts; # map {ref($_) ? (@$_) : $_} @parts;
-			$word =~ s/\n+$//; # posix says so
 			if ($quote) { push @re, $quote.$word.$quote }
 			else { push @re, $$self{stringparser}->split('word_gram', $word) }
+			# TODO honour IFS here - POSIX says so
 		}
 	}
 	$$meta{env}{ZOIDCMD} = $$meta{zoidcmd} = join ' ', @re;
@@ -1072,23 +1114,6 @@ sub unplug {
 		error "usage: unplug name" unless @$args == 1;
 		delete $$self{objects}{$$args[0]};
 	}
-}
-
-sub reload {
-	my $self = shift;
-	my $ding = shift;
-	unless ($ding) { $ding = 'Zoidberg' }
-	map {
-		$self->_reload_file($INC{$_});
-	} grep {-e $INC{$_}} grep /$ding/, keys %INC;
-}
-
-sub _reload_file {
-	my $self = shift;
-	my $file = shift;
-	local($^W)=0;
-	message "reloading $file";
-	eval "do '$file'";
 }
 
 sub dev_null {} # does absolutely nothing

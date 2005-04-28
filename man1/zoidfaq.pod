@@ -113,6 +113,15 @@ code of a gui application using zoid.
 
 =head2 Errors
 
+=head3 My prompt looks something like: \C{bold,blue}\u@\h \A \C{green}\W\$\C{reset}
+
+You need to have Env::PS1 installed to render that.
+Did you only install Zoidberg or did you install the full Bundle::Zoidberg ?
+
+The default zoidrc file sets this PS1 string and counts on the availabilty of 
+Env::PS1. If for some reason you choose not to use Env::PS1 you should change PS1 
+to something less obfuscated in the rc file.
+
 =head3 I upgraded to a new version of zoid and it crashes immediately !?
 
 If you use Term::ReadLine::Zoid, make sure not to use a version older then your version of Zoidberg.

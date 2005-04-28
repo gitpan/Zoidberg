@@ -1,6 +1,6 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.94';
+our $VERSION = '0.95';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -62,7 +62,8 @@ sub shell { # FIXME FIXME should not return after ^Z
 	todo 'pipeline syntax' if $pipe;
 	my $save_error = $$self{error};
 	$$self{fg_job} ||= $self;
-	$$meta{capture} = defined(wantarray()) ? 1 : 0;
+	$$meta{capture} = defined wantarray;
+	$$meta{wantarray} = wantarray;
 	local $$self{_settings}{output}{error} = 'mute'
 		if delete $$meta{die_silently};
 	my @re;
@@ -78,20 +79,19 @@ sub _return { # fairly complex output logic :S
 	# the heuristic is that list context is the fastest .. can this be optimised further ?
 	my $error = shift() ? 0 : 1;
 	unless (@_) { return Zoidberg::Utils::Output::Scalar->new($error, '') }
-	elsif (! grep ref($_), @_) { # only string - probably system command output
-		return wantarray ? (return map {chomp; length($_) ? split(/\n/, $_) : $_} @_) :
-			Zoidberg::Utils::Output::Scalar->new($error, join('', @_)) ;
-	}
-	elsif (wantarray) { # try to do the same list heuristics as utils::output
-		return map {
+	elsif (wantarray) {
+		return map { # try to do the same list heuristics as utils::output
 			(ref($_) eq 'ARRAY' and ! grep ref($_), @$_) ? (@$_) : $_
 		} @_;
+	}
+	elsif (! grep ref($_), @_) { # only strings
+		return Zoidberg::Utils::Output::Scalar->new($error, join('', @_)) ;
 	}
 	else { # one or more refs in @_
 		if (@_ == 1) { # must be ref
 			return( (ref($_[0]) eq 'ARRAY' and ! grep ref($_), @{$_[0]})
 				? Zoidberg::Utils::Output::Scalar->new($error, undef, shift())
-				: Zoidberg::Utils::Output::Scalar->new($error, shift())        ) ;
+				: Zoidberg::Utils::Output::Scalar->new($error, shift()       )  ) ;
 		}
 		else { # mixed data - hope we get it right
 			return Zoidberg::Utils::Output::Scalar->new($error, undef, [ map {
@@ -116,6 +116,7 @@ sub _shell_cmd {
 	my $self = &_self;
 	my $meta = (ref($_[0]) eq 'HASH') ? shift : {};
 	$$meta{capture} = defined wantarray;
+	$$meta{wantarray} = wantarray;
 	local $$self{_settings}{output}{error} = 'mute'
 		if delete $$meta{die_silently};
 	my $save_error = $$self{error};
