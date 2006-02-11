@@ -1,11 +1,12 @@
 package Zoidberg::Utils::FileSystem;
 
-our $VERSION = '0.95';
+our $VERSION = '0.96';
 
 use strict;
 #use File::Spec;
 use Env qw/@PATH/;
 use File::Spec; # TODO make more use of this lib
+use Encode;
 use Exporter::Tidy 
 	default => [qw/path list_path list_dir unique_file regex_glob/];
 
@@ -50,6 +51,7 @@ sub list_dir {
 	my @items = grep {$_ !~ /^\.{1,2}$/} readdir DIR ;
 	closedir DIR;
 
+	@items = map Encode::decode_utf8($_, 1), @items;
 	return @items;
 }
 

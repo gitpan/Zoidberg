@@ -1,6 +1,12 @@
  Revision history for Zoidberg - a modular perl shell 
 ======================================================
 
+0.96 Sat Feb 11 2006
+	- Added utf8 decoding for file names. Submitted by Wagner Frederic.
+	- Added patch to check PAR_TEMP environment var. Submitted
+	by Johannes grosse.
+	- Added patch to include /etc/zoidrc.d/ in zoidrc (debian bug #352217)
+
 0.95 Thu Apr 28 2005
 	Bugfix release
 	- Fixed a critical bug in the auto-multiline behaviour, again 

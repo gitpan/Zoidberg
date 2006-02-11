@@ -1,6 +1,6 @@
 package Zoidberg::Fish::Intel;
 
-our $VERSION = '0.95';
+our $VERSION = '0.96';
 
 use strict;
 use vars qw/$DEVNULL/;

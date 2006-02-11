@@ -1,6 +1,6 @@
 
 use Zoidberg::Shell qw/:all/;
-use Zoidberg::Utils qw/:output/;
+use Zoidberg::Utils qw/:output list_dir/;
 
 $shell = Zoidberg::Shell->current(); # get object
 
@@ -91,3 +91,10 @@ if ($^O eq 'linux' and $ENV{CLICOLOR}) { # _GNU_/Linux rigth ?
 		grep => 'grep --color=auto',
 	 } );
 }
+
+## Check for zoidrc.d/ scripts
+my $rcdir = "$SCRIPT.d";
+if (-d $rcdir) {
+	source "$rcdir/$_" for list_dir($rcdir);
+}
+

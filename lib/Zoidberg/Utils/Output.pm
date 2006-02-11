@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils::Output;
 
-our $VERSION = '0.95';
+our $VERSION = '0.96';
 
 use strict;
 use Data::Dumper;

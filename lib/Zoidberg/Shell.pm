@@ -1,6 +1,6 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.95';
+our $VERSION = '0.96';
 
 use strict;
 use vars qw/$AUTOLOAD/;
@@ -197,7 +197,7 @@ sub source {
 		error "source: no such file: $file" unless -f $file;
 		debug "going to source: $file";
 		# FIXME more intelligent behaviour -- see bash man page
-		eval q{package Main; do $file; die $@ if $@ };
+		eval q{package Main; our $SCRIPT = $file; do $file; die $@ if $@ };
 		# FIXME wipe Main
 		complain if $@;
 	}

@@ -16,8 +16,8 @@ my ($rc, $data) = (
 );
 
 my %conf = (
-	rcfiles   => "[$rc, \"\$ENV{HOME}/.zoidrc\", \"\$ENV{HOME}/.zoid/zoidrc\"]",
-	data_dirs => "[\"\$ENV{HOME}/.zoid\", $data]",
+	rcfiles   => '[( $ENV{PAR_TEMP} ? "$ENV{PAR_TEMP}/inc/etc/zoidrc" : '.$rc.' ), "$ENV{HOME}/.zoidrc", "$ENV{HOME}/.zoid/zoidrc"]',
+	data_dirs => '["$ENV{HOME}/.zoid", ( $ENV{PAR_TEMP} ? "$ENV{PAR_TEMP}/inc/share" : '.$data.' )]',
 #	cache_dir => '$ENV{XDG_CACHE_HOME} || "$ENV{HOME}/.cache"'
 );
 
