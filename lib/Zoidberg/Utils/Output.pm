@@ -1,7 +1,7 @@
 
 package Zoidberg::Utils::Output;
 
-our $VERSION = '0.97';
+our $VERSION = '0.98';
 
 use strict;
 use Data::Dumper;
@@ -163,6 +163,8 @@ sub output_sql { # kan vast schoner
 }
 
 package Zoidberg::Utils::Output::Scalar;
+
+our $VERSION = '0.98';
 
 use overload
 	'""'   => \&scalar,
