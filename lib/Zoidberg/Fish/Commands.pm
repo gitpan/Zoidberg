@@ -1,9 +1,9 @@
 package Zoidberg::Fish::Commands;
 
-our $VERSION = '0.96';
+our $VERSION = '0.97';
 
 use strict;
-use AutoLoader 'AUTOLOAD';
+#use AutoLoader 'AUTOLOAD';
 use Cwd;
 use Env qw/@CDPATH @DIRSTACK/;
 use base 'Zoidberg::Fish';
@@ -114,9 +114,9 @@ sub cd { # TODO [-L|-P] see man 1 bash
 	}
 }
 
-1;
+#1;
 
-__END__
+#__END__
 
 =item exec I<cmd>
 
@@ -183,7 +183,7 @@ sub export { # TODO if arg == 1 and not hash then export var from zoid::eval to 
 				$ENV{$_} = join ':', @env if @env;
 			}
 			else { # scalars
-				$env = defined($$vals{$_})        ? $$vals{$_}        :
+				my $env = defined($$vals{$_})        ? $$vals{$_}        :
 		        	       defined(${$class.'::'.$_}) ? ${$class.'::'.$_} : undef ;
 				$ENV{$_} = $env if defined $env;
 			}
@@ -862,7 +862,7 @@ TODO tell bout job specs
 Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
-Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
+Copyright (c) 2011 Jaap G Karssenberg and Joel Berger. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
@@ -871,3 +871,6 @@ modify it under the same terms as Perl itself.
 L<Zoidberg>, L<Zoidberg::Fish>
 
 =cut
+
+1;
+

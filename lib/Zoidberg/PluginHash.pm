@@ -1,10 +1,9 @@
 package Zoidberg::PluginHash;
 
-our $VERSION = '0.96';
+our $VERSION = '0.97';
 
 use strict;
 use Zoidberg::Utils qw/:default read_file merge_hash list_dir/;
-use UNIVERSAL qw/isa/;
 
 # $self->[0] = plugin objects hash
 # $self->[1] = plugin meta data hash
@@ -38,7 +37,7 @@ sub STORE {
 
 	if (exists $$data{object}) {
 		$$data{object}{zoidname} = $name
-			if isa $$data{object}, 'Zoidberg::Fish';
+			if eval{ $$data{object}->isa( 'Zoidberg::Fish' ) };
 		$self->[0]{$name} = $$data{object}
 	}
 
@@ -107,7 +106,7 @@ sub EXISTS { exists $_[0][1]->{$_[1]} }
 
 sub DELETE { # leaves config intact
 	my ($self, $key) = @_;
-	$$self[0]{$key}->round_up() if isa $self->[0]{$key}, 'Zoidberg::Fish';
+	$$self[0]{$key}->round_up() if eval { $self->[0]{$key}->isa( 'Zoidberg::Fish' ) };
 	delete $$self[0]{$key};
 	$$self[2]{$_}->wipe($key) for qw/events commands/; # wipe DispatchTable stacks
 	$$self[2]->broadcast('unplug_'.$key);
@@ -167,7 +166,7 @@ sub load {
 	debug "Going to load plugin $zoidname of class $class, requiring $req";
 	eval "require $req";
 	eval {
-		if (isa $class, 'Zoidberg::Fish') {
+		if (eval{ $class->isa( 'Zoidberg::Fish' ) }) {
 			$self->[0]{$zoidname} = $class->new($self->[2], $zoidname);
 			$self->[0]{$zoidname}->init(@args);
 		}
@@ -192,7 +191,7 @@ sub round_up {
 	my $self = shift;
 	for (keys %{$$self[0]}) {
 		$$self[0]{$_}->round_up(@_)
-			if isa $$self[0]{$_}, 'Zoidberg::Fish';
+			if eval{ $$self[0]{$_}->isa( 'Zoidberg::Fish' ) };
 	}
 }
 
@@ -234,7 +233,7 @@ content types. Also it has special bindings for initialising L<Zoidberg::Fish> o
 
 Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
-Copyright (c) 2003 Jaap G Karssenberg. All rights reserved.
+Copyright (c) 2011 Jaap G Karssenberg and Joel Berger. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 

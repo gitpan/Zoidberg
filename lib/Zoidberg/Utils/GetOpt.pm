@@ -1,6 +1,6 @@
 package Zoidberg::Utils::GetOpt;
 
-our $VERSION = '0.96';
+our $VERSION = '0.97';
 
 use strict;
 use Zoidberg::Utils::Error qw/error bug/;
@@ -23,8 +23,7 @@ sub getopt { # hic sunt leones
 	$conf{_args} = $1 if $conf =~ s/(?<!\S)([\@\%\*])\s*$//;
 	goto PARSE_ARGS unless $conf and $args[0] =~ /^[+-]/;
 	for (split /\s+/, $conf) {
-		s/([\$\@\%])$//;
-		my $arg = $1 || 0;
+		my $arg = s/([\$\@\%])$// ? $1 : 0;
 		my ($opt, @al) = split ',', $_;
 		unless ($opt =~ s/\*$//) {
 			$conf{$opt} = $arg;
@@ -333,7 +332,7 @@ commands that manipulate hash structures for handling commandline args.
 
 Jaap Karssenberg (Pardus) E<lt>pardus@cpan.orgE<gt>
 
-Copyright (c) 2004 Jaap G Karssenberg. All rights reserved.
+Copyright (c) 2011 Jaap G Karssenberg and Joel Berger. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 

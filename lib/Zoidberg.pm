@@ -1,9 +1,9 @@
 package Zoidberg;
 
-our $VERSION = '0.96';
+our $VERSION = '0.97';
 our $LONG_VERSION = "Zoidberg $VERSION
 
-Copyright (c) 2002 - 2004 Jaap G Karssenberg. All rights reserved.
+Copyright (c) 2011 Jaap G Karssenberg and Joel Berger. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl.
 
@@ -11,14 +11,20 @@ This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-http://zoidberg.sourceforge.net";
+http://github.com/jberger/Zoidberg";
 
 use strict;
 use vars qw/$AUTOLOAD/;
-no warnings; # yes, undefined == '' == 0
+#use warnings;
+#no warnings 'uninitialized'; # yes, undefined == '' == 0
+no warnings; # I am leaving this, because I don't totally understand how warnings propagate through -- Joel
 
 require Cwd;
 require File::Glob;
+use File::ShareDir qw/dist_dir/;
+use File::Copy qw/copy/;
+use File::Spec::Functions qw/catfile/;
+
 require Zoidberg::Contractor;
 require Zoidberg::Shell;
 require Zoidberg::PluginHash;
@@ -93,6 +99,16 @@ our %_settings = ( # default settings
 	naked_zoid => 0,
 	( map {($_ => 1)} @_parser_settings ),
 	##Insert defaults here##
+	rcfiles => [
+		( $ENV{PAR_TEMP} ? "$ENV{PAR_TEMP}/inc/etc/zoidrc" : '/etc/zoidrc' ),
+ 		"$ENV{HOME}/.zoidrc",
+		"$ENV{HOME}/.zoid/zoidrc", 
+	],
+	data_dirs => [
+		"$ENV{HOME}/.zoid",
+		( $ENV{PAR_TEMP} ? "$ENV{PAR_TEMP}/inc/share" : ( qw# /usr/local/share/zoid /usr/share/zoid # ) ),
+		dist_dir('Zoidberg'),
+	],
 );
 our %_grammars = ( # default grammar
 	_base_gram => {
@@ -277,7 +293,21 @@ sub new { # FIXME maybe rename this to init ?
 
 	## let's load the rcfiles
 	$$self{events}{loadrc} = sub {
-		$self->source(grep {-f $_} @{$$self{_settings}{rcfiles}});
+		#check for existant rcfiles in the known locations
+		my @rcfiles = grep {-f $_} @{$$self{_settings}{rcfiles}};
+		#if no zoidrc file is found, create one from the template in the dist_dir
+		unless (@rcfiles) {
+			my $rc_template = catfile(dist_dir('Zoidberg'), "zoidrc.example");
+			my $new_rc = catfile($ENV{HOME}, ".zoidrc");
+			warn "### No zoidrc file was found. A new zoidrc file will be created for you at $new_rc. If you really intend to use without a zoidrc file, simply create an empty zoidrc file in that location or at /etc/zoidrc\n\n";
+			if( copy( $rc_template, $new_rc) ) {
+				push @rcfiles, $new_rc;
+			} else {
+				warn "### Could not copy $rc_template to $new_rc\n\n";
+			}
+			
+		}
+		$self->source(@rcfiles);
 	};
 	$self->broadcast('loadrc');
 
@@ -778,27 +808,29 @@ sub expand_param {
 	
 	my $class = $$self{_settings}{perl}{namespace};
 	@words = map { # substitute vars
-		next if /^([\/\w]+=)?'.*'$/s; # skip quoted words
-		my $old = $_;
-		s{(?<!\\)\$\?}{ ref($$self{error}) ? $$self{error}{exit_status} : $$self{error} ? 1 : 0 }ge;
-		s{ (?<!\\) \$ (?: \{ (.*?) \} | ([\w-]+) ) (?: \[(-?\d+)\] )? }{
-			my ($w, $i) = ($1 || $2, $3);
-			$e ||= "no advanced expansion for \$\{$w\}" if $w =~ /[^\w-]/;
-			if ($w eq '_') { $w = $$self{topic} }
-			elsif (exists $$meta{env}{$w} or exists $ENV{$w}) {
-				$w = exists( $$meta{env}{$w} ) ? $$meta{env}{$w} : $ENV{$w} ;
-				$w = $i ? (split /:/, $w)[$i] : $w;
-			}
-			elsif ($i ? defined(*{$class.'::'.$w}{ARRAY}) : defined(*{$class.'::'.$w}{SCALAR})) {
-				$w = $i ? ${$class.'::'.$w}[$i] : ${$class.'::'.$w};
-			}
-			else { $w = '' }
-			$w =~ s/\\/\\\\/g; # literal backslashes
-			$w;
-		}exg;
-		if ($_ eq $old or $_ =~ /^".*"$/) { $_ }
-		else { $$self{stringparser}->split('word_gram', $_) }
-		# TODO honour IFS here -- POSIX tells us so
+		if (/^([\/\w]+=)?'.*'$/s) { $_ }# skip quoted words
+		else {
+			my $old = $_;
+			s{(?<!\\)\$\?}{ ref($$self{error}) ? $$self{error}{exit_status} : $$self{error} ? 1 : 0 }ge;
+			s{ (?<!\\) \$ (?: \{ (.*?) \} | ([\w-]+) ) (?: \[(-?\d+)\] )? }{
+				my ($w, $i) = ($1 || $2, $3);
+				$e ||= "no advanced expansion for \$\{$w\}" if $w =~ /[^\w-]/;
+				if ($w eq '_') { $w = $$self{topic} }
+				elsif (exists $$meta{env}{$w} or exists $ENV{$w}) {
+					$w = exists( $$meta{env}{$w} ) ? $$meta{env}{$w} : $ENV{$w} ;
+					$w = $i ? (split /:/, $w)[$i] : $w;
+				}
+				elsif ($i ? defined(*{$class.'::'.$w}{ARRAY}) : defined(*{$class.'::'.$w}{SCALAR})) {
+					$w = $i ? ${$class.'::'.$w}[$i] : ${$class.'::'.$w};
+				}
+				else { $w = '' }
+				$w =~ s/\\/\\\\/g; # literal backslashes
+				$w;
+			}exg;
+			if ($_ eq $old or $_ =~ /^".*"$/) { $_ }
+			else { $$self{stringparser}->split('word_gram', $_) }
+			# TODO honour IFS here -- POSIX tells us so
+		}
 	}
 
 	@words = map { # substitute arrays
@@ -1323,11 +1355,13 @@ or a shell command, in which case Zoidberg tries to execute it.
 
 =head1 AUTHOR
 
+Joel Berger, E<lt>joel.a.berger@gmail.comE<gt>
+
 Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
 R.L. Zwart, E<lt>carl0s@users.sourceforge.netE<gt>
 
-Copyright (c) 2002 Jaap G Karssenberg. All rights reserved.
+Copyright (c) 2011 Jaap G Karssenberg and Joel Berger. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
@@ -1338,6 +1372,6 @@ and L<http://www.gnu.org/copyleft/gpl.html>
 
 L<zoid>(1), L<zoiddevel>(1),
 L<Zoidberg::Shell>,
-L<http://zoidberg.sourceforge.net>
+L<http://github.com/jberger/Zoidberg>
 
 =cut

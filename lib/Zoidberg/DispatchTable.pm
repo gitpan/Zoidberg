@@ -1,6 +1,6 @@
 package Zoidberg::DispatchTable;
 
-our $VERSION = '0.96';
+our $VERSION = '0.97';
 
 use strict;
 use Zoidberg::Utils qw/debug bug error/;
@@ -312,7 +312,7 @@ Returns an array of all tags for given key.
 
 Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
-Copyright (c) 2003 Jaap G Karssenberg. All rights reserved.
+Copyright (c) 2011 Jaap G Karssenberg and Joel Berger. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 

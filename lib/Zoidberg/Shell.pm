@@ -1,10 +1,9 @@
 package Zoidberg::Shell;
 
-our $VERSION = '0.96';
+our $VERSION = '0.97';
 
 use strict;
 use vars qw/$AUTOLOAD/;
-use UNIVERSAL qw/isa/;
 use Zoidberg::Utils qw/:error :output path getopt/;
 use Exporter::Tidy
 	default	=> [qw/AUTOLOAD shell command builtin/],
@@ -39,7 +38,7 @@ sub any {
 	return $Zoidberg::CURRENT;
 }
 
-sub _self { (isa $_[0], __PACKAGE__) ? shift : $Zoidberg::CURRENT }
+sub _self { ( eval{ $_[0]->isa( __PACKAGE__ ) } ) ? shift : $Zoidberg::CURRENT }
 
 # ################ #
 # Parser interface #
@@ -415,14 +414,14 @@ More syntactic sugar :)
 
 Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
-Copyright (c) 2003 Jaap G Karssenberg. All rights reserved.
+Copyright (c) 2011 Jaap G Karssenberg and Joel Berger. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
 L<Zoidberg>, L<Zoidberg::Utils>,
-L<http://zoidberg.sourceforge.net>
+L<http://github.com/jberger/Zoidberg>
 
 L<Shell>
 

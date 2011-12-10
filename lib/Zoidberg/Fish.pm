@@ -1,6 +1,6 @@
 package Zoidberg::Fish;
 
-our $VERSION = '0.96';
+our $VERSION = '0.97';
 
 use strict;
 use Zoidberg::Utils 'error';
@@ -157,8 +157,12 @@ TODO
 sub add_events { # get my events unless @_ ?
 	my $self = shift;
 	error 'add_events needs args' unless @_;
-	my %events = ref($_[0]) ? (@{ shift() })
-		: (map {($_ => "->$$self{zoidname}->$_")} @_);
+	my %events;
+	if( my $reftype = ref($_[0]) ) {
+		%events = ( $reftype eq 'HASH' ) ? %{ shift() } : @{ shift() };
+	} else {
+		%events = (map {($_ => "->$$self{zoidname}->$_")} @_);
+	}
 	$$self{shell}{events}{$_} = [$events{$_}, $$self{zoidname}]
 		for keys %events;
 }
@@ -172,8 +176,12 @@ sub wipe_events {
 sub add_commands { # get my commands unless @_ ?
 	my $self = shift;
 	error 'add_commands needs args' unless @_;
-	my %commands = ref($_[0]) ? (@{ shift() })
-		: (map {($_ => "->$$self{zoidname}->$_")} @_);
+	my %commands; 
+	if ( my $reftype = ref($_[0]) ) {
+		%commands = ( $reftype eq 'HASH' ) ? %{ shift() } : @{ shift() };
+	} else {
+		%commands = (map {($_ => "->$$self{zoidname}->$_")} @_);
+	}
 	$$self{shell}{commands}{$_} = [$commands{$_}, $$self{zoidname}]
 		for keys %commands;
 }
@@ -274,7 +282,7 @@ R.L. Zwart, E<lt>rlzwart@cpan.orgE<gt>
 
 Jaap Karssenberg || Pardus [Larus] E<lt>pardus@cpan.orgE<gt>
 
-Copyright (c) 2002 Raoul L. Zwart. All rights reserved.
+Copyright (c) 2011 Raoul L. Zwart and Joel Berger. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
@@ -283,6 +291,6 @@ modify it under the same terms as Perl itself.
 L<Zoidberg>,
 L<Zoidberg::Shell>,
 L<Zoidberg::Utils>,
-L<http://zoidberg.sourceforge.net>
+L<http://github.com/jberger/Zoidberg>
 
 =cut

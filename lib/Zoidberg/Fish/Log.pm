@@ -1,9 +1,9 @@
 package Zoidberg::Fish::Log;
 
-our $VERSION = '0.96';
+our $VERSION = '0.97';
 
 use strict;
-use AutoLoader 'AUTOLOAD';
+#use AutoLoader 'AUTOLOAD';
 use Zoidberg::Utils qw/:default path getopt output_is_captured/;
 use base 'Zoidberg::Fish';
 
@@ -202,9 +202,9 @@ sub round_up {
 	close OUT;
 }
 
-1;
+#1;
 
-__END__
+#__END__
 
 =head1 NAME
 
@@ -380,7 +380,7 @@ command history after the history file is read again.
 
 Jaap Karssenberg (Pardus) E<lt>pardus@cpan.orgE<gt>
 
-Copyright (c) 2003 Jaap G Karssenberg. All rights reserved.
+Copyright (c) 2011 Jaap G Karssenberg and Joel Berger. All rights reserved.
 This program is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
@@ -389,4 +389,6 @@ modify it under the same terms as Perl itself.
 L<Zoidberg>
 
 =cut
+
+1;
 
