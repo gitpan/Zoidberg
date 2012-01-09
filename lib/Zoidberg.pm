@@ -1,6 +1,6 @@
 package Zoidberg;
 
-our $VERSION = '0.98';
+our $VERSION = '0.981';
 our $LONG_VERSION = "Zoidberg $VERSION
 
 Copyright (c) 2011 Jaap G Karssenberg and Joel Berger. All rights reserved.
@@ -917,7 +917,7 @@ sub expand_path { # path expansion
 			# TODO: {x..y} brace expansion
 			$_ =~ s#(\\\\)|(?<!\\){([^,{}]*)(?<!\\)}#$1?$1:"\\{$2\\}"#ge
 				unless $$self{_settings}{voidbraces}; # brace pre-parsing
-			my @r = File::Glob::doglob($_, $opts);
+			my @r = File::Glob::bsd_glob($_, $opts);
 			debug "glob: $_ ==> ".join(', ', @r);
 			($_ !~ /^-/) ? (grep {$_ !~ /^-/} @r) : (@r);
 			# protect against implict switches as file names
@@ -1260,7 +1260,7 @@ sub DESTROY {
 
 package Zoidberg::SettingsHash;
 
-our $VERSION = '0.98';
+our $VERSION = '0.981';
 
 sub TIEHASH {
 	my ($class, $ref, $shell) = @_;
@@ -1308,7 +1308,7 @@ sub NEXTKEY { each %{$_[0][0]} }
 
 package Zoidberg::Eval;
 
-our $VERSION = '0.98';
+our $VERSION = '0.981';
 
 # included to bootstrap a bit of default environment
 # for the perl syntax
